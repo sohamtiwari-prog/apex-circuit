@@ -152,8 +152,8 @@ static func gp26() -> Dictionary:
 		"damp_comp": 5.0,
 		"damp_relax": 7.0,
 		"max_susp_force": 60000.0,
-		"grip_front": 2.0,              # ~2 g mechanical; downforce adds the rest
-		"grip_rear": 2.1,
+		"grip_front": 2.6,              # grippy, RR3-style; downforce adds more with speed
+		"grip_rear": 2.8,
 		"roll_influence": 0.03,
 		"collision": [
 			[Vector3(0.9, 0.4, 4.3), Vector3(0, 0.25, 0.0)],
@@ -180,11 +180,10 @@ static func gp26() -> Dictionary:
 		"chase_dist": 7.0,
 		"chase_height": 2.0,
 
-		# Measured steady-state limit (tests/grip_test.gd, tests/diag_steer.gd):
-		# ~2.5 g at 108 km/h -> ~4.7 g at 216 km/h, fit a = 17 + 0.008 v^2.
-		# The AI plans with 92% of it.
-		"ai_grip": 13.5,                # low speed: ~1.5 g mechanical grip
-		"ai_grip_aero": 0.0080,
+		# Measured limit at full lock (tests/diag_steer.gd, tests/grip_test.gd):
+		# ~2.6 g at 72 km/h -> ~5.8 g at 216 km/h; the AI plans with ~92% of it.
+		"ai_grip": 17.5,
+		"ai_grip_aero": 0.0095,
 		"ai_brake": 15.0,
 	}
 
@@ -203,7 +202,7 @@ static func vanta_gt() -> Dictionary:
 		"drag": 0.62, "downforce": 1.4,
 		"brake_base": 12.5, "brake_max": 13.5,
 		"wheel_front_z": 1.33, "wheel_rear_z": -1.32, "track_front": 0.82, "track_rear": 0.84,
-		"grip_front": 1.6, "grip_rear": 1.7,
+		"grip_front": 2.0, "grip_rear": 2.15,
 		"collision": [[Vector3(1.9, 0.55, 4.45), Vector3(0, -0.05, 0)], [Vector3(1.25, 0.35, 1.9), Vector3(0, 0.38, -0.25)]],
 		"redline": 8500.0, "idle_rpm": 900.0, "peak_rpm": 7300.0, "top_kmh": 341.0, "first_kmh": 95.0,
 		"cylinders": 8, "engine_base_hz": 200.0, "engine_tone": "v8flat",
@@ -230,7 +229,7 @@ static func stuttgart9() -> Dictionary:
 		"drag": 0.64, "downforce": 0.9,
 		"brake_base": 12.5, "brake_max": 13.5,
 		"wheel_front_z": 1.25, "wheel_rear_z": -1.2, "track_front": 0.8, "track_rear": 0.82,
-		"grip_front": 1.55, "grip_rear": 1.85,      # wide rear tyres tame the rear-engined balance
+		"grip_front": 1.95, "grip_rear": 2.3,       # wide rear tyres tame the rear-engined balance
 		"collision": [[Vector3(1.85, 0.6, 4.5), Vector3(0, -0.04, 0)], [Vector3(1.2, 0.4, 1.8), Vector3(0, 0.42, -0.2)]],
 		"redline": 7200.0, "idle_rpm": 850.0, "peak_rpm": 6500.0, "top_kmh": 330.0, "first_kmh": 85.0, "gear_count": 8,
 		"cylinders": 6, "engine_base_hz": 180.0, "engine_tone": "flat6",
@@ -256,7 +255,7 @@ static func marauder() -> Dictionary:
 		"drag": 0.72, "downforce": 0.35,
 		"brake_base": 11.0, "brake_max": 12.0,
 		"wheel_front_z": 1.55, "wheel_rear_z": -1.3, "track_front": 0.82, "track_rear": 0.83,
-		"grip_front": 1.35, "grip_rear": 1.4,
+		"grip_front": 1.7, "grip_rear": 1.8,
 		"collision": [[Vector3(1.9, 0.65, 4.8), Vector3(0, -0.02, 0)], [Vector3(1.3, 0.42, 1.9), Vector3(0, 0.46, -0.45)]],
 		"redline": 7500.0, "idle_rpm": 750.0, "peak_rpm": 6500.0, "top_kmh": 285.0, "first_kmh": 80.0, "gear_count": 6,
 		"cylinders": 8, "engine_base_hz": 160.0, "engine_tone": "v8",
@@ -284,7 +283,7 @@ static func toro_furia() -> Dictionary:
 		"brake_base": 13.0, "brake_max": 14.0,
 		"wheel_front_z": 1.4, "wheel_rear_z": -1.33, "track_front": 0.85, "track_rear": 0.87,
 		"radius_rear": 0.36, "tyre_width_rear": 0.35,
-		"grip_front": 1.65, "grip_rear": 1.75,
+		"grip_front": 2.05, "grip_rear": 2.2,
 		"collision": [[Vector3(2.0, 0.5, 4.8), Vector3(0, -0.08, 0)], [Vector3(1.2, 0.3, 2.0), Vector3(0, 0.28, -0.3)]],
 		"redline": 9500.0, "idle_rpm": 1000.0, "peak_rpm": 8500.0, "top_kmh": 350.0, "first_kmh": 100.0,
 		"cylinders": 12, "engine_base_hz": 260.0, "engine_tone": "v12",
@@ -314,7 +313,7 @@ static func veloce() -> Dictionary:
 		"brake_base": 13.0, "brake_max": 14.0,
 		"wheel_front_z": 1.4, "wheel_rear_z": -1.32, "track_front": 0.86, "track_rear": 0.86,
 		"radius_rear": 0.36, "tyre_width_rear": 0.36,
-		"grip_front": 1.6, "grip_rear": 1.75,
+		"grip_front": 2.0, "grip_rear": 2.2,
 		"collision": [[Vector3(2.04, 0.62, 4.5), Vector3(0, -0.04, 0)], [Vector3(1.24, 0.4, 1.9), Vector3(0, 0.42, -0.25)]],
 		"redline": 6800.0, "idle_rpm": 800.0, "peak_rpm": 6000.0, "top_kmh": 410.0, "first_kmh": 110.0,
 		"cylinders": 16, "engine_base_hz": 220.0, "engine_tone": "w16",

@@ -18,6 +18,8 @@ func _check(ok: bool, msg: String) -> void:
 
 
 func _run() -> void:
+	# Let the Save autoload finish loading from disk before we override it.
+	await process_frame
 	var args := OS.get_cmdline_user_args()
 	var track_id: String = args[0] if args.size() > 0 else "styria"
 	var laps: int = int(args[1]) if args.size() > 1 else 2

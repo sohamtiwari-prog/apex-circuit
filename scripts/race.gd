@@ -60,6 +60,10 @@ var invalid_limit := 10.0
 var _save_timer := 0.0
 var _tick := 0
 var _results_shown := false
+var _assist_profile := PackedFloat32Array()
+var _assist_driver: AIDriver = null
+var _wedged := 0.0
+const STEER_ASSIST_BLEND := 0.3
 var autopilot: AIDriver = null     # when set, the AI drives the player's car (tests/demo)
 var save: Node                     # the Save autoload, looked up at runtime
 
@@ -325,6 +329,42 @@ func _read_input() -> void:
 		gas = 1.0
 	if Input.is_physical_key_pressed(KEY_DOWN) or Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_SPACE):
 		brk = 1.0
+
+	# Steering assist (like RR3's): blends in some racing-line steering and
+	# steers back when about to run off the road.
+	var lat := track.lateral(car.global_position, player.idx)
+	if bool(save.get_setting("steer_assist")):
+		if _assist_driver == null:
+			_assist_driver = AIDriver.new()
+		steer = lerpf(steer, _assist_driver.line_steer(car, track, player.idx), STEER_ASSIST_BLEND)
+		var edge := track.road_half - 0.9
+		var drift := car.linear_velocity.dot(track.rights[player.idx])
+		if absf(lat) > edge and signf(drift) == signf(lat):
+			var push := clampf((absf(lat) - edge) * 0.35 + absf(drift) * 0.04, 0.0, 0.6)
+			steer = clampf(steer - signf(lat) * push, -1.0, 1.0)
+
+	# Brake assist: brakes for you when arriving at a corner too fast.
+	if bool(save.get_setting("brake_assist")) and state == State.RACING:
+		if _assist_profile.size() != track.size():
+			_assist_profile = track.speed_profile(car.spec)
+		var v := car.forward_speed()
+		var ahead := (player.idx + 3 + int(absf(v) * 0.05)) % track.size()
+		var target: float = _assist_profile[ahead] * 1.04
+		if v > target + 1.0:
+			var assist := clampf((v - target) / 6.0, 0.0, 1.0)
+			brk = maxf(brk, assist)
+			gas = minf(gas, 1.0 - assist)
+
+	# Wedged against a wall with the throttle down: recover automatically
+	# when assists are on (otherwise the RESET button is there).
+	if bool(save.get_setting("steer_assist")) and state == State.RACING and gas > 0.5 and absf(car.forward_speed()) < 1.0:
+		_wedged += get_physics_process_delta_time()
+		if _wedged > 3.0:
+			_wedged = 0.0
+			_reset_to_track(player, false)
+			hud.show_warning("Car reset to track")
+	else:
+		_wedged = 0.0
 
 	car.steer_input = steer
 	car.throttle = gas

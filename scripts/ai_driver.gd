@@ -15,6 +15,26 @@ var target_speed := 0.0
 var _profile := PackedFloat32Array()
 
 
+## Steering input (-1..1) that follows the racing line; does not touch the car.
+func line_steer(car: RaceCar, track: Track, at_idx: int) -> float:
+	var n := track.size()
+	var v := car.forward_speed()
+	var look := clampf(5.0 + absf(v) * 0.32, 6.0, 34.0)
+	var ti := (at_idx + int(look / Track.SPACING)) % n
+	var tgt: Vector3 = track.line_points[ti]
+	var fwd := car.global_basis.z
+	fwd.y = 0.0
+	var to := tgt - car.global_position
+	to.y = 0.0
+	var ld := maxf(to.length(), 1.0)
+	var alpha := fwd.normalized().signed_angle_to(to / ld, Vector3.UP)
+	var wheelbase: float = float(car.spec["wheel_front_z"]) - float(car.spec["wheel_rear_z"])
+	var delta := atan2(2.0 * wheelbase * sin(alpha), ld)
+	var max_steer := lerpf(car.spec["steer_low"], car.spec["steer_high"],
+		clampf(absf(v) / float(car.spec["steer_full_speed"]), 0.0, 1.0))
+	return clampf(-delta / max_steer, -1.0, 1.0)
+
+
 func update(car: RaceCar, track: Track) -> void:
 	var n := track.size()
 	if _profile.size() != n:

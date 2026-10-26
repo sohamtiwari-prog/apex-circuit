@@ -59,8 +59,13 @@ every build is signed with the same key (`android_signing/`).
 | Gas | GAS pedal, bottom-right | GAS pedal, bottom-right |
 | Brake / reverse | BRAKE pedal, bottom-left | BRAKE pedal |
 
-Pause (**II**, top-right) to switch steering mode, turn on auto-accelerate,
-invert tilt, change tilt sensitivity, or toggle traction control and ABS.
+**RESET** (top-right) puts the car back on the track. Pause (**II**) to switch
+steering mode, turn on auto-accelerate, invert tilt, change tilt sensitivity,
+or toggle traction control, ABS, brake assist and steering assist.
+
+**Assists** (on by default, like RR3): brake assist brakes for you when you
+arrive at a corner too fast; steering assist blends in some racing-line
+steering, keeps you off the grass and recovers you if you get wedged.
 The camera button cycles chase, far chase and the car's onboard cameras
 (GP car: cockpit, T-cam, nose; GT: hood, bumper). On a computer: arrows/WASD, Space to brake,
 C for camera, R to reset, Esc to pause.

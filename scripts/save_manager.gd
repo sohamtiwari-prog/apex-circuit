@@ -30,34 +30,41 @@ func _notification(what: int) -> void:
 
 
 func default_profile() -> Dictionary:
-	return {
-		"schema": SCHEMA_VERSION,
-		"settings": {
-			"control_mode": "tilt",       # "tilt" or "buttons"
-			"auto_accelerate": false,
-			"invert_tilt": false,
-			"tilt_sensitivity": 1.0,
-			"camera": 0,
-			"traction_control": true,
-			"abs": true,
-			"car": "gp26",
-			"team": 0,
-			"track": "silvermoor",
-			"mode": "race",             # "race" or "time_trial"
-			"laps": 3,
-			"opponents": 19,
-			"difficulty": "medium",     # easy, medium, hard
-		},
-		"best_laps": {},                  # "track|car" -> milliseconds
-		"stats": {
-			"laps": 0,
-			"distance_m": 0.0,
-			"races": 0,
-			"wins": 0,
-			"podiums": 0,
-		},
-		"best_finish": {},               # "track|car" -> best race position
-	}
+	# Always a deep copy: the literal below is built from constants, and the
+	# loader merges saved data into the result, so it must never be shared.
+	return _DEFAULTS.duplicate(true)
+
+
+const _DEFAULTS := {
+	"schema": SCHEMA_VERSION,
+	"settings": {
+		"control_mode": "tilt",       # "tilt" or "buttons"
+		"auto_accelerate": false,
+		"invert_tilt": false,
+		"tilt_sensitivity": 1.0,
+		"camera": 0,
+		"traction_control": true,
+		"abs": true,
+		"brake_assist": true,
+		"steer_assist": true,
+		"car": "gp26",
+		"team": 0,
+		"track": "silvermoor",
+		"mode": "race",             # "race" or "time_trial"
+		"laps": 3,
+		"opponents": 19,
+		"difficulty": "medium",     # easy, medium, hard
+	},
+	"best_laps": {},                  # "track|car" -> milliseconds
+	"stats": {
+		"laps": 0,
+		"distance_m": 0.0,
+		"races": 0,
+		"wins": 0,
+		"podiums": 0,
+	},
+	"best_finish": {},               # "track|car" -> best race position
+}
 
 
 # ---------------------------------------------------------------- settings

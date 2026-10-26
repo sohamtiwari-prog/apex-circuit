@@ -117,6 +117,8 @@ func _ready() -> void:
 	root.add_child(bar)
 	cam_button = _button("CAM", bar, func(): camera_requested.emit())
 	cam_button.custom_minimum_size = Vector2(110, 72)
+	var rb := _button("RESET", bar, func(): reset_requested.emit())
+	rb.custom_minimum_size = Vector2(120, 72)
 	var pb := _button("II", bar, func(): set_paused(true))
 	pb.custom_minimum_size = Vector2(90, 72)
 
@@ -197,6 +199,7 @@ func _build_pause_menu(root: Control) -> void:
 
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(560, 560)
+	scroll.scroll_deadzone = 24       # a slightly moving tap still presses a button
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	pause_panel.add_child(scroll)
 	var v := VBoxContainer.new()
@@ -240,6 +243,12 @@ func _build_pause_menu(root: Control) -> void:
 	_menu_buttons["abs"] = _button("", v, func():
 		save.set_setting("abs", not bool(save.get_setting("abs")))
 		_refresh_menu())
+	_menu_buttons["brake_assist"] = _button("", v, func():
+		save.set_setting("brake_assist", not bool(save.get_setting("brake_assist")))
+		_refresh_menu())
+	_menu_buttons["steer_assist"] = _button("", v, func():
+		save.set_setting("steer_assist", not bool(save.get_setting("steer_assist")))
+		_refresh_menu())
 	_menu_buttons["quit"] = _button("Quit to main menu", v, func(): menu_requested.emit())
 	for key in _menu_buttons:
 		(_menu_buttons[key] as Button).custom_minimum_size = Vector2(0, 66)
@@ -254,6 +263,8 @@ func _refresh_menu() -> void:
 	(_menu_buttons["sens"] as Button).text = "Tilt sensitivity: %.1fx" % float(save.get_setting("tilt_sensitivity"))
 	(_menu_buttons["tc"] as Button).text = "Traction control: " + ("On" if save.get_setting("traction_control") else "Off")
 	(_menu_buttons["abs"] as Button).text = "ABS: " + ("On" if save.get_setting("abs") else "Off")
+	(_menu_buttons["brake_assist"] as Button).text = "Brake assist: " + ("On" if save.get_setting("brake_assist") else "Off")
+	(_menu_buttons["steer_assist"] as Button).text = "Steering assist: " + ("On" if save.get_setting("steer_assist") else "Off")
 	touch.configure(String(save.get_setting("control_mode")), bool(save.get_setting("auto_accelerate")))
 	settings_changed.emit()
 

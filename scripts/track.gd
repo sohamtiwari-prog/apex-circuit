@@ -59,6 +59,10 @@ var line_curv_safe := PackedFloat32Array() # |curvature|, max over the surroundi
 var line_margin := 1.35
 var _profiles := {}
 
+## Footprints of every large scenery object placed: [{"xf": Transform3D, "size": Vector3}]
+## (unscaled transform, box size). Used to keep scenery off the road.
+var scenery_boxes: Array = []
+
 
 static func catalog_entry(id: String) -> Dictionary:
 	for t in CATALOG:
@@ -553,13 +557,27 @@ func _build_grandstands() -> void:
 	var roof := StandardMaterial3D.new()
 	roof.albedo_color = Color(0.9, 0.9, 0.92)
 	# Two stands along the left of the main straight, plus one on the right.
+	# Each slides along the track until its whole footprint is clear of road.
 	for spec in [[25, -1.0], [55, -1.0], [40, 1.0]]:
-		var idx: int = spec[0]
 		var side: float = spec[1]
+		var idx := -1
+		for tries in range(0, 400, 5):
+			for sign_ in [1, -1]:
+				var cand: int = (int(spec[0]) + tries * sign_ + points.size()) % points.size()
+				var b0: Transform3D = pose_at(cand, GROUND_Y)
+				var o0: Vector3 = b0.origin + rights[cand] * side * (wall_offset + 9.0 + 6.4)
+				if footprint_clear(Transform3D(b0.basis, o0), Vector3(20.0, 10.0, 54.0), 2.0):
+					idx = cand
+					break
+			if idx >= 0:
+				break
+		if idx < 0:
+			continue
 		var base: Transform3D = pose_at(idx, GROUND_Y)
 		var out: Vector3 = rights[idx] * side
 		var origin: Vector3 = base.origin + out * (wall_offset + 9.0)
 		var basis: Basis = base.basis
+		scenery_boxes.append({"xf": Transform3D(basis, origin + out * 6.4), "size": Vector3(20.0, 10.0, 54.0)})
 		for tier in range(5):
 			var bm := BoxMesh.new()
 			bm.size = Vector3(4.0, 1.0 + tier * 1.0, 50.0)
@@ -593,15 +611,31 @@ func _build_city() -> void:
 			var depth := rng.randf_range(14.0, 26.0)
 			var h := rng.randf_range(12.0, 48.0)
 			var p: Vector3 = points[i] + rights[i] * side * (wall_offset + 2.5 + depth * 0.5)
-			if dist_to_centerline(p, depth + wall_offset) > wall_offset + 1.5 + depth * 0.45:
-				var b := Basis.looking_at(-tangents[i], Vector3.UP)
+			var b := Basis.looking_at(-tangents[i], Vector3.UP)
+			var foot := Transform3D(b, p)
+			if footprint_clear(foot, Vector3(depth, h, w), wall_offset - road_half - KERB_W + 1.5):
 				xforms.append(Transform3D(Basis(b.x * depth, b.y * h, b.z * w), p + Vector3.UP * (GROUND_Y + h * 0.5)))
 				cols.append(palette[rng.randi() % palette.size()])
+				scenery_boxes.append({"xf": foot, "size": Vector3(depth, h, w)})
 			i += int(w / SPACING) + 1
 	var box := BoxMesh.new()
 	box.size = Vector3.ONE
 	_multimesh(box, xforms, cols, Color.WHITE)
 	_build_grandstands()
+
+
+## True if a box (unscaled transform + size) stays clear of the road and
+## kerbs everywhere on its footprint, by at least `margin` metres.
+func footprint_clear(xf: Transform3D, size: Vector3, margin := 1.0) -> bool:
+	var limit := road_half + KERB_W + margin
+	var nx := maxi(2, int(size.x / 4.0))
+	var nz := maxi(2, int(size.z / 4.0))
+	for ix in range(nx + 1):
+		for iz in range(nz + 1):
+			var local := Vector3(size.x * (float(ix) / nx - 0.5), 0.0, size.z * (float(iz) / nz - 0.5))
+			if dist_to_centerline(xf * local, limit + 2.0) < limit:
+				return false
+	return true
 
 
 # ------------------------------------------------------------ racing line

@@ -80,6 +80,15 @@ jobs:
       - name: Full 20-car race
         run: bash .github/run_test.sh res://tests/race_test.gd
 
+      - name: No scenery on the road
+        run: bash .github/run_test.sh res://tests/scenery_test.gd
+
+      - name: Reset to track works
+        run: bash .github/run_test.sh res://tests/reset_test.gd
+
+      - name: Assists get a beginner round the lap
+        run: bash .github/run_test.sh res://tests/assist_test.gd
+
       - name: Export APK
         env:
           # The same key must sign every build, or Android refuses to update the

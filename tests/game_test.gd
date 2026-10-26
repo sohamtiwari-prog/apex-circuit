@@ -19,6 +19,8 @@ func _check(ok: bool, msg: String) -> void:
 
 
 func _run() -> void:
+	# Let the Save autoload finish loading from disk before we override it.
+	await process_frame
 	var save: Node = root.get_node("Save")
 	save.data = save.default_profile()     # start from a clean profile
 	save.data["settings"]["mode"] = "time_trial"
