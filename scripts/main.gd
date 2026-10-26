@@ -24,10 +24,12 @@ var next_checkpoint := 1
 var flip_timer := 0.0
 var _last_count := -1
 var _save_timer := 0.0
-var autopilot: AIDriver = null    # when set, the AI drives the player's car (tests/demo)
+var autopilot: AIDriver = null
+var save: Node                     # the Save autoload, looked up at runtime    # when set, the AI drives the player's car (tests/demo)
 
 
 func _ready() -> void:
+	save = get_node("/root/Save")
 	DisplayServer.screen_set_keep_on(true)
 	_build_environment()
 
@@ -41,7 +43,7 @@ func _ready() -> void:
 	cam = RaceCamera.new()
 	add_child(cam)
 	cam.target = car
-	cam.mode = int(Save.get_setting("camera")) % RaceCamera.MODE_NAMES.size()
+	cam.mode = int(save.get_setting("camera")) % RaceCamera.MODE_NAMES.size()
 	cam.current = true
 
 	hud = Hud.new()
@@ -124,14 +126,14 @@ func _reset_car_to_track() -> void:
 func _cycle_camera() -> void:
 	var m := cam.cycle()
 	hud.set_camera_name(RaceCamera.MODE_NAMES[m])
-	Save.set_setting("camera", m)
+	save.set_setting("camera", m)
 
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		if hud != null and not hud.is_paused():
 			hud.set_paused(true)
-		Save.save()
+		save.save()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -150,12 +152,12 @@ func _unhandled_input(event: InputEvent) -> void:
 func _read_input() -> void:
 	var t := hud.touch
 	var steer := 0.0
-	if Save.get_setting("control_mode") == "tilt":
+	if save.get_setting("control_mode") == "tilt":
 		var acc := Input.get_accelerometer()
 		# In landscape, gravity along the screen's x axis = steering-wheel roll.
 		# Full lock at roughly 30 degrees of tilt.
-		var s := acc.x / (GRAVITY * 0.5) * float(Save.get_setting("tilt_sensitivity"))
-		if bool(Save.get_setting("invert_tilt")):
+		var s := acc.x / (GRAVITY * 0.5) * float(save.get_setting("tilt_sensitivity"))
+		if bool(save.get_setting("invert_tilt")):
 			s = -s
 		if absf(s) < 0.04:
 			s = 0.0
@@ -210,7 +212,7 @@ func _physics_process(delta: float) -> void:
 			hud.show_center(str(c))
 	else:
 		lap_time += delta
-		Save.add_distance(absf(car.forward_speed()) * delta)
+		save.add_distance(absf(car.forward_speed()) * delta)
 		# Checkpoints at 25/50/75% must be passed in order.
 		var quarter := int(idx * 4 / n)
 		if quarter == next_checkpoint and next_checkpoint < 4:
@@ -234,9 +236,9 @@ func _physics_process(delta: float) -> void:
 	_save_timer += delta
 	if _save_timer > 30.0:
 		_save_timer = 0.0
-		Save.save()
+		save.save()
 
-	var best_ms := Save.get_best_lap(Track.TRACK_ID)
+	var best_ms: int = save.get_best_lap(Track.TRACK_ID)
 	hud.update_timing(lap, lap_time if state == State.RACING else 0.0, last_lap,
 		best_ms / 1000.0 if best_ms >= 0 else -1.0, lap_valid)
 	hud.update_speed(car.speed_kmh())
@@ -246,8 +248,8 @@ func _complete_lap() -> void:
 	last_lap = lap_time
 	var ms := int(round(lap_time * 1000.0))
 	if lap_valid:
-		var prev_best := Save.get_best_lap(Track.TRACK_ID)
-		var is_best := Save.submit_lap(Track.TRACK_ID, ms)
+		var prev_best: int = save.get_best_lap(Track.TRACK_ID)
+		var is_best: bool = save.submit_lap(Track.TRACK_ID, ms)
 		if is_best:
 			var msg := "NEW BEST  " + Hud.fmt_time(lap_time)
 			if prev_best >= 0:

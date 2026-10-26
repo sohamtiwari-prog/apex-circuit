@@ -16,9 +16,9 @@ jobs:
   android:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -63,10 +63,10 @@ jobs:
         run: timeout 300 ~/godot/godot --headless --import || true
 
       - name: Physics tests
-        run: ~/godot/godot --headless --fixed-fps 120 --script res://tests/sim_test.gd
+        run: bash .github/run_test.sh res://tests/sim_test.gd
 
       - name: Game tests
-        run: ~/godot/godot --headless --fixed-fps 120 --script res://tests/game_test.gd
+        run: bash .github/run_test.sh res://tests/game_test.gd
 
       - name: Export APK
         env:
@@ -80,9 +80,13 @@ jobs:
           sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/" export_presets.cfg
           sed -i "s/^version\/name=.*/version\/name=\"${VERSION_NAME}\"/" export_presets.cfg
           mkdir -p build
-          ~/godot/godot --headless --export-release "Android" build/apex-circuit.apk
+          ~/godot/godot --headless --export-release "Android" build/apex-circuit.apk > export.log 2>&1 || true
+          grep -v -e 'Parameter "m" is null' -e 'mesh_storage.h' -e '^$' export.log | tail -80
+          if [ ! -s build/apex-circuit.apk ]; then
+            grep -iE "error|invalid|missing|could not|failed" export.log | grep -v mesh_storage | head -20 | sed 's/^/::error title=export::/'
+            exit 1
+          fi
           ls -la build
-          test -s build/apex-circuit.apk
           cp build/apex-circuit.apk "build/ApexCircuit-v${VERSION_NAME}.apk"
 
       - name: Publish release

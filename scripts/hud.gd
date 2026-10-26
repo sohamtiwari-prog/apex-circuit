@@ -20,11 +20,14 @@ var warn_label: Label
 var pause_panel: PanelContainer
 var cam_button: Button
 var _menu_buttons := {}
+# Looked up at runtime (not by global name) so this script also compiles in tests.
+var save: Node
 var _banner_time := 0.0
 var _warn_time := 0.0
 
 
 func _ready() -> void:
+	save = get_node("/root/Save")
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	var root := Control.new()
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -160,23 +163,23 @@ func _build_pause_menu(root: Control) -> void:
 		set_paused(false)
 		reset_requested.emit())
 	_menu_buttons["controls"] = _button("", v, func():
-		Save.set_setting("control_mode", "buttons" if Save.get_setting("control_mode") == "tilt" else "tilt")
+		save.set_setting("control_mode", "buttons" if save.get_setting("control_mode") == "tilt" else "tilt")
 		_refresh_menu())
 	_menu_buttons["auto"] = _button("", v, func():
-		Save.set_setting("auto_accelerate", not bool(Save.get_setting("auto_accelerate")))
+		save.set_setting("auto_accelerate", not bool(save.get_setting("auto_accelerate")))
 		_refresh_menu())
 	_menu_buttons["invert"] = _button("", v, func():
-		Save.set_setting("invert_tilt", not bool(Save.get_setting("invert_tilt")))
+		save.set_setting("invert_tilt", not bool(save.get_setting("invert_tilt")))
 		_refresh_menu())
 	_menu_buttons["sens"] = _button("", v, func():
 		var steps := [0.6, 0.8, 1.0, 1.3, 1.6, 2.0]
-		var cur := float(Save.get_setting("tilt_sensitivity"))
+		var cur := float(save.get_setting("tilt_sensitivity"))
 		var nxt: float = steps[0]
 		for s in steps:
 			if s > cur + 0.01:
 				nxt = s
 				break
-		Save.set_setting("tilt_sensitivity", nxt)
+		save.set_setting("tilt_sensitivity", nxt)
 		_refresh_menu())
 	for key in _menu_buttons:
 		(_menu_buttons[key] as Button).custom_minimum_size = Vector2(0, 66)
@@ -184,12 +187,12 @@ func _build_pause_menu(root: Control) -> void:
 
 
 func _refresh_menu() -> void:
-	var tilt: bool = Save.get_setting("control_mode") == "tilt"
+	var tilt: bool = save.get_setting("control_mode") == "tilt"
 	(_menu_buttons["controls"] as Button).text = "Steering: " + ("Tilt phone" if tilt else "On-screen buttons")
-	(_menu_buttons["auto"] as Button).text = "Auto-accelerate: " + ("On" if Save.get_setting("auto_accelerate") else "Off")
-	(_menu_buttons["invert"] as Button).text = "Invert tilt: " + ("On" if Save.get_setting("invert_tilt") else "Off")
-	(_menu_buttons["sens"] as Button).text = "Tilt sensitivity: %.1fx" % float(Save.get_setting("tilt_sensitivity"))
-	touch.configure(String(Save.get_setting("control_mode")), bool(Save.get_setting("auto_accelerate")))
+	(_menu_buttons["auto"] as Button).text = "Auto-accelerate: " + ("On" if save.get_setting("auto_accelerate") else "Off")
+	(_menu_buttons["invert"] as Button).text = "Invert tilt: " + ("On" if save.get_setting("invert_tilt") else "Off")
+	(_menu_buttons["sens"] as Button).text = "Tilt sensitivity: %.1fx" % float(save.get_setting("tilt_sensitivity"))
+	touch.configure(String(save.get_setting("control_mode")), bool(save.get_setting("auto_accelerate")))
 	settings_changed.emit()
 
 
@@ -198,7 +201,7 @@ func set_paused(p: bool) -> void:
 	pause_panel.visible = p
 	touch.release_all()
 	if not p:
-		Save.save()
+		save.save()
 
 
 func is_paused() -> bool:

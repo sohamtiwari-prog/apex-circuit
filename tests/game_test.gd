@@ -3,6 +3,8 @@ extends SceneTree
 ## countdown -> racing -> two timed laps -> best lap saved to disk.
 ##   godot --headless --fixed-fps 120 --script res://tests/game_test.gd
 
+# Note: avoid referencing game class names here; this file is compiled before
+# autoloads (Save) exist, and classes that use Save would fail to compile.
 var failures: Array[String] = []
 
 
@@ -30,21 +32,21 @@ func _run() -> void:
 		await physics_frame
 	_check(main.state == 1, "countdown finishes and racing starts")
 
-	main.autopilot = AIDriver.new()
+	main.autopilot = load("res://scripts/ai_driver.gd").new()
 	var start_lap: int = main.lap
 	var frames := 0
 	while main.lap < start_lap + 2 and frames < 120 * 200:
 		await physics_frame
 		frames += 1
 	_check(main.lap >= start_lap + 2, "two laps completed (lap counter %d)" % main.lap)
-	print("  last lap: %s" % Hud.fmt_time(main.last_lap))
+	print("  last lap: %.3f s" % main.last_lap)
 
-	var best: int = save.get_best_lap(Track.TRACK_ID)
+	var best: int = save.get_best_lap("kestrel_park")
 	_check(best > 0, "best lap recorded in profile (%d ms)" % best)
 
 	# Reload the profile from disk exactly as a fresh app launch would.
 	var reloaded: Dictionary = save._load()
-	_check(int(reloaded["best_laps"].get(Track.TRACK_ID, -1)) == best, "best lap survives reload from disk")
+	_check(int(reloaded["best_laps"].get("kestrel_park", -1)) == best, "best lap survives reload from disk")
 	_check(int(reloaded["stats"]["laps"]) >= 2, "lap count saved (%d)" % int(reloaded["stats"]["laps"]))
 
 	# Corrupt the main save: the backup must take over.
@@ -52,7 +54,7 @@ func _run() -> void:
 	f.store_string("{ this is not json")
 	f.close()
 	var recovered: Dictionary = save._load()
-	_check(int(recovered["best_laps"].get(Track.TRACK_ID, -1)) > 0, "corrupt save recovers from backup")
+	_check(int(recovered["best_laps"].get("kestrel_park", -1)) > 0, "corrupt save recovers from backup")
 	save.save()
 
 	print("")
