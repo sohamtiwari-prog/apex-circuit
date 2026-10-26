@@ -594,7 +594,7 @@ func _update_positions() -> void:
 ##  - never steers into a car that is alongside;
 ##  - off the start, holds its grid column until the field has spread out.
 const CAR_LEN := 5.4
-const SIDE_CLEAR := 2.7           # centre-to-centre lateral spacing when alongside
+const SIDE_CLEAR := 2.95          # centre-to-centre lateral spacing when alongside
 const FOLLOW_DECEL := 7.0         # m/s^2: braking assumed when keeping a safe gap
 
 func _traffic() -> void:
@@ -628,7 +628,7 @@ func _traffic() -> void:
 			var o_lat := track.lateral(o.car.global_position, o.idx)
 			var dlat := o_lat - my_lat
 			# Ahead and in our path (even if only partly): the car to follow.
-			if gap > 0.5 and absf(dlat) < 2.3 and gap < lead_gap:
+			if gap > 0.5 and absf(dlat) < 2.6 and gap < lead_gap:
 				lead = o
 				lead_gap = gap
 				lead_lat = o_lat
