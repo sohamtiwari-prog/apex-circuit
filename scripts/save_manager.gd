@@ -41,6 +41,7 @@ func default_profile() -> Dictionary:
 			"traction_control": true,
 			"abs": true,
 			"car": "gp26",
+			"team": 0,
 			"track": "silvermoor",
 		},
 		"best_laps": {},                  # "track|car" -> milliseconds

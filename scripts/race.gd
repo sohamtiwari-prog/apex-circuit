@@ -48,7 +48,7 @@ func _ready() -> void:
 	invalid_limit = track.road_half + Track.KERB_W + 2.5
 
 	car = RaceCar.new()
-	car.setup(CarSpecs.get_spec(car_id))
+	car.setup(CarSpecs.get_spec(car_id, int(save.get_setting("team")) if car_id == "gp26" else 0))
 	add_child(car)
 	_apply_assists()
 

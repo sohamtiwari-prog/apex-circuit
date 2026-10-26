@@ -74,6 +74,9 @@ jobs:
       - name: Every track is drivable
         run: bash .github/run_test.sh res://tests/tracks_test.gd
 
+      - name: Every car performs and laps cleanly
+        run: bash .github/run_test.sh res://tests/cars_test.gd
+
       - name: Export APK
         env:
           # The same key must sign every build, or Android refuses to update the

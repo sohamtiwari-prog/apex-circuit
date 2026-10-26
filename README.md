@@ -7,10 +7,17 @@ Grand Prix tracks follow real circuit layouts under fictional names.
 
 ## Cars and tracks
 
-| Car | | |
-|---|---|---|
-| **Apex GP-26** | Grand Prix car | ~1000 hp, 800 kg, 8-speed seamless, 0-100 in 2.4 s, 340 km/h |
-| **Apex Vanta GT** | Mid-engined GT | 560 hp, 1250 kg, 7-speed, 0-100 in 4.0 s, 319 km/h |
+| Car | Modelled on | | |
+|---|---|---|---|
+| **Apex GP-26** | current F1 car, 10 team liveries | 1000 hp · 800 kg | 0-100 2.4 s · 342 km/h |
+| **Apex Vanta GT** | mid-engined supercar | 720 hp · 1420 kg | 0-100 3.9 s · 339 km/h |
+| **Stuttgart 9 Turbo** | rear-engined sports icon | 650 hp · 1640 kg | 0-100 3.8 s · 325 km/h |
+| **Marauder V8** | American muscle car | 480 hp · 1750 kg | 0-100 4.9 s · 281 km/h |
+| **Toro Furia** | Italian V12 wedge hypercar | 770 hp · 1550 kg | 0-100 3.9 s · 345 km/h |
+| **Veloce Hyper** | W16 hypercar | 1500 hp · 1995 kg | 0-100 3.6 s · 387+ km/h |
+
+Cars are modelled procedurally (scripts/mesh_kit.gd: lofted bodywork,
+airfoil wings, lathed tyres). Names and teams are fictional.
 
 | Track | Real layout of | Length |
 |---|---|---|
@@ -77,7 +84,8 @@ scripts/
   track.gd           circuit from data or control points: road mesh, walls, scenery
   car.gd             VehicleBody3D driving model: gearbox, aero, brakes, TC/ABS
   car_specs.gd       every car's physics, gearing, sound and camera spec
-  car_body.gd        car 3D models built from primitives
+  car_body.gd        car 3D models (lofted bodies, wings, liveries, wheels)
+  mesh_kit.gd        procedural modelling: loft, tube, airfoil, lathe
   car_audio.gd       engine/tyre/wind sound synthesized in code
   ai_driver.gd       pure-pursuit steering + curvature speed planner
   race_camera.gd     chase / hood / bumper cameras
@@ -93,6 +101,8 @@ tests/
   game_test.gd       end-to-end: countdown, laps, save, reload, corruption recovery
   tracks_test.gd     the AI completes a clean lap of every track
   grip_test.gd       measures each car's cornering grip (calibrates the AI)
+  cars_test.gd       every car: 0-100, top speed, clean AI lap
+  car_showcase.gd    renders every car for visual review
 ```
 
 Every push to `main` runs the tests and builds a signed APK via GitHub Actions

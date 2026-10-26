@@ -7,6 +7,9 @@ var showcase: Node3D
 var preview: RaceCar
 var ui: CanvasLayer
 var car_buttons := {}
+var team_buttons: Array[Button] = []
+var team_box: Control
+var team_label: Label
 var track_buttons := {}
 var best_label: Label
 var info_label: Label
@@ -17,6 +20,7 @@ func _ready() -> void:
 	DisplayServer.screen_set_keep_on(true)
 	_build_stage()
 	_build_ui()
+	_select_team(int(save.get_setting("team")), false)
 	_select_car(String(save.get_setting("car")), false)
 	_select_track(String(save.get_setting("track")), false)
 
@@ -77,7 +81,7 @@ func _show_car(id: String) -> void:
 	if preview != null:
 		preview.queue_free()
 	preview = RaceCar.new()
-	preview.setup(CarSpecs.get_spec(id))
+	preview.setup(CarSpecs.get_spec(id, int(save.get_setting("team")) if id == "gp26" else 0))
 	preview.freeze = true
 	showcase.add_child(preview)
 	preview.position.y = preview.spawn_height() - 0.05
@@ -163,6 +167,22 @@ func _build_ui() -> void:
 		var spec := CarSpecs.get_spec(id)
 		var cid: String = id
 		car_buttons[id] = _card(spec["name"], spec["desc"], left, func(): _select_car(cid, true))
+	team_label = _label("TEAM", 20, left, Color(1, 1, 1, 0.55))
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 10)
+	flow.add_theme_constant_override("v_separation", 10)
+	left.add_child(flow)
+	team_box = flow
+	for i in range(CarSpecs.TEAMS.size()):
+		var t: Dictionary = CarSpecs.TEAMS[i]
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(84, 56)
+		b.focus_mode = Control.FOCUS_NONE
+		b.tooltip_text = t["name"]
+		var idx := i
+		b.pressed.connect(func(): _select_team(idx, true))
+		flow.add_child(b)
+		team_buttons.append(b)
 	_label("TRACK", 20, left, Color(1, 1, 1, 0.55))
 	for t in Track.CATALOG:
 		var tid: String = t["id"]
@@ -205,7 +225,28 @@ func _select_car(id: String, persist: bool) -> void:
 	if persist:
 		save.set_setting("car", id)
 	_show_car(id)
+	if team_box != null:
+		team_box.visible = id == "gp26"
+		team_label.visible = id == "gp26"
 	_refresh_info()
+
+
+func _select_team(i: int, persist: bool) -> void:
+	i = posmod(i, CarSpecs.TEAMS.size())
+	for k in range(team_buttons.size()):
+		var t: Dictionary = CarSpecs.TEAMS[k]
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = t["base"]
+		sb.border_color = Color.WHITE if k == i else t["accent"]
+		sb.set_border_width_all(5 if k == i else 3)
+		sb.set_corner_radius_all(12)
+		for st in ["normal", "hover", "pressed", "focus"]:
+			team_buttons[k].add_theme_stylebox_override(st, sb)
+	if persist:
+		save.set_setting("team", i)
+		_show_car(String(save.get_setting("car")))
+	if team_label != null:
+		team_label.text = "TEAM  ·  " + String(CarSpecs.TEAMS[i]["name"]).to_upper()
 
 
 func _select_track(id: String, persist: bool) -> void:

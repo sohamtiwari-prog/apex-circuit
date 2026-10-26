@@ -98,15 +98,32 @@ func _engine_wave(tone: String, on_load: bool) -> AudioStreamWAV:
 	var f0 := _base_hz
 	var harmonics: Array = []
 	var gains: Array = []
-	if tone == "gp":
-		# High-revving turbo V6: strong fundamental, bright upper harmonics,
-		# a half-order "turbo/MGU" whine.
-		harmonics = [0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0]
-		gains = [0.18, 1.0, 0.25, 0.55, 0.4, 0.28, 0.16, 0.12, 0.06]
-	else:
-		# Cross-plane V8: rumbly sub-harmonics and a rich low end.
-		harmonics = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0]
-		gains = [0.35, 0.6, 0.3, 1.0, 0.35, 0.45, 0.22, 0.1]
+	match tone:
+		"gp":
+			# High-revving turbo V6: strong fundamental, bright upper harmonics,
+			# a half-order "turbo/MGU" whine.
+			harmonics = [0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0]
+			gains = [0.18, 1.0, 0.25, 0.55, 0.4, 0.28, 0.16, 0.12, 0.06]
+		"v8flat":
+			# Flat-plane V8: high-revving rasp, little rumble.
+			harmonics = [0.5, 1.0, 1.5, 2.0, 3.0, 4.0]
+			gains = [0.2, 1.0, 0.3, 0.6, 0.35, 0.2]
+		"flat6":
+			# Boxer six: the signature mix of half orders.
+			harmonics = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 6.0]
+			gains = [0.3, 1.0, 0.5, 0.5, 0.25, 0.3, 0.15, 0.08]
+		"v12":
+			# V12: smooth and pure, almost no sub-harmonics.
+			harmonics = [1.0, 2.0, 3.0, 4.0, 6.0]
+			gains = [1.0, 0.7, 0.5, 0.3, 0.15]
+		"w16":
+			# W16: deep, heavy and turbocharged.
+			harmonics = [0.25, 0.5, 1.0, 2.0, 3.0]
+			gains = [0.4, 0.7, 1.0, 0.45, 0.2]
+		_:
+			# Cross-plane V8: rumbly sub-harmonics and a rich low end.
+			harmonics = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0]
+			gains = [0.35, 0.6, 0.3, 1.0, 0.35, 0.45, 0.22, 0.1]
 	if not on_load:
 		for k in range(gains.size()):
 			gains[k] = gains[k] / (1.0 + harmonics[k] * 0.9)
