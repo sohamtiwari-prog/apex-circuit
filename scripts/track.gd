@@ -16,8 +16,14 @@ const GRID := 24.0
 
 ## Tracks available in the game, in menu order.
 const CATALOG := [
-	{"id": "silvermoor", "name": "Silvermoor Circuit", "desc": "Grand Prix circuit, 5.85 km, 18 corners"},
-	{"id": "kestrel_park", "name": "Kestrel Park", "desc": "Club circuit, 2.06 km"},
+	{"id": "silvermoor", "name": "Silvermoor Circuit", "desc": "Britain · 5.86 km · fast and flowing", "style": "park"},
+	{"id": "brianza", "name": "Autodromo di Brianza", "desc": "Italy · 5.77 km · temple of speed", "style": "park"},
+	{"id": "ardennes", "name": "Circuit des Ardennes", "desc": "Belgium · 6.96 km · long and legendary", "style": "forest"},
+	{"id": "riviera", "name": "Riviera Street Circuit", "desc": "Monaco · 3.30 km · tight streets, no room for error", "style": "city"},
+	{"id": "styria", "name": "Styria Ring", "desc": "Austria · 4.29 km · short, fast, heavy braking", "style": "park"},
+	{"id": "entrelagos", "name": "Autodromo Entrelagos", "desc": "Brazil · 4.28 km · anticlockwise classic", "style": "park"},
+	{"id": "desert", "name": "Desert Sun International Circuit", "desc": "Bahrain · 5.39 km · stop-and-go in the sand", "style": "desert"},
+	{"id": "kestrel_park", "name": "Kestrel Park", "desc": "Original club circuit · 2.06 km", "style": "park"},
 ]
 
 # Original club circuit, defined by control points (x, z) in metres.
@@ -35,6 +41,7 @@ var track_id := "kestrel_park"
 var track_name := "Kestrel Park"
 var road_half := 6.5          # half the asphalt width
 var wall_offset := 19.0
+var style := "park"             # park, forest, city, desert
 
 var points := PackedVector3Array()
 var tangents := PackedVector3Array()
@@ -43,6 +50,21 @@ var cum := PackedFloat32Array()
 var curv := PackedFloat32Array()     # signed, 1/radius; negative = right-hander
 var total_length := 0.0
 var _grid := {}
+
+# Racing line (see tools/racing_line.py): lateral offset per sample.
+var line_offset := PackedFloat32Array()
+var line_points := PackedVector3Array()
+var line_curv := PackedFloat32Array()      # signed, 1/radius of the racing line
+var line_curv_safe := PackedFloat32Array() # |curvature|, max over the surrounding 30 m (for speed planning)
+var line_margin := 1.35
+var _profiles := {}
+
+
+static func catalog_entry(id: String) -> Dictionary:
+	for t in CATALOG:
+		if t["id"] == id:
+			return t
+	return CATALOG[0]
 
 
 static func catalog_name(id: String) -> String:
@@ -55,6 +77,7 @@ static func catalog_name(id: String) -> String:
 func build(id: String = "kestrel_park") -> void:
 	track_id = id
 	track_name = catalog_name(id)
+	style = catalog_entry(id)["style"]
 	if id == "kestrel_park":
 		road_half = 6.5
 		wall_offset = 19.0
@@ -62,6 +85,7 @@ func build(id: String = "kestrel_park") -> void:
 	else:
 		_load_file("res://tracks/%s.json" % id)
 	_derive()
+	_derive_line()
 	_build_grid()
 	_build_ground()
 	_build_road()
@@ -145,6 +169,11 @@ func _load_file(path: String) -> void:
 	points = PackedVector3Array()
 	for p in data["points"]:
 		points.append(Vector3(float(p[0]), ROAD_Y, float(p[1])))
+	line_offset = PackedFloat32Array()
+	if data.has("line"):
+		for o in data["line"]:
+			line_offset.append(float(o))
+		line_margin = float(data.get("line_margin", 1.35))
 
 
 func _sample_control(layout: Array) -> void:
@@ -216,9 +245,20 @@ func _noise_texture(freq: float, dark: Color, light: Color) -> NoiseTexture2D:
 
 # ------------------------------------------------------------ ground
 
+func _ground_color() -> Color:
+	match style:
+		"desert":
+			return Color(0.78, 0.62, 0.42)
+		"city":
+			return Color(0.36, 0.36, 0.38)
+		"forest":
+			return Color(0.17, 0.36, 0.11)
+	return Color(0.2, 0.42, 0.13)
+
+
 func _build_ground() -> void:
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.2, 0.42, 0.13)
+	mat.albedo_color = _ground_color()
 	mat.albedo_texture = _noise_texture(0.05, Color(0.7, 0.72, 0.6), Color(1, 1, 1))
 	mat.uv1_scale = Vector3(500, 500, 1)
 	mat.roughness = 1.0
@@ -295,7 +335,9 @@ func _build_road() -> void:
 	var asphalt := Color(0.2, 0.2, 0.19)
 	var white := Color(0.93, 0.93, 0.93)
 	var red := Color(0.82, 0.12, 0.09)
-	var verge := Color(0.22, 0.4, 0.15)
+	var verge := _ground_color().lightened(0.06)
+	if style == "city":
+		verge = Color(0.42, 0.42, 0.44)
 	var black := Color(0.06, 0.06, 0.06)
 	var h := road_half
 
@@ -408,6 +450,9 @@ func _build_walls() -> void:
 # ------------------------------------------------------------ scenery
 
 func _build_scenery() -> void:
+	if style == "city":
+		_build_city()
+		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
 	var lo := Vector2(INF, INF)
@@ -433,7 +478,12 @@ func _build_scenery() -> void:
 	var trunks: Array[Transform3D] = []
 	var crowns: Array[Transform3D] = []
 	var crown_cols: Array[Color] = []
-	for k in range(1400):
+	var attempts := 1400
+	if style == "forest":
+		attempts = 3200
+	elif style == "desert":
+		attempts = 220
+	for k in range(attempts):
 		var pos := Vector3(rng.randf_range(lo.x, hi.x), GROUND_Y, rng.randf_range(lo.y, hi.y))
 		if dist_to_centerline(pos, wall_offset + 12.0) < wall_offset + 9.0:
 			continue
@@ -442,7 +492,10 @@ func _build_scenery() -> void:
 		trunks.append(Transform3D(b, pos + Vector3.UP * 1.2 * s))
 		crowns.append(Transform3D(b, pos + Vector3.UP * (2.4 + 3.25) * s))
 		var g := rng.randf_range(0.0, 1.0)
-		crown_cols.append(Color(0.12 + 0.08 * g, 0.32 + 0.12 * g, 0.12 + 0.05 * g))
+		if style == "desert":
+			crown_cols.append(Color(0.35 + 0.1 * g, 0.42 + 0.1 * g, 0.18))
+		else:
+			crown_cols.append(Color(0.12 + 0.08 * g, 0.32 + 0.12 * g, 0.12 + 0.05 * g))
 
 	_multimesh(trunk_mesh, trunks, [], Color(0.36, 0.25, 0.16))
 	_multimesh(crown_mesh, crowns, crown_cols, Color.WHITE)
@@ -499,3 +552,118 @@ func _build_grandstands() -> void:
 		r.material_override = roof
 		r.transform = Transform3D(basis, origin + out * 7.0 + Vector3.UP * 8.5)
 		add_child(r)
+
+
+## Street circuit: apartment blocks and hotels right behind the barriers.
+func _build_city() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 21
+	var n := points.size()
+	var xforms: Array[Transform3D] = []
+	var cols: Array[Color] = []
+	var palette := [Color(0.93, 0.88, 0.78), Color(0.95, 0.8, 0.62), Color(0.86, 0.72, 0.6),
+		Color(0.9, 0.9, 0.88), Color(0.98, 0.86, 0.7), Color(0.8, 0.74, 0.7)]
+	for side in [-1.0, 1.0]:
+		var i := 0
+		while i < n:
+			var w := rng.randf_range(14.0, 30.0)
+			var depth := rng.randf_range(14.0, 26.0)
+			var h := rng.randf_range(12.0, 48.0)
+			var p: Vector3 = points[i] + rights[i] * side * (wall_offset + 2.5 + depth * 0.5)
+			if dist_to_centerline(p, depth + wall_offset) > wall_offset + 1.5 + depth * 0.45:
+				var b := Basis.looking_at(-tangents[i], Vector3.UP)
+				xforms.append(Transform3D(Basis(b.x * depth, b.y * h, b.z * w), p + Vector3.UP * (GROUND_Y + h * 0.5)))
+				cols.append(palette[rng.randi() % palette.size()])
+			i += int(w / SPACING) + 1
+	var box := BoxMesh.new()
+	box.size = Vector3.ONE
+	_multimesh(box, xforms, cols, Color.WHITE)
+	_build_grandstands()
+
+
+# ------------------------------------------------------------ racing line
+
+func _derive_line() -> void:
+	var n := points.size()
+	if line_offset.size() != n:
+		_optimise_line()
+	line_points.resize(n)
+	for i in range(n):
+		line_points[i] = points[i] + rights[i] * line_offset[i]
+	line_curv.resize(n)
+	var k := 6
+	for i in range(n):
+		var a: Vector3 = line_points[(i - k + n) % n]
+		var b: Vector3 = line_points[i]
+		var c: Vector3 = line_points[(i + k) % n]
+		var t1 := (b - a).normalized()
+		var t2 := (c - b).normalized()
+		var ang := atan2(t1.cross(t2).y, t1.dot(t2))
+		# The two chords' midpoints are k samples apart, so the heading
+		# changes by `ang` over k * SPACING metres.
+		line_curv[i] = ang / (k * SPACING)
+	# Plan speeds for the tightest point nearby, so noise in the data can't
+	# make a corner look briefly straight (and the AI accelerate mid-corner).
+	line_curv_safe.resize(n)
+	var span := 8
+	for i in range(n):
+		var m := 0.0
+		for j in range(-span, span + 1):
+			m = maxf(m, absf(line_curv[(i + j + n) % n]))
+		line_curv_safe[i] = m
+
+
+## Same algorithm as tools/racing_line.py, for tracks defined in code.
+func _optimise_line() -> void:
+	var n := points.size()
+	var w := maxf(0.0, road_half - line_margin)
+	var off := PackedFloat32Array()
+	off.resize(n)
+	off.fill(0.0)
+	var line := PackedVector3Array()
+	line.resize(n)
+	var scales := [3, 6, 12, 24]
+	for it in range(400):
+		var k: int = scales[it % scales.size()]
+		for i in range(n):
+			line[i] = points[i] + rights[i] * off[i]
+		var nxt := off.duplicate()
+		for i in range(n):
+			var m: Vector3 = (-line[(i - 2 * k + n * 2) % n] + 4.0 * line[(i - k + n) % n]
+				+ 4.0 * line[(i + k) % n] - line[(i + 2 * k) % n]) / 6.0
+			var target := (m - points[i]).dot(rights[i])
+			nxt[i] = clampf(off[i] + 0.6 * (target - off[i]), -w, w)
+		off = nxt
+	for _pass in range(20):
+		var sm := off.duplicate()
+		for i in range(n):
+			sm[i] = clampf((off[(i - 1 + n) % n] + 2.0 * off[i] + off[(i + 1) % n]) * 0.25, -w, w)
+		off = sm
+	line_offset = off
+
+
+## Fastest speed (m/s) at every sample for a car following the racing line:
+## corner limits from tyre grip plus downforce, then braking zones worked
+## backwards from each corner. Cached per car.
+func speed_profile(spec: Dictionary) -> PackedFloat32Array:
+	var key: String = spec["id"]
+	if _profiles.has(key):
+		return _profiles[key]
+	var n := points.size()
+	var a0: float = spec["ai_grip"]
+	var a1: float = spec["ai_grip_aero"]
+	var v := PackedFloat32Array()
+	v.resize(n)
+	for i in range(n):
+		var kk := line_curv_safe[i]
+		v[i] = 99.0 if kk <= a1 + 0.00001 else minf(sqrt(a0 / (kk - a1)), 99.0)
+	var base_dec: float = spec["ai_brake"]
+	var aero_dec: float = float(spec["brake_aero"]) * 0.8
+	var max_dec: float = float(spec["brake_max"]) * 0.8
+	for _loop in range(2):
+		for j in range(n - 1, -1, -1):
+			var nx := v[(j + 1) % n]
+			var dec := minf(base_dec + aero_dec * nx * nx, max_dec)
+			v[j] = minf(v[j], sqrt(nx * nx + 2.0 * dec * SPACING))
+	_profiles[key] = v
+	return v

@@ -12,10 +12,19 @@ Grand Prix tracks follow real circuit layouts under fictional names.
 | **Apex GP-26** | Grand Prix car | ~1000 hp, 800 kg, 8-speed seamless, 0-100 in 2.4 s, 340 km/h |
 | **Apex Vanta GT** | Mid-engined GT | 560 hp, 1250 kg, 7-speed, 0-100 in 4.0 s, 319 km/h |
 
-| Track | |
-|---|---|
-| **Silvermoor Circuit** | 5.85 km Grand Prix circuit, real layout of a famous British GP venue |
-| **Kestrel Park** | 2.06 km original club circuit |
+| Track | Real layout of | Length |
+|---|---|---|
+| **Silvermoor Circuit** | the British GP venue | 5.86 km |
+| **Autodromo di Brianza** | the Italian GP venue | 5.77 km |
+| **Circuit des Ardennes** | the Belgian GP venue | 6.96 km |
+| **Riviera Street Circuit** | the Monaco street circuit | 3.30 km |
+| **Styria Ring** | the Austrian GP venue | 4.29 km |
+| **Autodromo Entrelagos** | the Brazilian GP venue | 4.28 km |
+| **Desert Sun International Circuit** | the Bahrain GP venue | 5.39 km |
+| **Kestrel Park** | original club circuit | 2.06 km |
+
+Layouts are accurate to within ~1% of the official lengths. Elevation is not
+yet modelled (the source data has none).
 
 ## Install on your phone
 
@@ -78,9 +87,12 @@ scripts/
 tracks/              imported circuit centrelines (JSON)
 tools/
   import_circuit.py  converts a real circuit outline (GeoJSON) into a track file
+  racing_line.py     adds a minimum-curvature racing line to a track file
 tests/
   sim_test.gd        physics checks per car (0-100, top speed, braking, AI laps)
   game_test.gd       end-to-end: countdown, laps, save, reload, corruption recovery
+  tracks_test.gd     the AI completes a clean lap of every track
+  grip_test.gd       measures each car's cornering grip (calibrates the AI)
 ```
 
 Every push to `main` runs the tests and builds a signed APK via GitHub Actions

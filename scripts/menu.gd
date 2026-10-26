@@ -148,10 +148,14 @@ func _build_ui() -> void:
 	margin.add_child(cols)
 
 	# Left column: title + selections.
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(540, 0)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	cols.add_child(scroll)
 	var left := VBoxContainer.new()
-	left.custom_minimum_size = Vector2(500, 0)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left.add_theme_constant_override("separation", 12)
-	cols.add_child(left)
+	scroll.add_child(left)
 	var title := _label("APEX CIRCUIT", 54, left, Color(1.0, 0.45, 0.12))
 	title.add_theme_constant_override("outline_size", 0)
 	_label("CAR", 20, left, Color(1, 1, 1, 0.55))

@@ -41,7 +41,7 @@ static func gp26() -> Dictionary:
 		"brake_base": 15.0,             # m/s^2 at low speed
 		"brake_aero": 0.0042,           # extra m/s^2 per (m/s)^2 (carbon brakes + downforce)
 		"brake_max": 48.0,
-		"steer_low": 0.42,
+		"steer_low": 0.52,              # enough lock for the tightest street hairpins
 		"steer_high": 0.07,
 		"steer_full_speed": 70.0,
 		"steer_rate": 2.6,
@@ -61,8 +61,8 @@ static func gp26() -> Dictionary:
 		"damp_comp": 5.0,
 		"damp_relax": 7.0,
 		"max_susp_force": 60000.0,
-		"grip_front": 3.3,
-		"grip_rear": 3.5,
+		"grip_front": 2.0,              # ~2 g mechanical; downforce adds the rest
+		"grip_rear": 2.1,
 		"roll_influence": 0.03,
 		"collision": [
 			[Vector3(0.9, 0.4, 4.3), Vector3(0, 0.25, 0.0)],
@@ -82,16 +82,19 @@ static func gp26() -> Dictionary:
 		"engine_tone": "gp",
 
 		"cams": [
-			{"name": "Cockpit", "pos": Vector3(0, 0.7, 0.26), "pitch": -4.0, "cockpit": true},
+			{"name": "Cockpit", "pos": Vector3(0, 0.62, 0.28), "pitch": -2.0, "cockpit": true},
 			{"name": "T-cam", "pos": Vector3(0, 1.06, 0.0), "pitch": -5.0},
 			{"name": "Nose", "pos": Vector3(0, 0.42, 2.2), "pitch": -2.0},
 		],
 		"chase_dist": 7.0,
 		"chase_height": 2.0,
 
-		"ai_grip": 13.0,
-		"ai_grip_aero": 0.0026,
-		"ai_brake": 22.0,
+		# Measured steady-state limit (tests/grip_test.gd, tests/diag_steer.gd):
+		# ~2.5 g at 108 km/h -> ~4.7 g at 216 km/h, fit a = 17 + 0.008 v^2.
+		# The AI plans with 92% of it.
+		"ai_grip": 13.5,                # low speed: ~1.5 g mechanical grip
+		"ai_grip_aero": 0.0080,
+		"ai_brake": 15.0,
 	}
 
 
@@ -136,8 +139,8 @@ static func vanta_gt() -> Dictionary:
 		"damp_comp": 2.6,
 		"damp_relax": 3.6,
 		"max_susp_force": 30000.0,
-		"grip_front": 2.9,
-		"grip_rear": 3.1,
+		"grip_front": 1.55,             # ~1.5 g: grippy semi-slick road tyres
+		"grip_rear": 1.65,
 		"roll_influence": 0.06,
 		"collision": [
 			[Vector3(1.86, 0.62, 4.36), Vector3(0, 0.02, 0)],
@@ -162,7 +165,8 @@ static func vanta_gt() -> Dictionary:
 		"chase_dist": 6.2,
 		"chase_height": 2.0,
 
-		"ai_grip": 10.5,
-		"ai_grip_aero": 0.0004,
-		"ai_brake": 10.0,
+		# Measured by tests/grip_test.gd (1.4 g -> 1.7 g), ~7% safety margin.
+		"ai_grip": 12.6,
+		"ai_grip_aero": 0.0016,
+		"ai_brake": 10.5,
 	}

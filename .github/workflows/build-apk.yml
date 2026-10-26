@@ -71,6 +71,9 @@ jobs:
       - name: Game tests
         run: bash .github/run_test.sh res://tests/game_test.gd
 
+      - name: Every track is drivable
+        run: bash .github/run_test.sh res://tests/tracks_test.gd
+
       - name: Export APK
         env:
           # The same key must sign every build, or Android refuses to update the
