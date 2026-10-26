@@ -28,6 +28,8 @@ func _lap(track_id: String, car_id: String) -> void:
 	await physics_frame
 	var n := track.size()
 	car.global_transform = track.pose_at(n - 5, car.spawn_height())
+	car.linear_velocity = Vector3.ZERO
+	car.angular_velocity = Vector3.ZERO
 	car.reset_controls()
 	for i in range(60):
 		await physics_frame

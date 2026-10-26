@@ -63,7 +63,9 @@ var _results_shown := false
 var _assist_profile := PackedFloat32Array()
 var _assist_driver: AIDriver = null
 var _wedged := 0.0
-const STEER_ASSIST_BLEND := 0.3
+var _tilt := 0.0
+var recoveries := 0               # automatic car recoveries (stats/tests)
+const STEER_ASSIST_BLEND := 0.35
 var autopilot: AIDriver = null     # when set, the AI drives the player's car (tests/demo)
 var save: Node                     # the Save autoload, looked up at runtime
 
@@ -256,6 +258,8 @@ func _restart() -> void:
 
 
 func _reset_to_track(e: Entrant, manual: bool) -> void:
+	if not manual:
+		recoveries += 1
 	var idx := track.nearest_index(e.car.global_position, -1)
 	_place(e, track.pose_at(idx, e.car.spawn_height(), track.line_offset[idx]))
 	e.car.controls_enabled = state == State.RACING
@@ -314,7 +318,9 @@ func _read_input() -> void:
 			s = -s
 		if absf(s) < 0.04:
 			s = 0.0
-		steer = clampf(s, -1.0, 1.0)
+		# Smooth out hand tremor and sensor noise (~60 ms).
+		_tilt = lerpf(_tilt, clampf(s, -1.0, 1.0), 1.0 - exp(-16.0 * get_physics_process_delta_time()))
+		steer = _tilt
 	else:
 		steer = t.steer
 	var gas: float = t.gas
@@ -330,18 +336,16 @@ func _read_input() -> void:
 	if Input.is_physical_key_pressed(KEY_DOWN) or Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_SPACE):
 		brk = 1.0
 
-	# Steering assist (like RR3's): blends in some racing-line steering and
-	# steers back when about to run off the road.
-	var lat := track.lateral(car.global_position, player.idx)
+	# Steering assist (like RR3's): adds a little racing-line steering while
+	# your own input is small, and fades out completely as soon as you steer
+	# yourself, so it never holds you back from using the whole track (or
+	# leaving it). No invisible walls.
 	if bool(save.get_setting("steer_assist")):
 		if _assist_driver == null:
 			_assist_driver = AIDriver.new()
-		steer = lerpf(steer, _assist_driver.line_steer(car, track, player.idx), STEER_ASSIST_BLEND)
-		var edge := track.road_half - 0.9
-		var drift := car.linear_velocity.dot(track.rights[player.idx])
-		if absf(lat) > edge and signf(drift) == signf(lat):
-			var push := clampf((absf(lat) - edge) * 0.35 + absf(drift) * 0.04, 0.0, 0.6)
-			steer = clampf(steer - signf(lat) * push, -1.0, 1.0)
+		var share := STEER_ASSIST_BLEND * clampf(1.0 - absf(steer) * 1.6, 0.0, 1.0)
+		if share > 0.0:
+			steer = lerpf(steer, _assist_driver.line_steer(car, track, player.idx), share)
 
 	# Brake assist: brakes for you when arriving at a corner too fast.
 	if bool(save.get_setting("brake_assist")) and state == State.RACING:
@@ -400,9 +404,14 @@ func _physics_process(delta: float) -> void:
 	if _tick % 6 == 0 or state == State.FINISHED:
 		_update_positions()
 
-	# Grass slows the player; going well wide invalidates a time-trial lap.
+	# Grass: less grip and more rolling drag per wheel that's on it (kerbs
+	# count as track). Going well wide invalidates a time-trial lap.
+	if _tick % 2 == 0:
+		var edge := track.road_half + Track.KERB_W
+		for e in entrants:
+			for w in e.car.wheels:
+				w.on_grass = absf(track.lateral(w.global_position, e.idx)) > edge
 	var lat := absf(track.lateral(car.global_position, player.idx))
-	car.surface_drag = 0.55 if lat > offtrack_limit else 0.0
 	if mode == "time_trial" and state == State.RACING and lat > invalid_limit and lap_valid:
 		lap_valid = false
 		hud.show_warning("Track limits: lap invalidated", 2.5)
@@ -430,6 +439,11 @@ func _update_lights(delta: float) -> void:
 		for e in entrants:
 			e.car.controls_enabled = true
 			e.lap_start = 0.0
+			var drv: AIDriver = e.ai if e.ai != null else (autopilot if e.is_player else null)
+			if drv != null:
+				# Start from the grid column, not the racing line.
+				var i := (e.idx + 6) % track.size()
+				drv.lane_offset = track.lateral(e.car.global_position, e.idx) - track.line_offset[i]
 		hud.show_center("GO!")
 		get_tree().create_timer(0.8).timeout.connect(func(): hud.show_center(""))
 
@@ -568,50 +582,102 @@ func _update_positions() -> void:
 ## Simple racecraft: when a slower car is just ahead on a similar line, pull
 ## out to pass if faster, otherwise hold back to its speed. Slow or stopped
 ## cars (crashed, spun) are obstacles to drive around, never cars to queue behind.
+## Racecraft for every AI-driven car, 30 times a second:
+##  - keeps a gap it could always stop in behind the car ahead in its path;
+##  - overtakes only into free space (no car alongside or about to be);
+##  - never steers into a car that is alongside;
+##  - off the start, holds its grid column until the field has spread out.
+const CAR_LEN := 5.4
+const SIDE_CLEAR := 2.7           # centre-to-centre lateral spacing when alongside
+const FOLLOW_DECEL := 7.0         # m/s^2: braking assumed when keeping a safe gap
+
 func _traffic() -> void:
 	if entrants.size() < 2 or state == State.GRID:
 		return
 	var L := track.total_length
+	var n := track.size()
+	var lim := maxf(track.road_half - 1.2, 0.5)
 	for e in entrants:
 		var drv: AIDriver = e.ai
 		if drv == null and e.is_player:
 			drv = autopilot
 		if drv == null:
 			continue
+		var my_s: float = track.cum[e.idx]
 		var my_lat := track.lateral(e.car.global_position, e.idx)
 		var v := e.car.forward_speed()
-		var cap := 999.0
-		var want_offset := 0.0
-		var best_gap := 999.0
+		var line_here: float = track.line_offset[(e.idx + 6) % n]
+		var lead: Entrant = null
+		var lead_gap := 999.0
+		var lead_lat := 0.0
+		var beside: Array[float] = []        # lateral positions of cars alongside
 		for o in entrants:
-			if o == e:
+			if o == e or o.ghost > 0.0:
 				continue
-			var gap := fposmod(track.cum[o.idx] - track.cum[e.idx], L)
-			if gap > 45.0 or gap < 0.5:
+			var gap := fposmod(track.cum[o.idx] - my_s + L * 0.5, L) - L * 0.5
+			# Mirrors: a faster car coming up behind counts as alongside sooner.
+			var mirror := CAR_LEN * 1.4 + maxf(o.car.forward_speed() - v, 0.0) * 0.8
+			if gap < -mirror or gap > 80.0:
 				continue
 			var o_lat := track.lateral(o.car.global_position, o.idx)
-			var o_v := o.car.forward_speed()
 			var dlat := o_lat - my_lat
-			if absf(dlat) > 2.6:
-				continue                       # not on our line
-			var closing := v - o_v
-			if closing <= 0.5 and gap > 10.0:
-				continue
-			if gap > best_gap:
-				continue                       # react to the nearest car only
-			best_gap = gap
-			# Pass on the side with more room.
-			var room_left := track.road_half + o_lat
-			var room_right := track.road_half - o_lat
-			var side := 1.0 if room_right > room_left else -1.0
-			want_offset = side * 3.2 + (o_lat - track.line_offset[e.idx])
-			var obstacle := o_v < 12.0
-			if not obstacle and gap < 14.0 and absf(dlat) < 2.0 and maxf(room_left, room_right) < 4.5:
-				cap = o_v + (gap - 6.0) * 0.6   # no room to pass: follow
-			elif obstacle and gap < 25.0:
-				cap = 14.0                      # slow down to thread past
-		drv.speed_cap = maxf(cap, 6.0)
-		drv.lane_offset = move_toward(drv.lane_offset, clampf(want_offset, -6.0, 6.0), 0.16)
+			# Ahead and in our path (even if only partly): the car to follow.
+			if gap > 0.5 and absf(dlat) < 2.3 and gap < lead_gap:
+				lead = o
+				lead_gap = gap
+				lead_lat = o_lat
+			# Overlapping lengthwise: keep lateral clearance from it.
+			if gap < CAR_LEN * 1.4 and absf(dlat) < SIDE_CLEAR + 1.6:
+				beside.append(o_lat)
+
+		var cap := 999.0
+		var target := line_here + drv.lane_offset    # by default: keep the current lane
+		var returning := true
+		if lead != null:
+			var o_v := lead.car.forward_speed()
+			var room := lead_gap - CAR_LEN
+			# Safe following (Gipps): slow enough to stop behind them even if
+			# they brake as hard as we can, allowing a reaction delay.
+			cap = sqrt(o_v * o_v + 2.0 * FOLLOW_DECEL * maxf(room, 0.0)) - FOLLOW_DECEL * 0.35
+			if room < 1.0:
+				cap = minf(cap, o_v - 2.0)
+			# Faster than them, or they're slow: look for a way past.
+			if lead_gap < 45.0 and (v > o_v + 0.5 or o_v < 15.0):
+				var room_right := track.road_half - lead_lat
+				var room_left := track.road_half + lead_lat
+				var sides := [1.0, -1.0] if room_right > room_left else [-1.0, 1.0]
+				for side in sides:
+					var want: float = clampf(lead_lat + side * 3.1, -lim, lim)
+					if absf(want - lead_lat) < 2.6:
+						continue                   # not enough road on that side
+					if _lane_free(want, beside):
+						target = want
+						returning = false
+						break
+		elif e.lap == 0 and e.progress < 280.0 and drv.lane_offset != 0.0:
+			# Opening run: stay in the grid column, merge gently.
+			target = line_here + move_toward(drv.lane_offset, 0.0, 0.02)
+			returning = false
+		if returning and lead == null:
+			target = line_here                         # back to the racing line
+		# Never steer into a car alongside: keep SIDE_CLEAR from each.
+		for b in beside:
+			if absf(target - b) < SIDE_CLEAR:
+				var away := signf(my_lat - b)
+				if away == 0.0:
+					away = 1.0
+				target = b + away * SIDE_CLEAR
+		target = clampf(target, -lim, lim)
+		drv.speed_cap = maxf(cap, 4.0)
+		var want_offset := target - line_here
+		drv.lane_offset = move_toward(drv.lane_offset, want_offset, 0.09)
+
+
+func _lane_free(lat: float, beside: Array[float]) -> bool:
+	for b in beside:
+		if absf(lat - b) < SIDE_CLEAR:
+			return false
+	return true
 
 
 # ------------------------------------------------------------ HUD

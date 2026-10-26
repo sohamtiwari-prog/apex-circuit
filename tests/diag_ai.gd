@@ -10,10 +10,19 @@ func _run() -> void:
 	await physics_frame
 	var n := track.size()
 	car.global_transform = track.pose_at(n - 5, car.spawn_height())
+	car.linear_velocity = Vector3.ZERO
+	car.angular_velocity = Vector3.ZERO
 	car.reset_controls()
+	var t := 0.0
+	for k in range(n):
+		pass
 	for i in range(60): await physics_frame
 	var ai := AIDriver.new()
 	var prof := track.speed_profile(car.spec)
+	var plan := 0.0
+	for k in range(n):
+		plan += Track.SPACING / maxf(prof[k], 1.0)
+	print("planned lap %.1f s" % plan)
 	for f in range(120 * 60):
 		ai.update(car, track)
 		await physics_frame

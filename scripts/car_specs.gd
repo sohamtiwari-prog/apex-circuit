@@ -78,11 +78,28 @@ static func _derive(s: Dictionary) -> void:
 		for g in range(n):
 			gears.append(r_first * pow(r_top / r_first, float(g) / (n - 1)))
 		s["gears"] = gears
-	if not s.has("ai_grip"):
-		var mu: float = minf(s["grip_front"], s["grip_rear"])
-		s["ai_grip"] = 8.3 * mu
-		s["ai_grip_aero"] = 0.85 * mu * float(s["downforce"]) / float(s["mass"])
-		s["ai_brake"] = minf(float(s["brake_base"]) * 0.85, 9.81 * mu * 0.62)
+	# Tyre/suspension model (car.gd). Peak friction comes from the old grip
+	# figures; the rear has a little more, so every car settles into gentle
+	# understeer at the limit instead of spinning.
+	var gp: bool = s["body"] == "gp"
+	if not s.has("mu_front"):
+		var k := 0.71 if gp else 0.69
+		s["mu_front"] = float(s["grip_front"]) * k
+		s["mu_rear"] = maxf(float(s["grip_rear"]) * k, float(s["mu_front"]) * 1.15)
+	if not s.has("slip_peak_front"):
+		s["slip_peak_front"] = 5.5 if gp else 7.0
+		s["slip_peak_rear"] = float(s["slip_peak_front"]) * 0.8
+	if not s.has("susp_hz"):
+		s["susp_hz"] = 4.0 if gp else 2.2
+		s["susp_damping"] = 0.7 if gp else 0.6
+		s["arb_front"] = 0.8 if gp else 0.7
+		s["arb_rear"] = 0.6 if gp else 0.45
+		s["brake_bias"] = 0.57 if gp else 0.62
+	# The AI plans with 92% of the front tyres' grip (the limiting axle).
+	var mu_f: float = s["mu_front"]
+	s["ai_grip"] = 0.92 * mu_f * 9.81
+	s["ai_grip_aero"] = 0.92 * mu_f * float(s["downforce"]) / float(s["mass"])
+	s["ai_brake"] = 0.85 * minf(float(s["brake_base"]), 9.81 * mu_f)
 	if not s.has("downshift_rpm"):
 		s["upshift_rpm"] = float(s["redline"]) * 0.965
 		s["downshift_rpm"] = float(s["redline"]) * 0.8
@@ -180,11 +197,6 @@ static func gp26() -> Dictionary:
 		"chase_dist": 7.0,
 		"chase_height": 2.0,
 
-		# Measured limit at full lock (tests/diag_steer.gd, tests/grip_test.gd):
-		# ~2.6 g at 72 km/h -> ~5.8 g at 216 km/h; the AI plans with ~92% of it.
-		"ai_grip": 17.5,
-		"ai_grip_aero": 0.0095,
-		"ai_brake": 15.0,
 	}
 
 
@@ -251,7 +263,7 @@ static func marauder() -> Dictionary:
 		"id": "marauder", "name": "Marauder V8",
 		"desc": "Muscle car · 480 hp · 1750 kg · 285 km/h",
 		"color": Color(0.1, 0.32, 0.85),
-		"mass": 1750.0, "com": Vector3(0, -0.15, 0.25), "power": 358000.0, "max_drive_force": 10500.0,
+		"mass": 1750.0, "com": Vector3(0, -0.15, 0.25), "power": 358000.0, "max_drive_force": 12000.0,
 		"drag": 0.72, "downforce": 0.35,
 		"brake_base": 11.0, "brake_max": 12.0,
 		"wheel_front_z": 1.55, "wheel_rear_z": -1.3, "track_front": 0.82, "track_rear": 0.83,

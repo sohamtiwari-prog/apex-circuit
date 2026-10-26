@@ -42,6 +42,31 @@ func _run() -> void:
 	_check(race.player.position >= 5, "player starts mid-grid (P%d)" % race.player.position)
 	race.autopilot = load("res://scripts/ai_driver.gd").new()
 	race.autopilot.skill = 0.97
+	# Count car-to-car hits by closing speed.
+	var hits := {"soft": 0, "hard": 0}
+	var hit_log: Array[String] = []
+	for e in race.entrants:
+		var c: RigidBody3D = e.car
+		c.contact_monitor = true
+		c.max_contacts_reported = 4
+		c.body_entered.connect(func(other: Node) -> void:
+			if other is RigidBody3D and c.get_instance_id() < other.get_instance_id():
+				var rel: float = (c.linear_velocity - other.linear_velocity).length()
+				if rel > 4.0:
+					hits["hard"] += 1
+					if hit_log.size() < 12:
+						var oe = null
+						for x in race.entrants:
+							if x.car == other:
+								oe = x
+						var gap: float = race.track.cum[oe.idx] - race.track.cum[e.idx]
+						var dl: float = race.track.lateral(other.global_position, oe.idx) - race.track.lateral(c.global_position, e.idx)
+						var drv_a = e.ai if e.ai != null else race.autopilot
+						var drv_b = oe.ai if oe.ai != null else race.autopilot
+						hit_log.append("%.0f m/s at %.0f m, t=%.1fs: B is %+.1f m ahead, %+.1f m right; vA %.1f vB %.1f; capA %.0f capB %.0f laneA %+.1f laneB %+.1f brkA %.1f brkB %.1f" % [rel, race.track.cum[e.idx], race.race_time, gap, dl,
+							c.forward_speed(), other.forward_speed(), drv_a.speed_cap, drv_b.speed_cap, drv_a.lane_offset, drv_b.lane_offset, c.brake_input, other.brake_input])
+				elif rel > 1.0:
+					hits["soft"] += 1)
 
 	var t0 := Time.get_ticks_usec()
 	var frames := 0
@@ -58,6 +83,11 @@ func _run() -> void:
 	var sim_ms := (Time.get_ticks_usec() - t0) / 1000.0 / maxi(frames, 1)
 	print("  %d frames, %.2f ms per physics tick with 20 cars (headless, this machine)" % [frames, sim_ms])
 	print("  player finished P%d after %d position changes" % [race.player.position, overtakes])
+	print("  car contacts: %d hard (>4 m/s), %d soft; %d automatic recoveries" % [hits["hard"], hits["soft"], race.recoveries])
+	for h in hit_log:
+		print("    hard hit: " + h)
+	_check(hits["hard"] <= 4 * laps, "no pile-ups: at most %d hard hits (%d)" % [4 * laps, hits["hard"]])
+	_check(race.recoveries <= 2 * laps, "cars rarely need recovering (%d)" % race.recoveries)
 	_check(race._results_shown, "race finishes and the results screen appears")
 	_check(race.player.finished, "player crossed the line after %d laps" % laps)
 	var finished := 0

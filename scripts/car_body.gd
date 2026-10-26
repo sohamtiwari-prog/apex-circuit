@@ -335,7 +335,7 @@ func _half_loft(st: SurfaceTool, stations: Array, seg: int, color_fn: Callable, 
 
 # ------------------------------------------------------------ wheels
 
-func _attach_wheel(w: VehicleWheel3D) -> void:
+func _attach_wheel(w: CarWheel) -> void:
 	var front := w.use_as_steering
 	var r: float = w.wheel_radius
 	var width: float = spec["tyre_width_front"] if front else spec["tyre_width_rear"]

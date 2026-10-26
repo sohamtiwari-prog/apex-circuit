@@ -29,6 +29,8 @@ func _test(car_id: String) -> void:
 	var spec := car.spec
 	# Straight line on open ground.
 	car.global_transform = Transform3D(Basis.looking_at(Vector3.LEFT, Vector3.UP), Vector3(-1900, car.spawn_height() + Track.GROUND_Y, 1800))
+	car.linear_velocity = Vector3.ZERO
+	car.angular_velocity = Vector3.ZERO
 	car.reset_controls()
 	for i in range(60):
 		await physics_frame

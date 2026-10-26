@@ -30,9 +30,7 @@ func line_steer(car: RaceCar, track: Track, at_idx: int) -> float:
 	var alpha := fwd.normalized().signed_angle_to(to / ld, Vector3.UP)
 	var wheelbase: float = float(car.spec["wheel_front_z"]) - float(car.spec["wheel_rear_z"])
 	var delta := atan2(2.0 * wheelbase * sin(alpha), ld)
-	var max_steer := lerpf(car.spec["steer_low"], car.spec["steer_high"],
-		clampf(absf(v) / float(car.spec["steer_full_speed"]), 0.0, 1.0))
-	return clampf(-delta / max_steer, -1.0, 1.0)
+	return car.input_for_angle(-delta, v)
 
 
 func update(car: RaceCar, track: Track) -> void:
@@ -57,13 +55,13 @@ func update(car: RaceCar, track: Track) -> void:
 	var alpha := fwd.normalized().signed_angle_to(to / ld, Vector3.UP)   # + = target to the left
 	var wheelbase: float = float(car.spec["wheel_front_z"]) - float(car.spec["wheel_rear_z"])
 	var delta := atan2(2.0 * wheelbase * sin(alpha), ld)
-	var max_steer := lerpf(car.spec["steer_low"], car.spec["steer_high"],
-		clampf(absf(v) / float(car.spec["steer_full_speed"]), 0.0, 1.0))
-	car.steer_input = clampf(-delta / max_steer, -1.0, 1.0)
+	car.steer_input = car.input_for_angle(-delta, v)
 
 	# --- speed: look slightly ahead in the profile to allow for response lag
 	var ahead := idx + 3 + int(absf(v) * 0.04)
-	target_speed = minf(_profile[ahead % n] * skill, speed_cap)
+	# Off the racing line the corner is tighter: give a little speed away.
+	var off_line := clampf((absf(lane_offset) - 0.6) * 0.022, 0.0, 0.12)
+	target_speed = minf(_profile[ahead % n] * skill * (1.0 - off_line), speed_cap)
 	var err := target_speed - v
 	if err > 0.3:
 		car.throttle = clampf(err / 2.0, 0.35, 1.0)

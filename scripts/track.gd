@@ -326,21 +326,22 @@ func _kerb_mask() -> Array[bool]:
 	return out
 
 
-func _pt(i: int, j: int, t: float, off: float) -> Vector3:
+func _pt(i: int, j: int, t: float, off: float, dy := 0.0) -> Vector3:
 	var a: Vector3 = points[i] + rights[i] * off
 	var b: Vector3 = points[j] + rights[j] * off
-	return a.lerp(b, t)
+	return a.lerp(b, t) + Vector3(0, dy, 0)
 
 
 func _band(st: SurfaceTool, faces: PackedVector3Array, i: int, j: int,
-		off0: float, off1: float, col: Color, t0: float = 0.0, t1: float = 1.0) -> void:
+		off0: float, off1: float, col: Color, t0: float = 0.0, t1: float = 1.0,
+		dy0 := 0.0, dy1 := 0.0) -> void:
 	var seg: float = points[i].distance_to(points[j])
 	var v0: float = (cum[i] + t0 * seg) / 8.0
 	var v1: float = (cum[i] + t1 * seg) / 8.0
-	var p00 := _pt(i, j, t0, off0)
-	var p01 := _pt(i, j, t0, off1)
-	var p10 := _pt(i, j, t1, off0)
-	var p11 := _pt(i, j, t1, off1)
+	var p00 := _pt(i, j, t0, off0, dy0)
+	var p01 := _pt(i, j, t0, off1, dy1)
+	var p10 := _pt(i, j, t1, off0, dy0)
+	var p11 := _pt(i, j, t1, off1, dy1)
 	var verts := [p00, p10, p01, p01, p10, p11]
 	var uvs := [Vector2(off0 / 8.0, v0), Vector2(off0 / 8.0, v1), Vector2(off1 / 8.0, v0),
 		Vector2(off1 / 8.0, v0), Vector2(off0 / 8.0, v1), Vector2(off1 / 8.0, v1)]
@@ -377,6 +378,9 @@ func _build_road() -> void:
 		_band(st, faces, i, j, -h, -h + LINE_W, white)
 		_band(st, faces, i, j, h - LINE_W, h, white)
 		_band(st, faces, i, j, h, h + KERB_W, kc)
+		# Short ramps down to the grass, so rejoining never catches a step.
+		_band(st, faces, i, j, -h - KERB_W - 1.0, -h - KERB_W, verge, 0.0, 1.0, GROUND_Y + 0.01, 0.0)
+		_band(st, faces, i, j, h + KERB_W, h + KERB_W + 1.0, verge, 0.0, 1.0, 0.0, GROUND_Y + 0.01)
 		if i == 0:
 			# Chequered start/finish line: 2 rows x 20 cells.
 			var cells := 20

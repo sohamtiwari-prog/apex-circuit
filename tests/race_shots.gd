@@ -11,6 +11,7 @@ func _shot(path: String) -> void:
 func _run() -> void:
 	var args := OS.get_cmdline_user_args()
 	var out: String = args[0]
+	await process_frame          # let the Save autoload load first
 	var save: Node = root.get_node("Save")
 	save.data = save.default_profile()
 	var st: Dictionary = save.data["settings"]
