@@ -82,7 +82,7 @@ static func gp26() -> Dictionary:
 		"engine_tone": "gp",
 
 		"cams": [
-			{"name": "Cockpit", "pos": Vector3(0, 0.66, 0.3), "pitch": -3.0, "cockpit": true},
+			{"name": "Cockpit", "pos": Vector3(0, 0.7, 0.26), "pitch": -4.0, "cockpit": true},
 			{"name": "T-cam", "pos": Vector3(0, 1.06, 0.0), "pitch": -5.0},
 			{"name": "Nose", "pos": Vector3(0, 0.42, 2.2), "pitch": -2.0},
 		],

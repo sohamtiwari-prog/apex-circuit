@@ -122,11 +122,16 @@ func _build_gp() -> void:
 	# Airbox / roll hoop above the driver.
 	_box(Vector3(0.34, 0.36, 0.45), Vector3(0, 0.78, -0.12), _paint)
 	_box(Vector3(0.22, 0.16, 0.06), Vector3(0, 0.8, 0.12), dark)                  # intake
-	# Halo: centre pillar plus a hoop around the cockpit.
-	_box(Vector3(0.05, 0.34, 0.05), Vector3(0, 0.57, 0.92), halo_mat, Vector3(-18, 0, 0))
-	_box(Vector3(0.05, 0.05, 0.42), Vector3(0, 0.74, 0.7), halo_mat, Vector3(-8, 0, 0))
+	# Halo: a thin hoop from behind the driver's shoulders converging on a
+	# centre pillar ahead of the cockpit, as seen on real onboard footage.
+	_box(Vector3(0.04, 0.3, 0.04), Vector3(0, 0.6, 0.9), halo_mat, Vector3(-14, 0, 0))
+	_box(Vector3(0.14, 0.035, 0.07), Vector3(0, 0.755, 0.84), halo_mat)
 	for sx in [-1.0, 1.0]:
-		_box(Vector3(0.05, 0.05, 0.62), Vector3(0.2 * sx, 0.72, 0.3), halo_mat, Vector3(0, 18 * sx, 0))
+		var a := Vector3(0.34 * sx, 0.7, -0.02)
+		var b := Vector3(0.06 * sx, 0.755, 0.82)
+		var d := b - a
+		_box(Vector3(0.035, 0.035, d.length()), (a + b) * 0.5, halo_mat,
+			Vector3(rad_to_deg(-atan2(d.y, Vector2(d.x, d.z).length())), rad_to_deg(atan2(d.x, d.z)), 0))
 	# Driver.
 	helmet = MeshInstance3D.new()
 	var hs := SphereMesh.new()
@@ -139,8 +144,8 @@ func _build_gp() -> void:
 	_box(Vector3(0.2, 0.06, 0.04), Vector3(0, 0.58, 0.35), visor, Vector3.ZERO, helmet)
 	helmet.get_child(0).position = Vector3(0, 0.02, 0.13)
 	# Steering wheel, visible from the cockpit camera.
-	_box(Vector3(0.28, 0.13, 0.03), Vector3(0, 0.5, 0.6), dark, Vector3(-20, 0, 0))
-	_box(Vector3(0.12, 0.05, 0.02), Vector3(0, 0.52, 0.585), _mat(Color(0.1, 0.6, 0.2), 0.0, 0.3, Color(0.1, 1.0, 0.3)), Vector3(-20, 0, 0))
+	_box(Vector3(0.28, 0.13, 0.03), Vector3(0, 0.45, 0.62), dark, Vector3(-20, 0, 0))
+	_box(Vector3(0.12, 0.05, 0.02), Vector3(0, 0.47, 0.605), _mat(Color(0.1, 0.6, 0.2), 0.0, 0.3, Color(0.1, 1.0, 0.3)), Vector3(-20, 0, 0))
 	# Rear wing: beam wing, main plane, DRS flap, endplates, swan neck.
 	_box(Vector3(0.9, 0.03, 0.22), Vector3(0, 0.33, -2.32), dark)
 	_box(Vector3(1.0, 0.04, 0.34), Vector3(0, 0.8, -2.35), dark, Vector3(8, 0, 0))
