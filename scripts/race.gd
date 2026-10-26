@@ -591,7 +591,7 @@ func _update_hud() -> void:
 		var me := player.position - 1
 		for i in range(ordered.size()):
 			var e: Entrant = ordered[i]
-			if i < 3 or absf(i - me) <= 1:
+			if i < 2 or absf(i - me) <= 1:
 				var gap := ""
 				if i > 0:
 					var ahead: Entrant = ordered[i - 1]

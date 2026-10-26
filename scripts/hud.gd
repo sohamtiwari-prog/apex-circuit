@@ -121,7 +121,7 @@ func _ready() -> void:
 	pb.custom_minimum_size = Vector2(90, 72)
 
 	# Race position (big) and a mini leaderboard under the timing block.
-	pos_label = _label(64, timing)
+	pos_label = _label(50, timing)
 	pos_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.2))
 	board = VBoxContainer.new()
 	board.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -338,10 +338,10 @@ func update_position(pos: int, total: int, rows: Array) -> void:
 	var last := 0
 	for r in rows:
 		if int(r["pos"]) > last + 1:
-			var dots := _label(18, board)
+			var dots := _label(14, board)
 			dots.text = "   ..."
 		last = int(r["pos"])
-		var l := _label(20, board)
+		var l := _label(17, board)
 		l.text = "%2d  %-14s %s" % [r["pos"], r["name"], r["gap"]]
 		if r["player"]:
 			l.add_theme_color_override("font_color", Color(1.0, 0.75, 0.2))
