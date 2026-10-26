@@ -26,7 +26,8 @@ func _run() -> void:
 	e.index = 0; e.position = p0; e.pressed = true
 	t._input(e)
 	var d := InputEventScreenDrag.new()
-	d.index = 0; d.position = p0 + Vector2(t.drag_range() * 0.6, -6)
+	var lim: float = t.max_wheel_angle() * 0.6
+	d.index = 0; d.position = p0 + Vector2(0, t.drag_range()) + Vector2(sin(lim), -cos(lim)) * t.drag_range()
 	t._input(d)
 	await _shot(out + "/d2_steer.png")
 	race.hud.set_paused(true)

@@ -54,15 +54,21 @@ every build is signed with the same key (`android_signing/`).
 
 ## Controls
 
-| | Tilt (default) | Drag | Buttons |
+| | Tilt (default) | Wheel | Buttons |
 |---|---|---|---|
-| Steer | Tilt the phone like a steering wheel | Put your left thumb anywhere in the lower left and slide | ◀ ▶ buttons, bottom-left |
+| Steer | Tilt the phone like a steering wheel | Put your left thumb anywhere in the lower left and turn the wheel arc | ◀ ▶ buttons, bottom-left |
 | Gas | GAS pedal, bottom-right | GAS, far right | GAS, far right |
 | Brake / reverse | BRAKE pedal, bottom-left | BRAKE, next to GAS | BRAKE, next to GAS |
 
-Drag steering is a floating slider: wherever your thumb lands is straight
-ahead, it follows your thumb past full lock, and it centres when you let go.
-Steering sensitivity (pause menu) sets how far you slide (or tilt) for full lock.
+Wheel steering is a floating steering-wheel rim: your thumb lands on top of
+it, and turning it (around the arc, or just sliding sideways) steers. It
+follows your thumb past full lock and centres when you let go. Steering
+sensitivity (pause menu) sets how far you turn (or tilt) for full lock.
+
+Steering is calibrated per car (`tests/steer_calibrate.gd` writes
+`data/steer_cal.json`): the input is the share of the car's peak cornering
+grip, so 50% steering is 50% of the grip at any speed, and full lock is
+exactly the grip peak, never past it.
 
 **Reset** (top-right) puts the car back on the track. Pause (**II**) to switch
 steering mode, change tilt sensitivity, invert tilt, turn on auto-accelerate,
@@ -78,6 +84,22 @@ out as soon as you steer (Moderate adds half as much), so you can always use
 **Racing line** (optional): a guide painted on the road ahead, green where you
 can accelerate, yellow where you'll need to ease off, red where you must brake
 now for what's coming at your current speed.
+
+## Racing features
+
+- **Sector times:** each lap in three sectors, coloured like F1 timing:
+  purple fastest (anyone this session / your all-time best in time trial),
+  green your best this session, yellow slower. Best sectors are saved.
+- **DRS (GP car):** zones on the long straights with painted detection and
+  activation lines. Within 1 s of the car ahead at detection (from lap 2;
+  always in time trial), the flap opens through the zone, cutting drag ~22%,
+  until you brake. The AI uses it too.
+- **Ghost car (time trial):** your best lap, replayed as a see-through car,
+  saved per car and track.
+- **Braking boards:** 300 / 200 / 100 m boards before every big stop.
+- **Sunset:** race at golden hour (menu option).
+- **Brake lights:** cars light up when they brake (the GP car's rear light
+  flashes, like a real one harvesting energy).
 
 ## Driving model
 
@@ -97,7 +119,7 @@ Procedural sky with clouds, filmic tonemapping and glow; rubbered-in racing
 line, mown grass, gravel traps and painted run-off; concrete walls with
 advertising boards, armco, tyre barriers and catch fencing; a start gantry
 whose lights run the start; pit lane and garages in team colours; grandstands
-with crowds; bridges; trees (broadleaf, conifer, palm); distant hills; city
+with crowds; bridges; marshal posts; TV camera towers; flagpoles; trees (broadleaf, conifer, palm); distant hills; city
 blocks with facades. Skid marks stay on the track and tyres smoke when they
 slide. The UI uses Saira Condensed (SIL Open Font License, `fonts/OFL.txt`).
 The camera button cycles chase, far chase and the car's onboard cameras

@@ -34,6 +34,9 @@ class Entrant:
 	var stuck := 0.0
 	var ghost := 0.0            # seconds left as a non-colliding ghost after a reset
 	var is_player := false
+	var sector := 0             # sector being driven (0..2)
+	var drs_armed := false      # passed a detection line within 1 s of the car ahead
+	var sector_start := 0.0
 
 
 var track: Track
@@ -55,12 +58,20 @@ var race_time := 0.0
 var lights_time := 0.0
 var lights_out_at := 0.0
 var lap_valid := true
+# Ghost of the best lap (time trial): 20 samples/s of position + rotation.
+const GHOST_HZ := 20.0
+var _ghost_rec := PackedFloat32Array()
+var _ghost_play := PackedFloat32Array()
+var ghost_car: RaceCar
+var session_sectors := [INF, INF, INF]   # fastest of anyone this session
+var _my_session_sectors := [INF, INF, INF]
 var offtrack_limit := 8.0
 var invalid_limit := 10.0
 var _save_timer := 0.0
 var _tick := 0
 var _results_shown := false
 var _assist_profile := PackedFloat32Array()
+var _assist_centre := PackedFloat32Array()
 var _assist_driver: AIDriver = null
 var _wedged := 0.0
 var _tilt := 0.0
@@ -123,6 +134,8 @@ func _ready() -> void:
 	tyre_fx.setup(all_cars)
 	line_guide = LineGuide.new()
 	add_child(line_guide)
+	if mode == "time_trial":
+		_load_ghost()
 	_apply_assists()
 
 	hud = Hud.new()
@@ -176,7 +189,7 @@ func _spawn_opponents(player_team: int) -> void:
 
 
 func _build_environment() -> void:
-	Look.build(self, track.style)
+	Look.build(self, track.style, String(save.get_setting("time_of_day")))
 
 
 func _apply_assists() -> void:
@@ -237,14 +250,24 @@ func _restart() -> void:
 		e.stuck = 0.0
 		e.ghost = 0.0
 		e.car.set_ghost(false)
+		e.sector = 0
+		e.sector_start = 0.0
+		e.drs_armed = false
+		e.car.drs_open = false
+	session_sectors = [INF, INF, INF]
+	_my_session_sectors = [INF, INF, INF]
+	_ghost_rec = PackedFloat32Array()
+	if ghost_car != null:
+		ghost_car.visible = false
+	hud.reset_sectors()
 	cam.snap()
 	state = State.GRID
 	race_time = 0.0
 	lights_time = 0.0
 	lights_out_at = 5.0 + randf_range(0.2, 1.4)
 	lap_valid = true
-	var title := "RACE · %d LAPS" % total_laps if mode == "race" else "TIME TRIAL"
-	hud.show_banner("%s  ·  %s" % [track.track_name.to_upper(), title], Color.WHITE, 3.0)
+	var title := "%d-lap race" % total_laps if mode == "race" else "Time trial"
+	hud.show_banner("%s, %s" % [track.track_name, title], UIStyle.PAPER, 3.0)
 	hud.show_center("")
 	for e in entrants:
 		e.idx = track.nearest_index(e.car.global_position, -1)
@@ -340,9 +363,14 @@ func _read_input() -> void:
 	if steer_help > 0.0:
 		if _assist_driver == null:
 			_assist_driver = AIDriver.new()
-		var share := STEER_ASSIST_BLEND * steer_help * clampf(1.0 - absf(steer) * 1.6, 0.0, 1.0)
+		var share := STEER_ASSIST_BLEND * steer_help * clampf(1.0 - absf(steer) * 1.4, 0.0, 1.0)
 		if share > 0.0:
-			steer = lerpf(steer, _assist_driver.line_steer(car, track, player.idx), share)
+			var fix := clampf(_assist_driver.line_steer(car, track, player.idx) - steer, -0.4, 0.4)
+			# Moderate never steers against you (it only adds to your turn);
+			# Full may pull you back towards the line, which beginners need.
+			if steer_help < 1.0 and absf(steer) > 0.06 and signf(fix) != signf(steer):
+				fix *= 0.25
+			steer = clampf(steer + fix * share, -1.0, 1.0)
 
 	# Brake assist: brakes for you when arriving at a corner too fast.
 	# Full: brakes to the ideal corner speed. Moderate: only steps in when
@@ -351,10 +379,16 @@ func _read_input() -> void:
 	if brake_help > 0.0 and state == State.RACING:
 		if _assist_profile.size() != track.size():
 			_assist_profile = track.speed_profile(car.spec)
+		if _assist_centre.size() != track.size():
+			_assist_centre = track.speed_profile(car.spec, true)
 		var v := car.forward_speed()
 		var ahead := (player.idx + 3 + int(absf(v) * 0.05)) % track.size()
 		var full := brake_help >= 1.0
-		var target: float = _assist_profile[ahead] * (1.04 if full else 1.12)
+		# Off the racing line the corner is tighter: blend towards the speeds
+		# for the middle of the road the further you are from the line.
+		var off_line := absf(track.lateral(car.global_position, player.idx) - track.line_offset[player.idx])
+		var planned: float = lerpf(_assist_profile[ahead], minf(_assist_profile[ahead], _assist_centre[ahead]), clampf(off_line / 3.0, 0.0, 1.0))
+		var target: float = planned * (1.04 if full else 1.12)
 		var margin := 1.0 if full else 2.5
 		if v > target + margin:
 			var assist := clampf((v - target) / (6.0 if full else 10.0), 0.0, 1.0 if full else 0.6)
@@ -424,6 +458,9 @@ func _physics_process(delta: float) -> void:
 	if state != State.GRID:
 		save.add_distance(absf(car.forward_speed()) * delta)
 
+	if mode == "time_trial":
+		_update_ghost()
+
 	if line_guide != null and line_guide.visible:
 		if _assist_profile.size() != track.size():
 			_assist_profile = track.speed_profile(car.spec)
@@ -470,6 +507,13 @@ func _update_entrant(e: Entrant, delta: float) -> void:
 	var quarter := int(e.idx * 4 / n)
 	if quarter == e.next_checkpoint and e.next_checkpoint < 4:
 		e.next_checkpoint += 1
+	if not track.drs_zones.is_empty() and e.car.spec["body"] == "gp":
+		_update_drs(e)
+	# Sector lines at a third and two thirds of the lap.
+	for k in [0, 1]:
+		var line: int = n * (k + 1) / 3
+		if e.sector == k and e.prev_idx < line and e.idx >= line and e.idx - e.prev_idx < n / 4:
+			_complete_sector(e, k)
 	# Crossing the line forwards.
 	if e.prev_idx > n * 0.9 and e.idx < n * 0.1:
 		if e.next_checkpoint >= 4 and not e.finished:
@@ -499,7 +543,75 @@ func _update_entrant(e: Entrant, delta: float) -> void:
 			e.stuck = 0.0
 
 
+## True if the car passed sample `mark` between its last two positions.
+func _crossed(e: Entrant, mark: int) -> bool:
+	var n := track.size()
+	var step := posmod(e.idx - e.prev_idx, n)
+	var to_mark := posmod(mark - e.prev_idx, n)
+	return step < n / 4 and to_mark > 0 and to_mark <= step
+
+
+## DRS: armed at the detection line if within 1 s of the car ahead (from
+## lap 2 in a race; always in a time trial); open through the zone until
+## the driver brakes.
+func _update_drs(e: Entrant) -> void:
+	for z in track.drs_zones:
+		if _crossed(e, z["detect"]):
+			e.drs_armed = mode == "time_trial" or (e.lap >= 1 and _gap_ahead(e) < 1.0)
+	var zone := track.drs_zone_at(e.idx)
+	if zone < 0:
+		if e.car.drs_open:
+			e.drs_armed = false
+		e.car.drs_open = false
+	elif e.drs_armed and state == State.RACING:
+		if e.car.brake_input > 0.05:
+			e.car.drs_open = false
+			e.drs_armed = false
+		elif e.car.throttle > 0.5:
+			e.car.drs_open = true
+
+
+## Seconds behind the car one place ahead (99 if leading).
+func _gap_ahead(e: Entrant) -> float:
+	for o in entrants:
+		if o.position == e.position - 1:
+			return (o.progress - e.progress) / maxf(e.car.forward_speed(), 15.0)
+	return 99.0
+
+
+func _complete_sector(e: Entrant, k: int) -> void:
+	var t := race_time - e.sector_start
+	e.sector_start = race_time
+	e.sector = (k + 1) % 3
+	if t < 3.0:
+		return
+	var valid := mode == "race" or lap_valid
+	if not e.is_player:
+		session_sectors[k] = minf(session_sectors[k], t)
+		return
+	var pb: float = save.get_best_sector(lap_key, k)
+	var colour := UIStyle.YELLOW
+	if not valid:
+		colour = UIStyle.FOG
+	else:
+		var fastest: bool = t <= session_sectors[k] and (pb < 0.0 or t <= pb or mode == "race")
+		if mode == "time_trial":
+			fastest = pb < 0.0 or t <= pb
+		if fastest:
+			colour = UIStyle.PURPLE
+		elif t <= _my_session_sectors[k]:
+			colour = UIStyle.GREEN
+		_my_session_sectors[k] = minf(_my_session_sectors[k], t)
+		session_sectors[k] = minf(session_sectors[k], t)
+		save.submit_sector(lap_key, k, t)
+	hud.show_sector(k, t, (t - pb) if pb > 0.0 else 0.0, colour)
+
+
 func _complete_lap(e: Entrant) -> void:
+	if e.sector == 2:
+		_complete_sector(e, 2)
+	e.sector = 0
+	e.sector_start = race_time
 	var lap_time := race_time - e.lap_start
 	e.lap_start = race_time
 	e.lap += 1
@@ -520,18 +632,22 @@ func _player_lap(lap_time: float) -> void:
 	if mode == "race" or lap_valid:
 		var prev_best: int = save.get_best_lap(lap_key)
 		var is_best: bool = save.submit_lap(lap_key, ms)
+		if is_best and mode == "time_trial" and _ghost_rec.size() > 14 * 7:
+			_ghost_play = _ghost_rec.duplicate()
+			_save_ghost()
 		if is_best:
-			var msg := "NEW BEST  " + Hud.fmt_time(lap_time)
+			var msg := "New best lap  " + Hud.fmt_time(lap_time)
 			if prev_best >= 0:
-				msg += "   (-%.3f)" % ((prev_best - ms) / 1000.0)
-			hud.show_banner(msg, Color(0.35, 1.0, 0.45))
+				msg += "   -%.3f" % ((prev_best - ms) / 1000.0)
+			hud.show_banner(msg, UIStyle.PURPLE)
 		elif prev_best >= 0:
-			hud.show_banner("LAP %d  %s   (+%.3f)" % [player.lap, Hud.fmt_time(lap_time), (ms - prev_best) / 1000.0], Color.WHITE)
+			hud.show_banner("Lap %d  %s   +%.3f" % [player.lap, Hud.fmt_time(lap_time), (ms - prev_best) / 1000.0], UIStyle.PAPER)
 	else:
-		hud.show_banner("LAP %d  %s   INVALID" % [player.lap, Hud.fmt_time(lap_time)], Color(1, 0.5, 0.4))
+		hud.show_banner("Lap %d  %s   invalid (track limits)" % [player.lap, Hud.fmt_time(lap_time)], UIStyle.RED)
 	lap_valid = true
+	_ghost_rec = PackedFloat32Array()
 	if mode == "race" and player.lap == total_laps - 1:
-		hud.show_center("FINAL LAP")
+		hud.show_center("Final lap")
 		get_tree().create_timer(1.5).timeout.connect(func(): hud.show_center(""))
 
 
@@ -703,6 +819,10 @@ func _update_hud() -> void:
 		best_ms / 1000.0 if best_ms >= 0 else -1.0, lap_valid or mode == "race")
 	hud.update_engine(car.gear, car.rpm, float(car.spec["upshift_rpm"]), float(car.spec["redline"]),
 		float(car.spec["idle_rpm"]), car.speed_kmh())
+	if car.spec["body"] == "gp" and not track.drs_zones.is_empty():
+		hud.set_drs(3 if car.drs_open else (2 if player.drs_armed else 1))
+	else:
+		hud.set_drs(0)
 	if _tick % 9 == 0:
 		var dots: Array = []
 		for e in entrants:
@@ -723,3 +843,79 @@ func _update_hud() -> void:
 					gap = "+%.1f" % ((ahead.progress - e.progress) / v)
 				rows.append({"pos": i + 1, "name": e.name, "gap": gap, "player": e.is_player, "color": e.car.spec["color"]})
 		hud.update_position(player.position, entrants.size(), rows)
+
+
+# ------------------------------------------------------------ ghost car
+
+func _ghost_path() -> String:
+	return "user://ghosts/%s.bin" % lap_key.replace("|", "__")
+
+
+func _load_ghost() -> void:
+	if FileAccess.file_exists(_ghost_path()):
+		var f := FileAccess.open(_ghost_path(), FileAccess.READ)
+		var v: Variant = f.get_var()
+		if v is PackedFloat32Array:
+			_ghost_play = v
+
+
+func _save_ghost() -> void:
+	DirAccess.make_dir_recursive_absolute("user://ghosts")
+	var f := FileAccess.open(_ghost_path(), FileAccess.WRITE)
+	if f != null:
+		f.store_var(_ghost_play)
+
+
+func ghost_ready() -> bool:
+	return ghost_car != null and _ghost_play.size() > 14 * 7
+
+
+func _make_ghost_car() -> void:
+	ghost_car = RaceCar.new()
+	ghost_car.setup(CarSpecs.get_spec(car_id, int(save.get_setting("team")) if car_id == "gp26" else 0))
+	ghost_car.freeze = true
+	ghost_car.collision_layer = 0
+	ghost_car.collision_mask = 0
+	add_child(ghost_car)
+	ghost_car.set_physics_process(false)
+	ghost_car.collision_layer = 0
+	ghost_car.collision_mask = 0
+	for g in ghost_car.find_children("*", "GeometryInstance3D", true, false):
+		var gi := g as GeometryInstance3D
+		gi.transparency = 0.62
+		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## Records this lap and replays the best one, in step with the lap clock.
+func _update_ghost() -> void:
+	if state != State.RACING:
+		return
+	var t := (race_time - player.lap_start) * GHOST_HZ
+	# Record.
+	while _ghost_rec.size() / 7 <= int(t):
+		var xf := car.global_transform
+		var q := xf.basis.get_rotation_quaternion()
+		_ghost_rec.append_array([xf.origin.x, xf.origin.y, xf.origin.z, q.x, q.y, q.z, q.w])
+	# Replay.
+	var show := bool(save.get_setting("ghost")) and _ghost_play.size() > 14 * 7
+	if not show:
+		if ghost_car != null:
+			ghost_car.visible = false
+		return
+	if ghost_car == null:
+		_make_ghost_car()
+	var count := _ghost_play.size() / 7
+	var i := int(t)
+	if i + 1 >= count:
+		ghost_car.visible = false
+		return
+	var f := t - i
+	var a := i * 7
+	var b := a + 7
+	var p := Vector3(_ghost_play[a], _ghost_play[a + 1], _ghost_play[a + 2]).lerp(
+		Vector3(_ghost_play[b], _ghost_play[b + 1], _ghost_play[b + 2]), f)
+	var qa := Quaternion(_ghost_play[a + 3], _ghost_play[a + 4], _ghost_play[a + 5], _ghost_play[a + 6])
+	var qb := Quaternion(_ghost_play[b + 3], _ghost_play[b + 4], _ghost_play[b + 5], _ghost_play[b + 6])
+	ghost_car.global_transform = Transform3D(Basis(qa.slerp(qb, f)), p)
+	# Fade it out when it's right on top of you.
+	ghost_car.visible = p.distance_to(car.global_position) > 2.5

@@ -302,6 +302,10 @@ func _build_track_side(cols: Control) -> void:
 	_chip(chips, "laps", [[3, "3 laps"], [5, "5 laps"], [10, "10 laps"], [1, "1 lap"]])
 	_chip(chips, "opponents", [[19, "20 cars"], [11, "12 cars"], [5, "6 cars"]])
 	_chip(chips, "difficulty", [["medium", "Medium AI"], ["hard", "Hard AI"], ["easy", "Easy AI"]])
+	var chips2 := HBoxContainer.new()
+	chips2.add_theme_constant_override("separation", 8)
+	v.add_child(chips2)
+	_chip(chips2, "time_of_day", [["day", "Daytime"], ["sunset", "Sunset"]])
 
 	var go := UIStyle.button("Race", _start, true, 46)
 	go.custom_minimum_size = Vector2(0, 90)
@@ -345,7 +349,7 @@ func _refresh_mode() -> void:
 		for c in choices:
 			if str(c[0]) == cur:
 				b.text = c[1]
-		b.visible = mode == "race"
+		b.visible = mode == "race" or key == "time_of_day"
 	(_chips["go"] as Button).text = "Race" if mode == "race" else "Drive"
 
 

@@ -37,6 +37,11 @@ var _time_lbl: Label
 var _last_val: Label
 var _best_val: Label
 var _delta_lbl: Label
+var _sector_bars: Array[ColorRect] = []
+var _drs: PanelContainer
+var _drs_lbl: Label
+var _drs_state := -1
+var _delta_time := 0.0
 # Start lights
 var lights_box: PanelContainer
 var lights: Array[Panel] = []
@@ -67,6 +72,7 @@ func _ready() -> void:
 	_build_timing(root)
 	_build_gauge(root)
 	_build_minimap(root)
+	_build_drs(root)
 	_build_messages(root)
 	_build_lights(root)
 	_build_pause_menu(root)
@@ -147,6 +153,18 @@ func _build_timing(root: Control) -> void:
 	v.add_child(_time_lbl)
 	_last_val = _timing_row(v, "Last")
 	_best_val = _timing_row(v, "Best")
+	# Sector bars: grey until driven, then purple / green / yellow.
+	var sec := HBoxContainer.new()
+	sec.add_theme_constant_override("separation", 6)
+	v.add_child(sec)
+	for k in range(3):
+		var b := ColorRect.new()
+		b.color = Color(UIStyle.PAPER, 0.15)
+		b.custom_minimum_size = Vector2(0, 7)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		sec.add_child(b)
+		_sector_bars.append(b)
 	_delta_lbl = UIStyle.label("", 22, UIStyle.GREEN, "bold", true)
 	_delta_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_delta_lbl.visible = false
@@ -176,6 +194,42 @@ func _build_gauge(root: Control) -> void:
 	root.add_child(gauge)
 
 
+func _build_drs(root: Control) -> void:
+	_drs = PanelContainer.new()
+	_drs.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_drs.offset_left = -262
+	_drs.offset_right = -170
+	_drs.offset_top = -74
+	_drs.offset_bottom = -30
+	_drs.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_drs.visible = false
+	root.add_child(_drs)
+	_drs_lbl = UIStyle.label("DRS", 26, UIStyle.FOG, "extrabold", true)
+	_drs_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_drs.add_child(_drs_lbl)
+
+
+## 0 hidden, 1 not available, 2 available (opens on the next straight), 3 open.
+func set_drs(st: int) -> void:
+	if st == _drs_state:
+		return
+	_drs_state = st
+	_drs.visible = st > 0
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.75))
+	sb.set_border_width_all(0)
+	match st:
+		2:
+			sb.border_color = UIStyle.GREEN
+			sb.set_border_width_all(3)
+			_drs_lbl.add_theme_color_override("font_color", UIStyle.GREEN)
+		3:
+			sb.bg_color = UIStyle.GREEN
+			_drs_lbl.add_theme_color_override("font_color", UIStyle.INK)
+		_:
+			_drs_lbl.add_theme_color_override("font_color", Color(UIStyle.FOG, 0.7))
+	_drs.add_theme_stylebox_override("panel", sb)
+
+
 func _build_minimap(root: Control) -> void:
 	minimap = MiniMap.new()
 	minimap.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
@@ -197,7 +251,7 @@ func _build_messages(root: Control) -> void:
 	banner.add_theme_stylebox_override("panel", UIStyle.panel(Color(UIStyle.TARMAC, 0.9), true, UIStyle.APEX))
 	banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	banner.offset_top = 124
+	banner.offset_top = 176
 	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	banner.visible = false
 	root.add_child(banner)
@@ -209,7 +263,7 @@ func _build_messages(root: Control) -> void:
 	warn.add_theme_stylebox_override("panel", UIStyle.panel(Color(UIStyle.TARMAC, 0.9), true, UIStyle.YELLOW))
 	warn.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	warn.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	warn.offset_top = 190
+	warn.offset_top = 240
 	warn.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	warn.visible = false
 	root.add_child(warn)
@@ -319,6 +373,7 @@ func _build_pause_menu(root: Control) -> void:
 	_setting(v, "tc", "Traction control", func(): _toggle("traction_control"))
 	_setting(v, "abs", "ABS", func(): _toggle("abs"))
 	_setting(v, "line", "Racing line", func(): _toggle("racing_line"))
+	_setting(v, "ghost", "Ghost car (time trial)", func(): _toggle("ghost"))
 	_setting(v, "graphics", "Graphics", func():
 		save.set_setting("graphics", "saver" if save.get_setting("graphics") != "saver" else "high"))
 	_refresh_menu()
@@ -377,7 +432,7 @@ func _setting(parent: Node, key: String, text: String, change: Callable) -> void
 func _refresh_menu() -> void:
 	var on_off := func(k: String) -> String: return "On" if bool(save.get_setting(k)) else "Off"
 	var control := String(save.get_setting("control_mode"))
-	(_menu_buttons["controls"] as Label).text = {"tilt": "Tilt phone", "drag": "Drag (left thumb)", "buttons": "Buttons"}.get(control, "Tilt phone")
+	(_menu_buttons["controls"] as Label).text = {"tilt": "Tilt phone", "drag": "Wheel (left thumb)", "buttons": "Buttons"}.get(control, "Tilt phone")
 	(_menu_buttons["sens"] as Label).text = "%.1fx" % float(save.get_setting("tilt_sensitivity"))
 	(_menu_buttons["invert"] as Label).text = on_off.call("invert_tilt")
 	(_menu_buttons["auto"] as Label).text = on_off.call("auto_accelerate")
@@ -386,6 +441,7 @@ func _refresh_menu() -> void:
 	(_menu_buttons["tc"] as Label).text = on_off.call("traction_control")
 	(_menu_buttons["abs"] as Label).text = on_off.call("abs")
 	(_menu_buttons["line"] as Label).text = on_off.call("racing_line")
+	(_menu_buttons["ghost"] as Label).text = on_off.call("ghost")
 	(_menu_buttons["graphics"] as Label).text = "Battery saver" if save.get_setting("graphics") == "saver" else "High"
 	touch.configure(control, bool(save.get_setting("auto_accelerate")), float(save.get_setting("tilt_sensitivity")))
 	settings_changed.emit()
@@ -424,11 +480,22 @@ func update_timing(lap: int, lap_time: float, last: float, best: float, valid: b
 	if best > 0.0 and absf(best - _best_seen) > 0.0005:
 		_best_seen = best
 		_best_val.add_theme_color_override("font_color", UIStyle.PURPLE)
-	if last > 0.0 and best > 0.0:
-		var d := last - best
-		_delta_lbl.visible = true
-		_delta_lbl.text = ("%+.3f" % d) if d > 0.0005 else "Best lap"
-		_delta_lbl.add_theme_color_override("font_color", UIStyle.YELLOW if d > 0.0005 else UIStyle.PURPLE)
+
+
+func show_sector(k: int, t: float, delta: float, colour: Color) -> void:
+	if k == 0:
+		reset_sectors()
+	_sector_bars[k].color = colour
+	_delta_lbl.visible = true
+	var d := ("  %+.3f" % delta) if absf(delta) > 0.0005 else ""
+	_delta_lbl.text = "Sector %d  %.3f%s" % [k + 1, t, d]
+	_delta_lbl.add_theme_color_override("font_color", colour if colour != UIStyle.FOG else UIStyle.PAPER)
+	_delta_time = 4.0
+
+
+func reset_sectors() -> void:
+	for b in _sector_bars:
+		b.color = Color(UIStyle.PAPER, 0.15)
 
 
 func update_engine(gear: int, rpm: float, shift_rpm: float, redline: float, idle := 1000.0, kmh := -1.0) -> void:
@@ -551,6 +618,10 @@ func _process(delta: float) -> void:
 		_banner_time -= delta
 		if _banner_time <= 0.0:
 			banner.visible = false
+	if _delta_time > 0.0:
+		_delta_time -= delta
+		if _delta_time <= 0.0:
+			_delta_lbl.visible = false
 	if _warn_time > 0.0:
 		_warn_time -= delta
 		if _warn_time <= 0.0:
@@ -575,6 +646,7 @@ func hide_results() -> void:
 
 func _set_live_visible(on: bool) -> void:
 	_tower.visible = on
+	_drs.visible = on and _drs_state > 0
 	gauge.visible = on
 	minimap.visible = on
 	_time_lbl.get_parent().get_parent().get_parent().visible = on

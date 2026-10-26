@@ -13,6 +13,10 @@ func _run() -> void:
 	var args := OS.get_cmdline_user_args()
 	var out: String = args[0]
 	var track_id: String = args[1] if args.size() > 1 else "silvermoor"
+	var tod := "day"
+	if track_id.ends_with(":sunset"):
+		track_id = track_id.trim_suffix(":sunset")
+		tod = "sunset"
 	var car_id: String = args[2] if args.size() > 2 else "gp26"
 	var times: Array = [3, 14, 30]
 	if args.size() > 3:
@@ -25,6 +29,7 @@ func _run() -> void:
 	var st: Dictionary = save.data["settings"]
 	st["mode"] = "time_trial"; st["track"] = track_id; st["car"] = car_id
 	st["racing_line"] = true
+	st["time_of_day"] = tod
 	var race: Node = (load("res://scenes/race.tscn") as PackedScene).instantiate()
 	root.add_child(race)
 	race.autopilot = load("res://scripts/ai_driver.gd").new()

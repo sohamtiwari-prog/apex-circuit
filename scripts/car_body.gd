@@ -12,6 +12,23 @@ var spec: Dictionary
 var _tools := {}
 static var _mats := {}
 static var _wheel_cache := {}
+var _tail_mat: StandardMaterial3D
+var _brake_level := -1.0
+
+
+## Brake lights: brighter while braking. The GP car's rear light flashes
+## (as it does on a real car when the hybrid system is harvesting).
+func set_brake_lights(braking: bool, t: float) -> void:
+	if _tail_mat == null:
+		return
+	var level := 2.0
+	if braking:
+		level = 9.0
+		if spec["body"] == "gp" and fmod(t, 0.25) < 0.12:
+			level = 1.0
+	if level != _brake_level:
+		_brake_level = level
+		_tail_mat.emission_energy_multiplier = level
 
 
 func build(car_spec: Dictionary, car: RaceCar) -> void:
@@ -21,12 +38,19 @@ func build(car_spec: Dictionary, car: RaceCar) -> void:
 	else:
 		_build_road()
 	var mesh := ArrayMesh.new()
+	var tail_surface := -1
 	for key in _tools:
 		MeshKit.finish(_tools[key], mesh)
 		mesh.surface_set_material(mesh.get_surface_count() - 1, _material(key))
+		if key == "tail":
+			tail_surface = mesh.get_surface_count() - 1
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	add_child(mi)
+	# This car's own tail-light material, so its brake lights are its own.
+	if tail_surface >= 0:
+		_tail_mat = (_material("tail") as StandardMaterial3D).duplicate()
+		mi.set_surface_override_material(tail_surface, _tail_mat)
 	for w in car.wheels:
 		_attach_wheel(w)
 

@@ -92,6 +92,7 @@ func build(id: String = "kestrel_park") -> void:
 	_derive()
 	_derive_line()
 	_derive_runoff()
+	_derive_drs()
 	_build_grid()
 	_build_ground()
 	_build_road()
@@ -446,6 +447,61 @@ func _derive_runoff() -> void:
 		corner += 1
 
 
+## DRS zones on the long straights: [{"detect": idx, "start": idx, "end": idx}]
+var drs_zones: Array = []
+
+
+func _derive_drs() -> void:
+	drs_zones.clear()
+	var n := points.size()
+	if n == 0:
+		return
+	# Find straight runs (|curvature| < 1/700 m, smoothed), longest first.
+	var straight := PackedByteArray()
+	straight.resize(n)
+	for i in range(n):
+		var worst := 0.0
+		for k in range(-6, 7, 3):
+			worst = maxf(worst, absf(curv[posmod(i + k, n)]))
+		straight[i] = 1 if worst < 1.0 / 250.0 else 0
+	# Start the scan in a corner so a straight across the line stays whole.
+	var first := 0
+	while first < n and straight[first] == 1:
+		first += 1
+	var runs: Array = []
+	var i := 0
+	while i < n:
+		var a := (first + i) % n
+		if straight[a] == 0:
+			i += 1
+			continue
+		var run_len := 0
+		while i < n and straight[(first + i) % n] == 1:
+			run_len += 1
+			i += 1
+		runs.append([a, run_len])
+	runs.sort_custom(func(x, y): return x[1] > y[1])
+	for r in runs:
+		var length_m: float = r[1] * SPACING
+		if length_m < 420.0 or drs_zones.size() >= 3:
+			continue
+		var start: int = (int(r[0]) + int(70.0 / SPACING)) % n
+		var end: int = (int(r[0]) + int(r[1]) - int(50.0 / SPACING)) % n
+		var detect: int = posmod(start - int(140.0 / SPACING), n)
+		drs_zones.append({"detect": detect, "start": start, "end": end})
+
+
+## Index of the DRS zone that sample idx is inside, or -1.
+func drs_zone_at(idx: int) -> int:
+	var n := points.size()
+	for z in range(drs_zones.size()):
+		var a: int = drs_zones[z]["start"]
+		var b: int = drs_zones[z]["end"]
+		if posmod(idx - a, n) <= posmod(b - a, n):
+			return z
+	return -1
+
+
 ## Surface under a point: 0 track (asphalt/kerb/run-off asphalt), 1 grass,
 ## 2 gravel. Used by the car physics through race.gd.
 func surface_at(idx: int, lat: float) -> int:
@@ -535,6 +591,10 @@ func _build_road() -> void:
 					_band(st, faces, i, j, o0, o0 + w, col, row * 0.5, row * 0.5 + 0.5)
 		else:
 			_band(st, faces, i, j, -h + LINE_W, h - LINE_W, asphalt)
+		# DRS detection and activation lines (white, across the road).
+		for z in drs_zones:
+			if i == z["detect"] or i == z["start"]:
+				_band(st, faces, i, j, -h + LINE_W, h - LINE_W, Color(0.93, 0.93, 0.93, 0.0), 0.3, 0.45, 0.006, 0.006)
 
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/road.gdshader")
@@ -856,17 +916,28 @@ func _optimise_line() -> void:
 ## Fastest speed (m/s) at every sample for a car following the racing line:
 ## corner limits from tyre grip plus downforce, then braking zones worked
 ## backwards from each corner. Cached per car.
-func speed_profile(spec: Dictionary) -> PackedFloat32Array:
-	var key: String = spec["id"]
+## centre = true: the same for a car driving the middle of the road
+## (tighter than the racing line), used by brake assist when you're off-line.
+func speed_profile(spec: Dictionary, centre := false) -> PackedFloat32Array:
+	var key: String = String(spec["id"]) + ("|centre" if centre else "")
 	if _profiles.has(key):
 		return _profiles[key]
 	var n := points.size()
 	var a0: float = spec["ai_grip"]
 	var a1: float = spec["ai_grip_aero"]
+	var curv_used := line_curv_safe
+	if centre:
+		curv_used = PackedFloat32Array()
+		curv_used.resize(n)
+		for i in range(n):
+			var m := 0.0
+			for k in range(-8, 9):
+				m = maxf(m, absf(curv[posmod(i + k, n)]))
+			curv_used[i] = m
 	var v := PackedFloat32Array()
 	v.resize(n)
 	for i in range(n):
-		var kk := line_curv_safe[i]
+		var kk := curv_used[i]
 		v[i] = 99.0 if kk <= a1 + 0.00001 else minf(sqrt(a0 / (kk - a1)), 99.0)
 	var base_dec: float = spec["ai_brake"]
 	var aero_dec: float = float(spec["brake_aero"]) * 0.8

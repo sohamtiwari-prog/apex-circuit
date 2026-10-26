@@ -1,5 +1,6 @@
 extends SceneTree
-## A "beginner" holds full throttle, never brakes and steers simply.
+## A "beginner" holds full throttle, never brakes, and steers for the middle
+## of the track (not the racing line).
 ## With brake + steering assist on, they must still get round the lap on
 ## the road; this is what keeps the game friendly on a phone.
 var failures: Array[String] = []
@@ -32,6 +33,7 @@ func _lap(track_id: String, car_id: String, level: String) -> Array:
 	print("    [%s %s] race sees brake_assist=%s steer_assist=%s control=%s" % [track_id, car_id, race.save.get_setting("brake_assist"), race.save.get_setting("steer_assist"), race.save.get_setting("control_mode")])
 	var n: int = track.size()
 	var off_frames := 0
+	var off_where := {}
 	var frames := 0
 	var start_lap: int = race.player.lap
 	while race.player.lap < start_lap + 1 and frames < 120 * 240:
@@ -43,16 +45,24 @@ func _lap(track_id: String, car_id: String, level: String) -> Array:
 		var fwd: Vector3 = car.global_basis.z
 		fwd.y = 0.0
 		var ang: float = fwd.normalized().signed_angle_to(to.normalized(), Vector3.UP)
-		race.hud.touch.steer = clampf(-ang * 3.0, -1.0, 1.0)
+		# Turn the wheel by about the right amount for that point (pure
+		# pursuit on the centreline), but never brake: braking is the assist's job.
+		var wb: float = float(car.spec["wheel_front_z"]) - float(car.spec["wheel_rear_z"])
+		var delta := atan2(2.0 * wb * sin(ang), maxf(to.length(), 1.0))
+		race.hud.touch.steer = car.input_for_angle(-delta, car.forward_speed())
 		race.hud.touch.gas = 1.0
 		race.hud.touch.brake = 0.0
 		await physics_frame
 		frames += 1
 		if absf(track.lateral(car.global_position, race.player.idx)) > track.road_half + Track.KERB_W:
 			off_frames += 1
+			var bucket := int(track.cum[race.player.idx] / 100.0) * 100
+			off_where[bucket] = off_where.get(bucket, 0) + 1
 		if car.brake_input > 0.05:
 			braked += 1
 	print("    braked on %d frames; ended at %.0f m, %.1f km/h, lat %.1f" % [braked, track.cum[race.player.idx], car.speed_kmh(), track.lateral(car.global_position, race.player.idx)])
+	if level != "off" and not off_where.is_empty():
+		print("    off road at (m: frames): ", off_where)
 	var done: bool = race.player.lap >= start_lap + 1
 	var off_pct := 100.0 * off_frames / maxi(frames, 1)
 	race.queue_free()

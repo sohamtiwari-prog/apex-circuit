@@ -13,10 +13,12 @@ var brake := 0.0
 
 var _touches := {}            # finger index -> region name
 var _regions := {}            # region name -> Rect2
-# Drag steering: a floating slider wherever the left thumb lands.
+# Wheel steering: a floating steering-wheel arc wherever the left thumb lands.
+# The thumb sits on the rim; the hub is below it. Rotation = steering.
 var _drag_finger := -1
-var _drag_origin := Vector2.ZERO
-var _drag_pos := Vector2.ZERO
+var _drag_origin := Vector2.ZERO     # wheel hub
+var _drag_pos := Vector2.ZERO        # thumb
+var _wheel_angle := 0.0              # rad, + = clockwise (right)
 var _steer_zone := Rect2()
 
 
@@ -41,9 +43,14 @@ func release_all() -> void:
 	_update_state()
 
 
-## Thumb travel (pixels) from the touch point to full lock.
+## Wheel rim radius in pixels.
 func drag_range() -> float:
-	return clampf(size.y * 0.2, 90.0, 220.0) / maxf(sensitivity, 0.3)
+	return clampf(size.y * 0.24, 110.0, 250.0)
+
+
+## Wheel rotation for full lock; higher sensitivity = less rotation.
+func max_wheel_angle() -> float:
+	return deg_to_rad(55.0) / clampf(sensitivity, 0.5, 2.5)
 
 
 func _layout() -> void:
@@ -92,8 +99,9 @@ func _input(event: InputEvent) -> void:
 				_touches[event.index] = reg
 			elif mode == "drag" and _drag_finger < 0 and _steer_zone.has_point(event.position):
 				_drag_finger = event.index
-				_drag_origin = event.position
+				_drag_origin = event.position + Vector2(0, drag_range())
 				_drag_pos = event.position
+				_wheel_angle = 0.0
 		else:
 			_touches.erase(event.index)
 			if event.index == _drag_finger:
@@ -102,12 +110,21 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventScreenDrag:
 		if event.index == _drag_finger:
 			_drag_pos = event.position
-			# The slider follows the thumb past full lock, so coming back
-			# always starts steering the other way straight away.
+			var arm := _drag_pos - _drag_origin
 			var r := drag_range()
-			var dx := _drag_pos.x - _drag_origin.x
-			if absf(dx) > r:
-				_drag_origin.x = _drag_pos.x - signf(dx) * r
+			# Thumb too close to the hub: keep the last angle, pull the hub away.
+			if arm.length() < r * 0.35:
+				_drag_origin = _drag_pos - Vector2(sin(_wheel_angle), -cos(_wheel_angle)) * r * 0.35
+				arm = _drag_pos - _drag_origin
+			var ang := atan2(arm.x, -arm.y)          # 0 = thumb straight above the hub
+			var lim := max_wheel_angle()
+			if absf(ang) > lim:
+				# The wheel follows the thumb past full lock, so turning back
+				# always steers the other way straight away.
+				var dir := Vector2(sin(signf(ang) * lim), -cos(signf(ang) * lim))
+				_drag_origin = _drag_pos - dir * arm.length()
+				ang = signf(ang) * lim
+			_wheel_angle = ang
 			_update_state()
 		elif _touches.has(event.index):
 			var reg := _region_at(event.position)
@@ -124,10 +141,8 @@ func _update_state() -> void:
 	if mode == "drag":
 		steer = 0.0
 		if _drag_finger >= 0:
-			var dx := _drag_pos.x - _drag_origin.x
-			var r := drag_range()
-			var x := clampf(dx / r, -1.0, 1.0)
-			# Small dead zone, then linear: precise near the centre.
+			var x := clampf(_wheel_angle / max_wheel_angle(), -1.0, 1.0)
+			# Small dead zone, then linear (the car maps input to grip linearly).
 			steer = signf(x) * clampf((absf(x) - 0.03) / 0.97, 0.0, 1.0)
 	brake = 1.0 if held.has("brake") else 0.0
 	if auto_accelerate:
@@ -191,26 +206,38 @@ func _caption(text: String, r: Rect2, col: Color) -> void:
 func _draw_drag_steer() -> void:
 	var r := drag_range()
 	var active := _drag_finger >= 0
-	var c := _drag_origin if active else Vector2(_steer_zone.position.x + _steer_zone.size.x * 0.42, _steer_zone.end.y - size.y * 0.16)
-	var a := 0.85 if active else 0.4
-	# Track with a centre notch and end stops.
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.45 if active else 0.3), true, Color(0, 0, 0, 0), 6)
-	draw_style_box(sb, Rect2(c.x - r - 18, c.y - 16, r * 2 + 36, 32))
-	draw_line(c + Vector2(-r, 0), c + Vector2(r, 0), Color(UIStyle.PAPER, a * 0.5), 4.0, true)
-	draw_line(c + Vector2(0, -10), c + Vector2(0, 10), Color(UIStyle.PAPER, a * 0.6), 2.0, true)
+	var hub := _drag_origin if active else Vector2(_steer_zone.position.x + _steer_zone.size.x * 0.45, _steer_zone.end.y - size.y * 0.13 + r)
+	var lim := max_wheel_angle()
+	var ang := _wheel_angle if active else 0.0
+	var up := -PI * 0.5                       # canvas angle of "straight up"
+	var a := 0.9 if active else 0.45
+	# The rim: a thick arc covering the steering range plus a margin.
+	var span := lim + deg_to_rad(16)
+	draw_arc(hub, r, up - span, up + span, 48, Color(0, 0, 0, 0.35 * a), 30.0, true)
+	draw_arc(hub, r, up - span, up + span, 48, Color(UIStyle.TARMAC, 0.7 * a), 24.0, true)
+	# Grip texture: short ticks every 6 degrees, end stops at full lock.
+	var k := -span
+	while k <= span:
+		var d := Vector2(cos(up + k), sin(up + k))
+		draw_line(hub + d * (r - 9), hub + d * (r + 9), Color(UIStyle.PAPER, 0.12 * a), 2.0, true)
+		k += deg_to_rad(6)
+	for side in [-1.0, 1.0]:
+		var d := Vector2(cos(up + side * lim), sin(up + side * lim))
+		draw_line(hub + d * (r - 14), hub + d * (r + 14), Color(UIStyle.PAPER, 0.55 * a), 3.0, true)
+	# Centre mark, rotating with the wheel (like the stripe at 12 o'clock).
+	var dc := Vector2(cos(up + ang), sin(up + ang))
+	draw_line(hub + dc * (r - 13), hub + dc * (r + 13), UIStyle.APEX if active else Color(UIStyle.PAPER, 0.5), 5.0, true)
 	if active:
-		var x := clampf(_drag_pos.x - c.x, -r, r)
-		var fill := UIStyle.APEX
-		draw_line(c, c + Vector2(x, 0), fill, 6.0, true)
-		draw_circle(c + Vector2(x, 0), 26.0, Color(UIStyle.PAPER, 0.9))
-		draw_circle(c + Vector2(x, 0), 20.0, fill)
+		# Lock used, as an orange fill from the top of the rim.
+		if absf(ang) > 0.01:
+			draw_arc(hub, r, up, up + ang, 24, Color(UIStyle.APEX, 0.85), 10.0, true)
+		draw_circle(hub + dc * r, 25.0, Color(UIStyle.PAPER, 0.9))
+		draw_circle(hub + dc * r, 19.0, UIStyle.APEX)
 	else:
-		draw_circle(c, 22.0, Color(UIStyle.PAPER, 0.35))
 		var f := UIStyle.font("bold", true)
-		var text := "Drag to steer"
+		var text := "Steer here"
 		var ts := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
-		draw_string_outline(f, c + Vector2(-ts.x * 0.5, -32), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, 5, Color(0, 0, 0, 0.45))
-		draw_string(f, c + Vector2(-ts.x * 0.5, -32), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(UIStyle.PAPER, 0.8))
-		for side in [-1.0, 1.0]:
-			var tip := c + Vector2(side * (r + 4), 0)
-			draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(-side * 14, -10), tip + Vector2(-side * 14, 10)]), Color(UIStyle.PAPER, 0.4))
+		var at := hub + Vector2(-ts.x * 0.5, -r - 30)
+		draw_string_outline(f, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, 5, Color(0, 0, 0, 0.45))
+		draw_string(f, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(UIStyle.PAPER, 0.8))
+		draw_circle(hub + dc * r, 20.0, Color(UIStyle.PAPER, 0.35))

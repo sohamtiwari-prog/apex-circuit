@@ -92,6 +92,9 @@ jobs:
       - name: Drag steering and assist levels
         run: bash .github/run_test.sh res://tests/touch_test.gd
 
+      - name: Sectors, DRS and ghost car
+        run: bash .github/run_test.sh res://tests/features_test.gd
+
       - name: No invisible walls at the track edge
         run: bash .github/run_test.sh res://tests/edge_test.gd
 

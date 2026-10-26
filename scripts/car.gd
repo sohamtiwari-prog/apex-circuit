@@ -37,6 +37,9 @@ var rpm := 1000.0
 var engine_load := 0.0            # 0..1, how hard the engine is working
 var tyre_slip := 0.0              # 0..1, worst wheel, for tyre squeal and smoke
 var wheels_on_grass := 0
+var body: CarBody
+var _light_t := 0.0
+var drs_open := false             # set by race logic in DRS zones (GP car)
 
 const STEER_SPEED := 3.4          # steering input travel per second (full lock in ~0.3 s)
 const GRASS_GRIP := 0.62
@@ -80,6 +83,23 @@ var _travel := 0.15
 var _wheelbase := 2.7
 var _corner_mass := 300.0
 var _brake_bias := 0.6
+var _cal_speeds := PackedFloat32Array()
+var _cal_angles: Array = []          # per calibration speed: angle for grip share 0, 0.05 .. 1
+var fixed_steer := INF               # radians (+ = left); calibration tools only
+
+static var _cal_data := {}
+static var _cal_loaded := false
+
+
+static func steer_calibration(id: String) -> Dictionary:
+	if not _cal_loaded:
+		_cal_loaded = true
+		if FileAccess.file_exists("res://data/steer_cal.json"):
+			var f := FileAccess.open("res://data/steer_cal.json", FileAccess.READ)
+			var d: Variant = JSON.parse_string(f.get_as_text())
+			if typeof(d) == TYPE_DICTIONARY:
+				_cal_data = d
+	return _cal_data.get(id, {})
 
 
 func setup(car_spec: Dictionary) -> void:
@@ -115,6 +135,11 @@ func _ready() -> void:
 	_rest = spec["rest_length"]
 	_travel = spec["travel"]
 	_brake_bias = spec["brake_bias"]
+	var cal := steer_calibration(String(spec["id"]))
+	if not cal.is_empty() and not spec.get("no_steer_cal", false):
+		_cal_speeds = PackedFloat32Array(cal["speeds"])
+		for row in cal["angles"]:
+			_cal_angles.append(PackedFloat32Array(row))
 
 	mass = spec["mass"]
 	var fz: float = spec["wheel_front_z"]
@@ -161,7 +186,7 @@ func _ready() -> void:
 	_add_wheel(Vector3(-spec["track_front"], wy, fz), true)    # front right
 	_add_wheel(Vector3(spec["track_rear"], wy, rz), false)     # rear left
 	_add_wheel(Vector3(-spec["track_rear"], wy, rz), false)    # rear right
-	var body := CarBody.new()
+	body = CarBody.new()
 	add_child(body)
 	body.build(spec, self)
 
@@ -203,16 +228,35 @@ func spawn_height() -> float:
 
 
 ## Road-wheel angle (rad, + = right) for a steering input at this speed.
-## Input maps through the inverse of the tyre curve, so cornering force grows
-## in proportion to the input; full input sits just past the front tyres'
-## grip peak at any speed, the rest of the range is never wasted.
+## Each car is calibrated (tools: tests/steer_calibrate.gd -> data/steer_cal.json)
+## so the input is the share of the car's peak cornering grip: 0.5 = half
+## the grip, 1.0 = exactly the peak, at every speed. Steering then feels the
+## same everywhere: never twitchy at the top, never dead at full lock.
 func steer_angle(input: float, v: float) -> float:
 	var x := clampf(absf(input), 0.0, 1.0)
+	if _cal_speeds.size() > 1:
+		return signf(input) * _cal_angle(x, absf(v))
 	var v2 := maxf(v * v, 1.0)
 	var a_lat := _mu_f * (9.81 + _downforce * v2 / mass)
 	var geometric := _wheelbase * a_lat / v2
 	var slip := _alpha_peak_f * 1.08 * tan(asin(x * 0.999) / SLIP_SHAPE) / tan(PI / (2.0 * SLIP_SHAPE))
 	return signf(input) * minf(geometric * x + slip, _steer_low)
+
+
+func _cal_angle(x: float, v: float) -> float:
+	var n := _cal_speeds.size()
+	var hi := 1
+	while hi < n - 1 and _cal_speeds[hi] < v:
+		hi += 1
+	var lo := hi - 1
+	var t := clampf((v - _cal_speeds[lo]) / maxf(_cal_speeds[hi] - _cal_speeds[lo], 0.01), 0.0, 1.0)
+	return lerpf(_table_at(_cal_angles[lo], x), _table_at(_cal_angles[hi], x), t)
+
+
+static func _table_at(tab: PackedFloat32Array, x: float) -> float:
+	var f := x * (tab.size() - 1)
+	var i := mini(int(f), tab.size() - 2)
+	return lerpf(tab[i], tab[i + 1], f - i)
 
 
 func max_steer_angle(v: float) -> float:
@@ -282,7 +326,7 @@ func _physics_process(delta: float) -> void:
 	# Smoothed, speed-scaled steering.
 	var rate := lerpf(STEER_SPEED, STEER_SPEED * 0.55, clampf(absf(v) / 70.0, 0.0, 1.0))
 	_steer = move_toward(_steer, clampf(str_in, -1.0, 1.0), rate * delta)
-	steering = -steer_angle(_steer, v)
+	steering = -steer_angle(_steer, v) if fixed_steer == INF else fixed_steer
 
 	var want_reverse := controls_enabled and brk > 0.05 and v < 1.5 and thr < 0.05
 	_update_gearbox(v, delta, want_reverse)
@@ -311,8 +355,11 @@ func _physics_process(delta: float) -> void:
 	_simulate_wheels(delta, drive_force, brake_force)
 
 	var vel := linear_velocity
-	apply_central_force(-vel * vel.length() * _drag)
-	apply_force(-global_basis.y * _downforce * v * v, global_basis * Vector3(0, 0, _down_z))
+	# DRS: the rear-wing flap opens, shedding drag (and some rear downforce).
+	var drag := _drag * (0.78 if drs_open else 1.0)
+	var down := _downforce * (0.86 if drs_open else 1.0)
+	apply_central_force(-vel * vel.length() * drag)
+	apply_force(-global_basis.y * down * v * v, global_basis * Vector3(0, 0, _down_z))
 
 
 func _simulate_wheels(delta: float, drive_force: float, brake_force: float) -> void:
@@ -463,6 +510,9 @@ static func _anti_roll(l: CarWheel, r: CarWheel, k: float) -> void:
 func _process(delta: float) -> void:
 	for w in wheels:
 		w.update_visual(delta)
+	_light_t += delta
+	if body != null:
+		body.set_brake_lights(controls_enabled and brake_input > 0.1 and forward_speed() > 1.0, _light_t)
 
 
 # ------------------------------------------------------------ construction

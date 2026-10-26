@@ -48,6 +48,8 @@ const _DEFAULTS := {
 		"brake_assist": "full",       # "off", "moderate" or "full"
 		"steer_assist": "full",
 		"racing_line": false,
+		"ghost": true,
+		"time_of_day": "day",       # "day" or "sunset"
 		"graphics": "high",         # "high" or "saver"
 		"car": "gp26",
 		"team": 0,
@@ -58,6 +60,7 @@ const _DEFAULTS := {
 		"difficulty": "medium",     # easy, medium, hard
 	},
 	"best_laps": {},                  # "track|car" -> milliseconds
+	"best_sectors": {},               # "track|car" -> [ms, ms, ms], best of each sector
 	"stats": {
 		"laps": 0,
 		"distance_m": 0.0,
@@ -186,6 +189,24 @@ func _migrate(profile: Dictionary) -> void:
 		if typeof(st.get(key)) == TYPE_BOOL:
 			st[key] = "full" if st[key] else "off"
 	profile["schema"] = SCHEMA_VERSION
+
+
+## Personal best time (s) for sector k (0..2), or -1.
+func get_best_sector(key: String, k: int) -> float:
+	var arr: Array = data["best_sectors"].get(key, [-1, -1, -1])
+	return float(arr[k]) / 1000.0 if int(arr[k]) > 0 else -1.0
+
+
+## Records a sector time; returns true if it's a new personal best.
+func submit_sector(key: String, k: int, seconds: float) -> bool:
+	if not data["best_sectors"].has(key):
+		data["best_sectors"][key] = [-1, -1, -1]
+	var arr: Array = data["best_sectors"][key]
+	var ms := int(round(seconds * 1000.0))
+	if int(arr[k]) <= 0 or ms < int(arr[k]):
+		arr[k] = ms
+		return true
+	return false
 
 
 ## Strength of an assist setting: 0 off, 0.5 moderate, 1 full.

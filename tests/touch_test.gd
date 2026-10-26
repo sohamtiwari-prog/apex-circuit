@@ -33,21 +33,31 @@ func _run() -> void:
 	_check(t.mode == "drag", "drag steering mode is active")
 	var sz: Vector2 = t.size
 	var r: float = t.drag_range()
+	var lim: float = t.max_wheel_angle()
 	var p0 := Vector2(sz.x * 0.2, sz.y * 0.75)
 	_touch(t, 0, p0, true)
 	_check(absf(t.steer) < 0.001, "touching down doesn't steer (%.2f)" % t.steer)
-	_drag(t, 0, p0 + Vector2(r * 0.5, 0))
-	_check(absf(t.steer - 0.485) < 0.03, "half the travel = about half lock right (%.2f)" % t.steer)
-	_drag(t, 0, p0 + Vector2(-r * 0.25, 0))
-	_check(t.steer < -0.2 and t.steer > -0.3, "dragging back past the start steers left (%.2f)" % t.steer)
-	_drag(t, 0, p0 + Vector2(r * 2.0, 0))
-	_check(t.steer > 0.99, "full lock at the end of travel (%.2f)" % t.steer)
-	_drag(t, 0, p0 + Vector2(r * 1.0, 0))
-	_check(absf(t.steer) < 0.02, "slider follows the thumb: coming back by full travel centres (%.2f)" % t.steer)
+	# Thumb around the rim by half the lock.
+	var hub := p0 + Vector2(0, r)
+	var half := hub + Vector2(sin(lim * 0.5), -cos(lim * 0.5)) * r
+	_drag(t, 0, half)
+	_check(absf(t.steer - 0.485) < 0.03, "half the wheel rotation = half lock right (%.2f)" % t.steer)
+	# Sliding straight sideways also turns the wheel.
+	_drag(t, 0, p0 + Vector2(-r * tan(lim * 0.25), 0))
+	_check(t.steer < -0.2 and t.steer > -0.3, "sliding sideways turns it too: quarter lock left (%.2f)" % t.steer)
+	_drag(t, 0, p0 + Vector2(r * 2.5, r * 0.3))
+	_check(t.steer > 0.99, "full lock at the end of the rim (%.2f)" % t.steer)
+	# The wheel follows past full lock; turning back by the full range centres.
+	var h2: Vector2 = t._drag_origin
+	var thumb: Vector2 = t._drag_pos
+	var rad := (thumb - h2).length()
+	_drag(t, 0, h2 + Vector2(0, -rad))
+	_check(absf(t.steer) < 0.02, "wheel follows the thumb: turning back by the full range centres (%.2f)" % t.steer)
 	# A second finger on the gas while steering.
 	var gas_rect: Rect2 = t._regions["gas"]
 	_touch(t, 1, gas_rect.get_center(), true)
-	_drag(t, 0, p0 + Vector2(r * 1.5, 0))
+	var h3: Vector2 = t._drag_origin
+	_drag(t, 0, h3 + Vector2(sin(lim * 0.6), -cos(lim * 0.6)) * r)
 	_check(t.gas > 0.9 and t.steer > 0.4, "steer and gas at the same time (gas %.1f, steer %.2f)" % [t.gas, t.steer])
 	# The car gets the input.
 	for i in range(3):

@@ -17,15 +17,30 @@ const SKIES := {
 }
 
 
+## Late-evening light: low golden sun, long shadows, warm haze.
+const SUNSET := {"top": Color(0.14, 0.2, 0.42), "horizon": Color(1.0, 0.62, 0.34), "cover": 0.36,
+	"sun": Color(1.0, 0.64, 0.36), "sun_energy": 1.25, "fog": Color(0.95, 0.66, 0.46),
+	"cloud": Color(1.0, 0.78, 0.6), "cloud_shade": Color(0.42, 0.34, 0.46)}
+
+
 ## Adds a WorldEnvironment and sun to `parent`; returns the sun.
-static func build(parent: Node, style: String) -> DirectionalLight3D:
-	var cfg: Dictionary = SKIES.get(style, SKIES["park"])
+static func build(parent: Node, style: String, time_of_day := "day") -> DirectionalLight3D:
+	var cfg: Dictionary = SKIES.get(style, SKIES["park"]).duplicate()
+	var sunset := time_of_day == "sunset" and style != "studio"
+	if sunset:
+		for k in SUNSET:
+			cfg[k] = SUNSET[k]
+		var rot: Vector3 = SKIES.get(style, SKIES["park"])["sun_rot"]
+		cfg["sun_rot"] = Vector3(-9.0, rot.y + 25.0, 0)
 	var sky_mat := ShaderMaterial.new()
 	sky_mat.shader = load("res://shaders/sky.gdshader")
 	sky_mat.set_shader_parameter("top_color", cfg["top"])
 	sky_mat.set_shader_parameter("horizon_color", cfg["horizon"])
 	sky_mat.set_shader_parameter("ground_color", Color(cfg["horizon"]).darkened(0.45))
 	sky_mat.set_shader_parameter("cloud_cover", cfg["cover"])
+	if cfg.has("cloud"):
+		sky_mat.set_shader_parameter("cloud_color", cfg["cloud"])
+		sky_mat.set_shader_parameter("cloud_shade", cfg["cloud_shade"])
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	sky.radiance_size = Sky.RADIANCE_SIZE_64
@@ -34,7 +49,7 @@ static func build(parent: Node, style: String) -> DirectionalLight3D:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.75
+	env.ambient_light_energy = 0.6 if sunset else 0.75
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.0
@@ -62,7 +77,7 @@ static func build(parent: Node, style: String) -> DirectionalLight3D:
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.5
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 140.0
+	sun.directional_shadow_max_distance = 160.0 if sunset else 140.0
 	sun.directional_shadow_split_1 = 0.25
 	parent.add_child(sun)
 	return sun

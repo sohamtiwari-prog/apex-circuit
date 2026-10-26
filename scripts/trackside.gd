@@ -24,6 +24,8 @@ var _lamps: Array[MeshInstance3D] = []
 var _lamp_on: StandardMaterial3D
 var _lamp_off: StandardMaterial3D
 var _ad_viewport: SubViewport
+var _board_viewport: SubViewport
+var board_spots: Array = []          # sample index of each 300 m board (tests, previews)
 
 
 func build(t: Track) -> void:
@@ -34,6 +36,10 @@ func build(t: Track) -> void:
 	_pits_and_stands()
 	_bridges()
 	_hills()
+	_brake_boards()
+	_marshal_posts()
+	_tv_towers()
+	_flagpoles()
 	_commit()
 
 
@@ -104,6 +110,10 @@ func _material(key: String) -> Material:
 			m.albedo_texture = _ad_viewport.get_texture()
 			m.vertex_color_use_as_albedo = false
 			m.roughness = 0.6
+		"boards":
+			m.albedo_texture = _board_viewport.get_texture()
+			m.vertex_color_use_as_albedo = false
+			m.roughness = 0.7
 		"crowd":
 			m.albedo_texture = _crowd_texture()
 			m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
@@ -635,3 +645,162 @@ func _hill_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, col: Color) -> v
 		_quad("hills", a, d, c, b, col)
 	else:
 		_quad("hills", a, b, c, d, col)
+
+
+# ------------------------------------------------------------ braking boards
+
+## 300 / 200 / 100 m boards before every big braking zone (where the GP
+## car loses more than ~90 km/h), on the side away from the racing line.
+func _brake_boards() -> void:
+	_board_viewport = SubViewport.new()
+	_board_viewport.size = Vector2i(384, 160)
+	_board_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	_board_viewport.disable_3d = true
+	add_child(_board_viewport)
+	for k in range(3):
+		var bg := ColorRect.new()
+		bg.color = Color(0.96, 0.96, 0.96)
+		bg.position = Vector2(k * 128 + 4, 4)
+		bg.size = Vector2(120, 152)
+		_board_viewport.add_child(bg)
+		var bar := ColorRect.new()
+		bar.color = Color(0.85, 0.1, 0.08)
+		bar.position = Vector2(k * 128 + 4, 4)
+		bar.size = Vector2(120, 22)
+		_board_viewport.add_child(bar)
+		var l := Label.new()
+		l.text = str(300 - k * 100)
+		l.position = Vector2(k * 128, 28)
+		l.size = Vector2(128, 120)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		l.add_theme_font_override("font", UIStyle.font("extrabold"))
+		l.add_theme_font_size_override("font_size", 70)
+		l.add_theme_color_override("font_color", Color(0.06, 0.06, 0.07))
+		_board_viewport.add_child(l)
+	var n := track.size()
+	var prof := track.speed_profile(CarSpecs.get_spec("gp26"))
+	var i := 0
+	var placed := 0
+	while i < n and placed < 12:
+		# A corner: local minimum of the speed profile.
+		var a: float = prof[posmod(i - 1, n)]
+		var b: float = prof[i]
+		var c: float = prof[(i + 1) % n]
+		if b < a and b <= c:
+			# Peak speed in the 400 m before it.
+			var peak := b
+			for k in range(1, int(400.0 / Track.SPACING)):
+				peak = maxf(peak, prof[posmod(i - k, n)])
+			if peak - b > 25.0:
+				_board_set(i)
+				placed += 1
+				i += int(150.0 / Track.SPACING)
+				continue
+		i += 1
+
+
+func _board_set(corner: int) -> void:
+	var n := track.size()
+	# Count back from where the braking ends to where the turn-in starts.
+	var side := -signf(track.line_offset[posmod(corner - 60, n)])
+	if side == 0.0:
+		side = 1.0
+	board_spots.append(posmod(corner - int(340.0 / Track.SPACING), n))
+	for k in range(3):
+		var dist := 300.0 - k * 100.0
+		var i := posmod(corner - int((dist + 40.0) / Track.SPACING), n)
+		var lat := track.road_half + Track.KERB_W + 3.5
+		var base: Vector3 = track.points[i] + track.rights[i] * lat * side
+		var fwd: Vector3 = track.tangents[i]
+		# Text reads left to right for a driver looking down the track.
+		var right: Vector3 = track.rights[i]
+		var w := 1.0
+		var h := 1.3
+		var bottom := base + Vector3(0, 1.0, 0) - fwd * 0.02
+		var l0 := bottom - right * w * 0.5
+		var r0 := bottom + right * w * 0.5
+		var u0 := float(k) / 3.0
+		var u1 := float(k + 1) / 3.0
+		_quad("boards", l0, r0, r0 + Vector3(0, h, 0), l0 + Vector3(0, h, 0), Color.WHITE,
+			[Vector2(u0, 1), Vector2(u1, 1), Vector2(u1, 0), Vector2(u0, 0)])
+		_box("metal", Transform3D(Basis(), base + Vector3(0, 0.5, 0) + fwd * 0.06), Vector3(0.12, 1.0, 0.12), Color(0.5, 0.52, 0.55))
+
+
+# ------------------------------------------------------------ marshal posts
+
+func _marshal_posts() -> void:
+	if track.style == "city":
+		return
+	var n := track.size()
+	var every := int(480.0 / Track.SPACING)
+	for i in range(every / 2, n, every):
+		var side := 1.0 if (i / every) % 2 == 0 else -1.0
+		var out: Vector3 = track.rights[i] * side
+		var p: Vector3 = track.points[i] + out * (track.wall_offset + 3.0)
+		var basis := Basis.looking_at(-track.tangents[i], Vector3.UP)
+		var xf := Transform3D(basis, p + Vector3(0, 1.3, 0))
+		if not track.footprint_clear(Transform3D(basis, p), Vector3(3.0, 3.0, 3.0), 1.0):
+			continue
+		_box("concrete", xf, Vector3(2.4, 2.6, 2.6), Color(0.93, 0.93, 0.92))
+		_box("concrete", Transform3D(basis, p + Vector3(0, 2.7, 0)), Vector3(2.8, 0.2, 3.0), Color(0.95, 0.45, 0.08))
+		_box("glass", Transform3D(basis, p + Vector3(0, 1.7, 0) - out * 1.22), Vector3(0.05, 0.8, 1.8), Color(0.2, 0.3, 0.38))
+		# Flag pole with a yellow flag.
+		var pole := p - out * 1.6 + basis.z * 1.2
+		_box("metal", Transform3D(Basis(), pole + Vector3(0, 1.6, 0)), Vector3(0.06, 3.2, 0.06), Color(0.7, 0.7, 0.72))
+		_box("concrete", Transform3D(basis, pole + Vector3(0, 2.8, 0) - basis.z * 0.45), Vector3(0.02, 0.6, 0.85), Color(1.0, 0.85, 0.1))
+		_reserve(Transform3D(basis, p), Vector3(4.0, 4.0, 4.0))
+
+
+# ------------------------------------------------------------ TV towers
+
+func _tv_towers() -> void:
+	var n := track.size()
+	var placed := 0
+	for frac in [0.18, 0.45, 0.72]:
+		var i := int(n * frac)
+		var side := 1.0 if track.curv[i] > 0.0 else -1.0
+		var out: Vector3 = track.rights[i] * side
+		var p: Vector3 = track.points[i] + out * (track.wall_offset + 7.0)
+		var basis := Basis.looking_at(-out, Vector3.UP)
+		if not track.footprint_clear(Transform3D(basis, p), Vector3(4.0, 10.0, 4.0), 2.0):
+			continue
+		var steel := Color(0.62, 0.64, 0.68)
+		for cx in [-1.0, 1.0]:
+			for cz in [-1.0, 1.0]:
+				_box("metal", Transform3D(basis, p + basis.x * cx * 1.1 + basis.z * cz * 1.1 + Vector3(0, 4.0, 0)), Vector3(0.12, 8.0, 0.12), steel)
+		for y in [2.0, 4.0, 6.0]:
+			_box("metal", Transform3D(basis, p + Vector3(0, y, 0)), Vector3(2.4, 0.08, 2.4), steel)
+		_box("concrete", Transform3D(basis, p + Vector3(0, 8.1, 0)), Vector3(2.8, 0.2, 2.8), Color(0.35, 0.36, 0.4))
+		# The camera and operator's umbrella.
+		_box("metal", Transform3D(basis, p + Vector3(0, 8.6, 0) - out * 0.6), Vector3(0.5, 0.5, 1.0), Color(0.1, 0.1, 0.12))
+		_box("concrete", Transform3D(basis, p + Vector3(0, 10.0, 0)), Vector3(2.0, 0.1, 2.0), UIStyle.APEX)
+		_reserve(Transform3D(basis, p), Vector3(5.0, 10.0, 5.0))
+		placed += 1
+
+
+# ------------------------------------------------------------ flags
+
+## Flagpoles behind the barrier along the main straight.
+func _flagpoles() -> void:
+	var n := track.size()
+	var colours := [Color(0.85, 0.1, 0.1), Color(0.1, 0.25, 0.65), Color(0.95, 0.95, 0.95), Color(0.1, 0.55, 0.25),
+		Color(0.95, 0.75, 0.1), UIStyle.APEX]
+	var side := 1.0
+	if track.style == "city":
+		return
+	var k := 0
+	for back in range(-60, 0, 6):
+		var i := posmod(back, n)
+		var out: Vector3 = track.rights[i] * side
+		var p: Vector3 = track.points[i] + out * (track.wall_offset + 1.4)
+		if not track.footprint_clear(Transform3D(Basis(), p), Vector3(1, 1, 1), 1.0):
+			continue
+		_box("metal", Transform3D(Basis(), p + Vector3(0, 4.5, 0)), Vector3(0.08, 9.0, 0.08), Color(0.8, 0.8, 0.82))
+		var fwd: Vector3 = track.tangents[i]
+		var col: Color = colours[k % colours.size()]
+		var top := p + Vector3(0, 8.6, 0)
+		# Two-panel flag with a slight wave.
+		_quad("concrete", top, top + fwd * 0.9 + Vector3(0, 0.08, 0), top + fwd * 0.9 + Vector3(0, -0.9, 0), top + Vector3(0, -1.0, 0), col)
+		_quad("concrete", top + fwd * 0.9 + Vector3(0, 0.08, 0), top + fwd * 1.8 + out * 0.15, top + fwd * 1.8 + out * 0.15 + Vector3(0, -1.0, 0), top + fwd * 0.9 + Vector3(0, -0.9, 0), col.darkened(0.15))
+		k += 1
