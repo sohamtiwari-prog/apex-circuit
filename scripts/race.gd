@@ -64,6 +64,9 @@ var _assist_profile := PackedFloat32Array()
 var _assist_driver: AIDriver = null
 var _wedged := 0.0
 var _tilt := 0.0
+var tyre_fx: TyreFX
+var _graphics_high := true
+var line_guide: LineGuide
 var recoveries := 0               # automatic car recoveries (stats/tests)
 const STEER_ASSIST_BLEND := 0.35
 var autopilot: AIDriver = null     # when set, the AI drives the player's car (tests/demo)
@@ -78,11 +81,11 @@ func _ready() -> void:
 	total_laps = int(save.get_setting("laps"))
 	lap_key = save.lap_key(track_id, car_id)
 	DisplayServer.screen_set_keep_on(true)
-	_build_environment()
 
 	track = Track.new()
 	add_child(track)
 	track.build(track_id)
+	_build_environment()
 	offtrack_limit = track.road_half + Track.KERB_W + 0.6     # all four wheels off
 	invalid_limit = track.road_half + Track.KERB_W + 2.5
 
@@ -111,6 +114,17 @@ func _ready() -> void:
 	cam.set_mode(int(save.get_setting("camera")))
 	cam.current = true
 
+	tyre_fx = TyreFX.new()
+	add_child(tyre_fx)
+	tyre_fx.camera = cam
+	var all_cars: Array = []
+	for e in entrants:
+		all_cars.append(e.car)
+	tyre_fx.setup(all_cars)
+	line_guide = LineGuide.new()
+	add_child(line_guide)
+	_apply_assists()
+
 	hud = Hud.new()
 	add_child(hud)
 	hud.restart_requested.connect(_restart)
@@ -120,6 +134,7 @@ func _ready() -> void:
 	hud.menu_requested.connect(_quit_to_menu)
 	hud.set_camera_name(cam.mode_name())
 	hud.set_race_mode(mode == "race", total_laps)
+	hud.set_track(track.points)
 
 	_restart()
 
@@ -161,39 +176,19 @@ func _spawn_opponents(player_team: int) -> void:
 
 
 func _build_environment() -> void:
-	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.22, 0.45, 0.82)
-	sky_mat.sky_horizon_color = Color(0.68, 0.78, 0.9)
-	sky_mat.ground_bottom_color = Color(0.2, 0.25, 0.18)
-	sky_mat.ground_horizon_color = Color(0.55, 0.62, 0.55)
-	var sky := Sky.new()
-	sky.sky_material = sky_mat
-	var env := Environment.new()
-	env.background_mode = Environment.BG_SKY
-	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.55
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.fog_enabled = true
-	env.fog_light_color = Color(0.7, 0.78, 0.88)
-	env.fog_density = 0.0006
-	var we := WorldEnvironment.new()
-	we.environment = env
-	add_child(we)
-
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-52, 35, 0)
-	sun.light_energy = 1.25
-	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 90.0
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	add_child(sun)
+	Look.build(self, track.style)
 
 
 func _apply_assists() -> void:
 	if car != null:
 		car.traction_control = bool(save.get_setting("traction_control"))
 		car.abs_enabled = bool(save.get_setting("abs"))
+	if line_guide != null:
+		line_guide.visible = bool(save.get_setting("racing_line"))
+	var high := String(save.get_setting("graphics")) != "saver"
+	if high != _graphics_high:
+		_graphics_high = high
+		Look.apply_quality(self, high)
 
 
 # ------------------------------------------------------------ session
@@ -404,13 +399,12 @@ func _physics_process(delta: float) -> void:
 	if _tick % 6 == 0 or state == State.FINISHED:
 		_update_positions()
 
-	# Grass: less grip and more rolling drag per wheel that's on it (kerbs
-	# count as track). Going well wide invalidates a time-trial lap.
+	# Grass and gravel: less grip and more rolling drag per wheel that's on
+	# them (kerbs and asphalt run-off count as track). Going well wide invalidates a time-trial lap.
 	if _tick % 2 == 0:
-		var edge := track.road_half + Track.KERB_W
 		for e in entrants:
 			for w in e.car.wheels:
-				w.on_grass = absf(track.lateral(w.global_position, e.idx)) > edge
+				w.surface = track.surface_at(e.idx, track.lateral(w.global_position, e.idx))
 	var lat := absf(track.lateral(car.global_position, player.idx))
 	if mode == "time_trial" and state == State.RACING and lat > invalid_limit and lap_valid:
 		lap_valid = false
@@ -423,6 +417,11 @@ func _physics_process(delta: float) -> void:
 	if state != State.GRID:
 		save.add_distance(absf(car.forward_speed()) * delta)
 
+	if line_guide != null and line_guide.visible:
+		if _assist_profile.size() != track.size():
+			_assist_profile = track.speed_profile(car.spec)
+		line_guide.update_guide(car, track, _assist_profile, player.idx, delta)
+
 	if _tick % 3 == 0:
 		_update_hud()
 
@@ -432,8 +431,10 @@ func _update_lights(delta: float) -> void:
 	var lit := clampi(int(lights_time), 0, 5)
 	if lights_time < lights_out_at:
 		hud.show_lights(lit, false)
+		track.trackside.set_lights(lit)
 	else:
 		hud.show_lights(0, true)
+		track.trackside.set_lights(0)
 		state = State.RACING
 		race_time = 0.0
 		for e in entrants:
@@ -547,6 +548,10 @@ func _show_results() -> void:
 	var ordered := entrants.duplicate()
 	ordered.sort_custom(_by_position)
 	var winner: Entrant = ordered[0]
+	var fastest: Entrant = null
+	for e in ordered:
+		if e.best_lap > 0.0 and (fastest == null or e.best_lap < fastest.best_lap):
+			fastest = e
 	for e in ordered:
 		var gap := ""
 		if e == winner:
@@ -555,9 +560,10 @@ func _show_results() -> void:
 			gap = "+%.3f" % (e.finish_time - winner.finish_time)
 		else:
 			var laps_down: int = winner.lap - e.lap
-			gap = "+%d lap%s" % [laps_down, "" if laps_down == 1 else "s"] if laps_down >= 1 else "running"
+			gap = "+%d lap%s" % [laps_down, "" if laps_down == 1 else "s"] if laps_down >= 1 else "Running"
 		rows.append({"pos": e.position, "name": e.name, "team": e.team, "gap": gap,
-			"best": Hud.fmt_time(e.best_lap) if e.best_lap > 0.0 else "-", "player": e.is_player})
+			"best": Hud.fmt_time(e.best_lap) if e.best_lap > 0.0 else "-", "player": e.is_player,
+			"color": e.car.spec["color"], "fastest": e == fastest})
 	hud.show_results(rows, func(): _restart(), func(): _quit_to_menu())
 
 
@@ -688,8 +694,13 @@ func _update_hud() -> void:
 	var shown_lap := mini(player.lap + 1, total_laps) if mode == "race" else player.lap + 1
 	hud.update_timing(shown_lap, lap_time, player.last_lap,
 		best_ms / 1000.0 if best_ms >= 0 else -1.0, lap_valid or mode == "race")
-	hud.update_speed(car.speed_kmh())
-	hud.update_engine(car.gear, car.rpm, float(car.spec["upshift_rpm"]), float(car.spec["redline"]))
+	hud.update_engine(car.gear, car.rpm, float(car.spec["upshift_rpm"]), float(car.spec["redline"]),
+		float(car.spec["idle_rpm"]), car.speed_kmh())
+	if _tick % 9 == 0:
+		var dots: Array = []
+		for e in entrants:
+			dots.append([e.car.global_position, e.car.spec["color"], e.is_player])
+		hud.update_map(dots)
 	if mode == "race" and _tick % 12 == 0:
 		var ordered := entrants.duplicate()
 		ordered.sort_custom(_by_position)
@@ -703,5 +714,5 @@ func _update_hud() -> void:
 					var ahead: Entrant = ordered[i - 1]
 					var v := maxf(e.car.forward_speed(), 15.0)
 					gap = "+%.1f" % ((ahead.progress - e.progress) / v)
-				rows.append({"pos": i + 1, "name": e.name, "gap": gap, "player": e.is_player})
+				rows.append({"pos": i + 1, "name": e.name, "gap": gap, "player": e.is_player, "color": e.car.spec["color"]})
 		hud.update_position(player.position, entrants.size(), rows)

@@ -46,9 +46,10 @@ every build is signed with the same key (`android_signing/`).
 
 - **Race:** up to 20 cars (choose 20, 12 or 6 in the menu), standing start
   with five red lights, 1/3/5/10 laps, Easy/Medium/Hard AI. You start
-  mid-grid. Live position, gaps and leaderboard; full results at the flag.
-  AI drivers follow a computed racing line, overtake when faster and hold
-  station when there is no room.
+  mid-grid. Timing tower with gaps, live circuit map, full classification
+  with fastest lap at the flag. AI drivers follow a computed racing line,
+  keep a safe braking gap, overtake only into free space and check their
+  mirrors, so a full grid races without piling up.
 - **Time trial:** you against the clock; best laps saved per car and track.
 
 ## Controls
@@ -59,13 +60,40 @@ every build is signed with the same key (`android_signing/`).
 | Gas | GAS pedal, bottom-right | GAS pedal, bottom-right |
 | Brake / reverse | BRAKE pedal, bottom-left | BRAKE pedal |
 
-**RESET** (top-right) puts the car back on the track. Pause (**II**) to switch
-steering mode, turn on auto-accelerate, invert tilt, change tilt sensitivity,
-or toggle traction control, ABS, brake assist and steering assist.
+**Reset** (top-right) puts the car back on the track. Pause (**II**) to switch
+steering mode, change tilt sensitivity, invert tilt, turn on auto-accelerate,
+toggle the assists and the racing-line guide, or switch graphics to battery saver.
 
 **Assists** (on by default, like RR3): brake assist brakes for you when you
-arrive at a corner too fast; steering assist blends in some racing-line
-steering, keeps you off the grass and recovers you if you get wedged.
+arrive at a corner too fast; steering assist adds a little racing-line
+steering while your own input is small and fades out as soon as you steer,
+so you can always use (or leave) the whole track.
+
+**Racing line** (optional): a guide painted on the road ahead, green where you
+can accelerate, yellow where you'll need to ease off, red where you must brake
+now for what's coming at your current speed.
+
+## Driving model
+
+Cars use their own physics (scripts/car.gd), not a built-in vehicle:
+raycast suspension with anti-roll bars (weight moves under braking and
+cornering), a Pacejka-style tyre that builds grip progressively, peaks and
+holds ~80% in a slide, a friction circle shared by steering and
+drive/brakes, aero drag and downforce, and an always-on stability control.
+Steering maps through the tyre curve, so 30% tilt gives about 30% of the
+cornering force at any speed. Grass costs grip and speed, gravel traps bog
+you down, asphalt run-off is safe. Traction control and ABS keep cornering
+grip first; switch them off and you can spin the rears or lock the fronts.
+
+## Look
+
+Procedural sky with clouds, filmic tonemapping and glow; rubbered-in racing
+line, mown grass, gravel traps and painted run-off; concrete walls with
+advertising boards, armco, tyre barriers and catch fencing; a start gantry
+whose lights run the start; pit lane and garages in team colours; grandstands
+with crowds; bridges; trees (broadleaf, conifer, palm); distant hills; city
+blocks with facades. Skid marks stay on the track and tyres smoke when they
+slide. The UI uses Saira Condensed (SIL Open Font License, `fonts/OFL.txt`).
 The camera button cycles chase, far chase and the car's onboard cameras
 (GP car: cockpit, T-cam, nose; GT: hood, bumper). On a computer: arrows/WASD, Space to brake,
 C for camera, R to reset, Esc to pause.
@@ -94,16 +122,24 @@ backup. Android's auto-backup is enabled too.
 ```
 scripts/
   menu.gd            main menu: car/track select, turntable preview
-  race.gd            session: grid, start lights, laps, positions, traffic, results
+  race.gd            session: grid, start lights, laps, positions, AI racecraft, results
   track.gd           circuit from data or control points: road mesh, walls, scenery
-  car.gd             VehicleBody3D driving model: gearbox, aero, brakes, TC/ABS
+  car.gd             driving physics: suspension, tyres, gearbox, aero, TC/ABS
+  car_wheel.gd       per-wheel suspension and tyre state
   car_specs.gd       every car's physics, gearing, sound and camera spec
   car_body.gd        car 3D models (lofted bodies, wings, liveries, wheels)
   mesh_kit.gd        procedural modelling: loft, tube, airfoil, lathe
   car_audio.gd       engine/tyre/wind sound synthesized in code
   ai_driver.gd       pure-pursuit steering + curvature speed planner
+  trackside.gd       barriers, fencing, ads, gantry, pits, grandstands, hills
+  look.gd            sky, lighting, post-processing per venue
+  tyre_fx.gd         skid marks and tyre smoke
+  line_guide.gd      racing-line guide
+  ui_style.gd        shared UI look (fonts, colours, panels, buttons)
+  rev_gauge.gd       rev arc / shift lights / gear / speed
+  mini_map.gd        live circuit map (also the menu track preview)
   race_camera.gd     chase / hood / bumper cameras
-  hud.gd             timing HUD and pause/settings menu
+  hud.gd             timing tower, lap timing, pause menu, classification
   touch_controls.gd  multi-touch pedals and steering buttons
   save_manager.gd    crash-safe profile saving (autoload "Save")
 tracks/              imported circuit centrelines (JSON)
@@ -118,6 +154,8 @@ tests/
   cars_test.gd       every car: 0-100, top speed, clean AI lap
   race_test.gd       a full 20-car race to the results screen
   perf_test.gd       simulation cost per grid size
+  edge_test.gd       no invisible walls: leaving and rejoining the track
+  handling_diag.gd   step-steer response, the numbers behind the handling
   car_showcase.gd    renders every car for visual review
 ```
 

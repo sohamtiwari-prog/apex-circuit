@@ -40,6 +40,7 @@ var wheels_on_grass := 0
 
 const STEER_SPEED := 3.4          # steering input travel per second (full lock in ~0.3 s)
 const GRASS_GRIP := 0.62
+const GRAVEL_GRIP := 0.5
 const STABILITY := 10.0           # 1/s, yaw damping from stability control
 const SLIP_SHAPE := 1.65          # Pacejka C: progressive before the peak, ~80% grip in a slide
 
@@ -373,8 +374,8 @@ func _simulate_wheels(delta: float, drive_force: float, brake_force: float) -> v
 		var vx := cv.dot(fwd)
 		var vy := cv.dot(side)
 		var mu := _mu_f if front else _mu_r
-		if w.on_grass:
-			mu *= GRASS_GRIP
+		if w.surface != 0:
+			mu *= GRASS_GRIP if w.surface == 1 else GRAVEL_GRIP
 			wheels_on_grass += 1
 		var cap := mu * w.load
 
@@ -418,7 +419,11 @@ func _simulate_wheels(delta: float, drive_force: float, brake_force: float) -> v
 			fx *= cap / total
 			fy *= cap / total
 		# Rolling resistance, much more on grass.
-		var roll := 0.012 if not w.on_grass else 0.07 + 0.0018 * absf(vx)
+		var roll := 0.012
+		if w.surface == 1:
+			roll = 0.07 + 0.0018 * absf(vx)
+		elif w.surface == 2:
+			roll = 0.2 + 0.004 * absf(vx)          # gravel traps bog you down
 		fx -= clampf(vx * 4.0, -1.0, 1.0) * w.load * roll
 
 		w.utilisation = maxf(absf(alpha) * b / tan(PI / (2.0 * SLIP_SHAPE)), demand if not assisted else 0.0)

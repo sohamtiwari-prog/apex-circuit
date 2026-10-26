@@ -47,6 +47,8 @@ const _DEFAULTS := {
 		"abs": true,
 		"brake_assist": true,
 		"steer_assist": true,
+		"racing_line": false,
+		"graphics": "high",         # "high" or "saver"
 		"car": "gp26",
 		"team": 0,
 		"track": "silvermoor",

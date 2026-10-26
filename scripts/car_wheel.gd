@@ -14,7 +14,7 @@ var in_contact := false
 var contact_point := Vector3.ZERO
 var contact_normal := Vector3.UP
 var load := 0.0                   # N, tyre normal force
-var on_grass := false
+var surface := 0                  # 0 track, 1 grass, 2 gravel (set by race logic)
 
 # Tyre
 var slip_angle := 0.0             # rad

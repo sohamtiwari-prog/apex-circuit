@@ -94,34 +94,49 @@ func _update_state() -> void:
 
 
 func _draw() -> void:
-	var font := ThemeDB.fallback_font
 	var held := {}
 	for k in _touches:
 		held[_touches[k]] = true
 	for key in _regions:
 		var r: Rect2 = _regions[key]
 		var on: bool = held.has(key)
-		var base := Color(1, 1, 1, 0.16)
+		var accent := UIStyle.PAPER
 		if key == "gas":
-			base = Color(0.2, 0.85, 0.35, 0.22)
+			accent = UIStyle.GREEN
 		elif key == "brake":
-			base = Color(0.95, 0.25, 0.2, 0.22)
+			accent = UIStyle.RED
+		var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.3 if not on else 0.7), true, Color(0, 0, 0, 0), 8)
+		sb.border_color = Color(accent, 0.9 if on else 0.55)
+		sb.border_width_bottom = 6
+		sb.border_width_left = 2
+		sb.border_width_right = 2
+		sb.border_width_top = 2
 		if on:
-			base.a = 0.5
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = base
-		sb.set_corner_radius_all(int(r.size.x * 0.18))
-		sb.border_color = Color(1, 1, 1, 0.45)
-		sb.set_border_width_all(3)
+			sb.bg_color = Color(accent, 0.38)
 		draw_style_box(sb, r)
 		var c := r.get_center()
-		var w := r.size.x * 0.22
-		if key == "left":
-			draw_colored_polygon(PackedVector2Array([c + Vector2(-w, 0), c + Vector2(w * 0.7, -w), c + Vector2(w * 0.7, w)]), Color(1, 1, 1, 0.85))
-		elif key == "right":
-			draw_colored_polygon(PackedVector2Array([c + Vector2(w, 0), c + Vector2(-w * 0.7, -w), c + Vector2(-w * 0.7, w)]), Color(1, 1, 1, 0.85))
-		else:
-			var text := "GAS" if key == "gas" else "BRAKE"
-			var fs := int(r.size.x * 0.17)
-			var ts := font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, fs)
-			draw_string(font, c + Vector2(-ts.x * 0.5, fs * 0.35), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, 0.9))
+		var w := r.size.x * 0.2
+		var ink := Color(UIStyle.PAPER, 0.92 if on else 0.75)
+		match key:
+			"left":
+				draw_colored_polygon(PackedVector2Array([c + Vector2(-w, 0), c + Vector2(w * 0.7, -w), c + Vector2(w * 0.7, w)]), ink)
+			"right":
+				draw_colored_polygon(PackedVector2Array([c + Vector2(w, 0), c + Vector2(-w * 0.7, -w), c + Vector2(-w * 0.7, w)]), ink)
+			"gas":
+				# Three forward chevrons.
+				for k in range(3):
+					var y := c.y + w * 0.9 - k * w * 0.75
+					draw_polyline(PackedVector2Array([Vector2(c.x - w * 0.8, y), Vector2(c.x, y - w * 0.55), Vector2(c.x + w * 0.8, y)]), Color(ink, 0.45 + k * 0.25), 7.0, true)
+				_caption("Gas", r, ink)
+			"brake":
+				# Two bars, like a pedal face.
+				draw_rect(Rect2(c + Vector2(-w, -w * 0.75), Vector2(w * 2.0, w * 0.4)), ink)
+				draw_rect(Rect2(c + Vector2(-w, -w * 0.05), Vector2(w * 2.0, w * 0.4)), ink)
+				_caption("Brake", r, ink)
+
+
+func _caption(text: String, r: Rect2, col: Color) -> void:
+	var f := UIStyle.font("bold", true)
+	var fs := int(clampf(r.size.x * 0.14, 18.0, 30.0))
+	var ts := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+	draw_string(f, Vector2(r.get_center().x - ts.x * 0.5, r.end.y - fs * 0.6), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)

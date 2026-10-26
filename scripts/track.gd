@@ -62,6 +62,7 @@ var _profiles := {}
 ## Footprints of every large scenery object placed: [{"xf": Transform3D, "size": Vector3}]
 ## (unscaled transform, box size). Used to keep scenery off the road.
 var scenery_boxes: Array = []
+var trackside: Trackside
 
 
 static func catalog_entry(id: String) -> Dictionary:
@@ -90,10 +91,14 @@ func build(id: String = "kestrel_park") -> void:
 		_load_file("res://tracks/%s.json" % id)
 	_derive()
 	_derive_line()
+	_derive_runoff()
 	_build_grid()
 	_build_ground()
 	_build_road()
 	_build_walls()
+	trackside = Trackside.new()
+	add_child(trackside)
+	trackside.build(self)
 	_build_scenery()
 
 
@@ -203,6 +208,26 @@ func _load_file(path: String) -> void:
 		line_margin = float(data.get("line_margin", 1.35))
 
 
+## Centreline of a catalog track without building anything (menu maps).
+static func outline(id: String) -> PackedVector3Array:
+	var t := Track.new()
+	if id == "kestrel_park":
+		t._sample_control(KESTREL_LAYOUT)
+	else:
+		t._load_file("res://tracks/%s.json" % id)
+	var pts := t.points
+	t.free()
+	return pts
+
+
+## Track length in metres from its outline.
+static func outline_length(pts: PackedVector3Array) -> float:
+	var total := 0.0
+	for i in range(pts.size()):
+		total += pts[i].distance_to(pts[(i + 1) % pts.size()])
+	return total
+
+
 func _sample_control(layout: Array) -> void:
 	var curve := Curve3D.new()
 	curve.bake_interval = SPACING
@@ -279,16 +304,28 @@ func _ground_color() -> Color:
 		"city":
 			return Color(0.36, 0.36, 0.38)
 		"forest":
-			return Color(0.17, 0.36, 0.11)
-	return Color(0.2, 0.42, 0.13)
+			return Color(0.13, 0.28, 0.09)
+	return Color(0.16, 0.33, 0.1)
 
 
 func _build_ground() -> void:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = _ground_color()
-	mat.albedo_texture = _noise_texture(0.05, Color(0.7, 0.72, 0.6), Color(1, 1, 1))
-	mat.uv1_scale = Vector3(500, 500, 1)
-	mat.roughness = 1.0
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/ground.gdshader")
+	var base := _ground_color()
+	mat.set_shader_parameter("base_color", base)
+	mat.set_shader_parameter("noise_tex", _noise_texture(0.02, Color(0, 0, 0), Color(1, 1, 1)))
+	match style:
+		"desert":
+			mat.set_shader_parameter("alt_color", base.lightened(0.04))
+			mat.set_shader_parameter("stripe_strength", 0.0)
+			mat.set_shader_parameter("far_color", Color(0.82, 0.7, 0.52))
+		"city":
+			mat.set_shader_parameter("alt_color", base)
+			mat.set_shader_parameter("stripe_strength", 0.0)
+			mat.set_shader_parameter("far_color", base)
+		_:
+			mat.set_shader_parameter("alt_color", base.lightened(0.09))
+			mat.set_shader_parameter("far_color", base.lerp(Color(0.45, 0.55, 0.5), 0.35))
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(4000, 4000)
 	var mi := MeshInstance3D.new()
@@ -342,15 +379,84 @@ func _band(st: SurfaceTool, faces: PackedVector3Array, i: int, j: int,
 	var p01 := _pt(i, j, t0, off1, dy1)
 	var p10 := _pt(i, j, t1, off0, dy0)
 	var p11 := _pt(i, j, t1, off1, dy1)
+	var l0: float = lerpf(line_offset[i], line_offset[j], t0) if line_offset.size() == points.size() else 0.0
+	var l1: float = lerpf(line_offset[i], line_offset[j], t1) if line_offset.size() == points.size() else 0.0
 	var verts := [p00, p10, p01, p01, p10, p11]
 	var uvs := [Vector2(off0 / 8.0, v0), Vector2(off0 / 8.0, v1), Vector2(off1 / 8.0, v0),
 		Vector2(off1 / 8.0, v0), Vector2(off0 / 8.0, v1), Vector2(off1 / 8.0, v1)]
+	var uv2s := [Vector2(off0, l0), Vector2(off0, l1), Vector2(off1, l0),
+		Vector2(off1, l0), Vector2(off0, l1), Vector2(off1, l1)]
 	for k in range(6):
 		st.set_color(col)
 		st.set_normal(Vector3.UP)
 		st.set_uv(uvs[k])
+		st.set_uv2(uv2s[k])
 		st.add_vertex(verts[k])
 		faces.append(verts[k])
+
+
+# ------------------------------------------------------------ run-off
+
+const RUNOFF_NONE := 0
+const RUNOFF_GRAVEL := 1
+const RUNOFF_ASPHALT := 2
+
+## Per sample, for the left (index 0) and right (index 1) side: what lies
+## beyond the kerb (grass, gravel trap or asphalt run-off) and how wide.
+var runoff_type: Array[PackedByteArray] = [PackedByteArray(), PackedByteArray()]
+var runoff_width := 0.0
+
+
+func _derive_runoff() -> void:
+	var n := points.size()
+	runoff_type = [PackedByteArray(), PackedByteArray()]
+	for side in range(2):
+		runoff_type[side].resize(n)
+		runoff_type[side].fill(RUNOFF_NONE)
+	runoff_width = clampf(wall_offset - road_half - KERB_W - 3.0, 0.0, 16.0)
+	if style == "city" or runoff_width < 3.0:
+		return
+	var gravel_share := 0.3
+	if style == "forest":
+		gravel_share = 0.65
+	elif style == "desert":
+		gravel_share = 0.15
+	# Corners: runs of samples tighter than ~350 m radius.
+	var i := 0
+	var corner := 0
+	while i < n:
+		if absf(curv[i]) < 1.0 / 350.0:
+			i += 1
+			continue
+		var start := i
+		var sum := 0.0
+		while i < n and absf(curv[i]) >= 1.0 / 350.0:
+			sum += curv[i]
+			i += 1
+		var outside := 1 if sum > 0.0 else 0          # left-hander -> outside is the right
+		var h := fposmod(sin(float(corner) * 12.9898 + float(n) * 0.37) * 43758.5453, 1.0)
+		var kind := RUNOFF_GRAVEL if h < gravel_share else RUNOFF_ASPHALT
+		# From the braking zone to well past the exit, where cars run wide.
+		for k in range(start - 20, i + 45):
+			runoff_type[outside][posmod(k, n)] = kind
+		for k in range(start - 5, i + 10):
+			var inside := 1 - outside
+			if runoff_type[inside][posmod(k, n)] == RUNOFF_NONE:
+				runoff_type[inside][posmod(k, n)] = RUNOFF_ASPHALT if kind == RUNOFF_ASPHALT else RUNOFF_NONE
+		corner += 1
+
+
+## Surface under a point: 0 track (asphalt/kerb/run-off asphalt), 1 grass,
+## 2 gravel. Used by the car physics through race.gd.
+func surface_at(idx: int, lat: float) -> int:
+	var a := absf(lat)
+	if a <= road_half + KERB_W + 1.0:
+		return 0
+	if runoff_type[0].size() == points.size():
+		var kind := runoff_type[1 if lat > 0.0 else 0][idx]
+		if kind != RUNOFF_NONE and a <= road_half + KERB_W + 1.0 + runoff_width:
+			return 2 if kind == RUNOFF_GRAVEL else 0
+	return 1
 
 
 func _build_road() -> void:
@@ -360,27 +466,64 @@ func _build_road() -> void:
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var faces := PackedVector3Array()
 
-	var asphalt := Color(0.2, 0.2, 0.19)
-	var white := Color(0.93, 0.93, 0.93)
-	var red := Color(0.82, 0.12, 0.09)
-	var verge := _ground_color().lightened(0.06)
+	# Alpha = material code for the road shader.
+	var asphalt := Color(0.4, 0.4, 0.41, 1.0)
+	var white := Color(0.93, 0.93, 0.93, 0.0)
+	var red := Color(0.82, 0.12, 0.09, 0.0)
+	var verge := _ground_color().lightened(0.2)
+	verge.a = 0.0
 	if style == "city":
-		verge = Color(0.42, 0.42, 0.44)
-	var black := Color(0.06, 0.06, 0.06)
+		verge = Color(0.42, 0.42, 0.44, 0.0)
+	var black := Color(0.1, 0.1, 0.1, 0.0)
+	var gravel := Color(0.78, 0.69, 0.52, 0.66)
+	if style == "desert":
+		gravel = Color(0.86, 0.74, 0.55, 0.66)
+	var runoff := Color(0.47, 0.48, 0.5, 0.33)
+	var green_paint := Color(0.16, 0.5, 0.3, 0.0)
 	var h := road_half
+	var outer := h + KERB_W
+	var low := GROUND_Y + 0.012
 
 	for i in range(n):
 		var j := (i + 1) % n
 		var kc: Color = verge
 		if kerb[i]:
 			kc = red if int(cum[i] / 3.0) % 2 == 0 else white
-		_band(st, faces, i, j, -h - KERB_W, -h, kc)
+		_band(st, faces, i, j, -outer, -h, kc)
 		_band(st, faces, i, j, -h, -h + LINE_W, white)
 		_band(st, faces, i, j, h - LINE_W, h, white)
-		_band(st, faces, i, j, h, h + KERB_W, kc)
-		# Short ramps down to the grass, so rejoining never catches a step.
-		_band(st, faces, i, j, -h - KERB_W - 1.0, -h - KERB_W, verge, 0.0, 1.0, GROUND_Y + 0.01, 0.0)
-		_band(st, faces, i, j, h + KERB_W, h + KERB_W + 1.0, verge, 0.0, 1.0, 0.0, GROUND_Y + 0.01)
+		_band(st, faces, i, j, h, outer, kc)
+		for side in [-1.0, 1.0]:
+			var kind := RUNOFF_NONE
+			if runoff_type[0].size() == n:
+				kind = runoff_type[1 if side > 0.0 else 0][i]
+			var ramp_col: Color = verge
+			if kind == RUNOFF_ASPHALT:
+				ramp_col = green_paint
+			elif kind == RUNOFF_GRAVEL:
+				ramp_col = runoff
+			# Short ramp down to the surroundings, so rejoining never catches a step.
+			if side < 0.0:
+				_band(st, faces, i, j, -outer - 1.0, -outer, ramp_col, 0.0, 1.0, low, 0.0)
+			else:
+				_band(st, faces, i, j, outer, outer + 1.0, ramp_col, 0.0, 1.0, 0.0, low)
+			if kind != RUNOFF_NONE:
+				var a := outer + 1.0
+				var b := outer + 1.0 + runoff_width
+				var col: Color = gravel if kind == RUNOFF_GRAVEL else runoff
+				if kind == RUNOFF_ASPHALT:
+					# Painted strip next to the kerb, then plain run-off.
+					var stripe := 1.8
+					if side < 0.0:
+						_band(st, faces, i, j, -a - stripe, -a, green_paint, 0.0, 1.0, low, low)
+						_band(st, faces, i, j, -b, -a - stripe, col, 0.0, 1.0, low, low)
+					else:
+						_band(st, faces, i, j, a, a + stripe, green_paint, 0.0, 1.0, low, low)
+						_band(st, faces, i, j, a + stripe, b, col, 0.0, 1.0, low, low)
+				elif side < 0.0:
+					_band(st, faces, i, j, -b, -a, col, 0.0, 1.0, low, low)
+				else:
+					_band(st, faces, i, j, a, b, col, 0.0, 1.0, low, low)
 		if i == 0:
 			# Chequered start/finish line: 2 rows x 20 cells.
 			var cells := 20
@@ -393,12 +536,9 @@ func _build_road() -> void:
 		else:
 			_band(st, faces, i, j, -h + LINE_W, h - LINE_W, asphalt)
 
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.vertex_color_is_srgb = true
-	mat.albedo_texture = _noise_texture(0.35, Color(0.78, 0.78, 0.78), Color(1, 1, 1))
-	mat.roughness = 0.92
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/road.gdshader")
+	mat.set_shader_parameter("grain", _noise_texture(0.06, Color(0, 0, 0), Color(1, 1, 1)))
 
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
@@ -418,23 +558,14 @@ func _build_road() -> void:
 
 # ------------------------------------------------------------ walls
 
+## Invisible collision boxes along both barrier lines (the visible
+## barriers are drawn by Trackside).
 func _build_walls() -> void:
 	var n := points.size()
 	var step := 3
 	var body := StaticBody3D.new()
 	add_child(body)
-
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	var box := BoxMesh.new()
-	box.size = Vector3.ONE
-	mm.mesh = box
-
-	var xforms: Array[Transform3D] = []
-	var colors: Array[Color] = []
 	for side in [-1.0, 1.0]:
-		var count := 0
 		for i in range(0, n, step):
 			var j := (i + step) % n
 			var a: Vector3 = points[i] + rights[i] * wall_offset * side
@@ -448,34 +579,14 @@ func _build_walls() -> void:
 			var length := dir.length()
 			if length < 0.1:
 				continue
-			var fwd := dir / length
-			var basis := Basis.looking_at(-fwd, Vector3.UP)
+			var basis := Basis.looking_at(-dir / length, Vector3.UP)
 			var height := 1.1
-			var thick := 0.7
-			var center := mid + Vector3.UP * (GROUND_Y + height * 0.5)
-			var scaled := Basis(basis.x * thick, basis.y * height, basis.z * (length + 0.35))
-			xforms.append(Transform3D(scaled, center))
-			colors.append(Color(0.13, 0.35, 0.8) if count % 2 == 0 else Color(0.92, 0.92, 0.92))
-			count += 1
-
 			var cs := CollisionShape3D.new()
 			var shape := BoxShape3D.new()
-			shape.size = Vector3(thick, height + 0.6, length + 0.35)
+			shape.size = Vector3(0.7, height + 0.6, length + 0.35)
 			cs.shape = shape
-			cs.transform = Transform3D(basis, center + Vector3.UP * 0.3)
+			cs.transform = Transform3D(basis, mid + Vector3.UP * (GROUND_Y + height * 0.5 + 0.3))
 			body.add_child(cs)
-
-	mm.instance_count = xforms.size()
-	for k in range(xforms.size()):
-		mm.set_instance_transform(k, xforms[k])
-		mm.set_instance_color(k, colors[k])
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.8
-	var mmi := MultiMeshInstance3D.new()
-	mmi.multimesh = mm
-	mmi.material_override = mat
-	add_child(mmi)
 
 
 # ------------------------------------------------------------ scenery
@@ -492,48 +603,132 @@ func _build_scenery() -> void:
 		var p: Vector3 = points[i]
 		lo = Vector2(minf(lo.x, p.x), minf(lo.y, p.z))
 		hi = Vector2(maxf(hi.x, p.x), maxf(hi.y, p.z))
-	lo -= Vector2(160, 160)
-	hi += Vector2(160, 160)
+	lo -= Vector2(220, 220)
+	hi += Vector2(220, 220)
 
-	var trunk_mesh := CylinderMesh.new()
-	trunk_mesh.top_radius = 0.25
-	trunk_mesh.bottom_radius = 0.3
-	trunk_mesh.height = 2.4
-	trunk_mesh.radial_segments = 6
-	var crown_mesh := CylinderMesh.new()
-	crown_mesh.top_radius = 0.0
-	crown_mesh.bottom_radius = 2.4
-	crown_mesh.height = 6.5
-	crown_mesh.radial_segments = 8
-
-	var trunks: Array[Transform3D] = []
-	var crowns: Array[Transform3D] = []
-	var crown_cols: Array[Color] = []
-	var attempts := 1400
+	var kinds := {"broad": [], "conifer": [], "palm": []}
+	var tints := {"broad": [], "conifer": [], "palm": []}
+	var attempts := 1500
 	if style == "forest":
-		attempts = 3200
+		attempts = 3000
 	elif style == "desert":
-		attempts = 220
+		attempts = 260
 	for k in range(attempts):
 		var pos := Vector3(rng.randf_range(lo.x, hi.x), GROUND_Y, rng.randf_range(lo.y, hi.y))
-		if dist_to_centerline(pos, wall_offset + 12.0) < wall_offset + 9.0:
+		if dist_to_centerline(pos, wall_offset + 14.0) < wall_offset + 7.0:
 			continue
-		var s := rng.randf_range(0.8, 1.6)
-		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s))
-		trunks.append(Transform3D(b, pos + Vector3.UP * 1.2 * s))
-		crowns.append(Transform3D(b, pos + Vector3.UP * (2.4 + 3.25) * s))
-		var g := rng.randf_range(0.0, 1.0)
-		if style == "desert":
-			crown_cols.append(Color(0.35 + 0.1 * g, 0.42 + 0.1 * g, 0.18))
-		else:
-			crown_cols.append(Color(0.12 + 0.08 * g, 0.32 + 0.12 * g, 0.12 + 0.05 * g))
+		if _reserved(pos, 4.0):
+			continue
+		var kind := "broad"
+		match style:
+			"forest":
+				kind = "conifer" if rng.randf() < 0.75 else "broad"
+			"desert":
+				kind = "palm"
+			_:
+				kind = "broad" if rng.randf() < 0.7 else "conifer"
+		var sc := rng.randf_range(0.8, 1.45)
+		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc * rng.randf_range(0.9, 1.15), sc))
+		kinds[kind].append(Transform3D(b, pos))
+		var g := rng.randf()
+		tints[kind].append(Color(0.85 + 0.25 * g, 0.9 + 0.15 * g, 0.8 + 0.2 * rng.randf()))
+	for kind in kinds:
+		if kinds[kind].is_empty():
+			continue
+		_chunked_multimesh(_tree_mesh(kind), kinds[kind], tints[kind])
 
-	_multimesh(trunk_mesh, trunks, [], Color(0.36, 0.25, 0.16))
-	_multimesh(crown_mesh, crowns, crown_cols, Color.WHITE)
-	_build_grandstands()
+
+## True if pos is inside (or within margin of) any reserved scenery box.
+func _reserved(pos: Vector3, margin: float) -> bool:
+	for box in scenery_boxes:
+		var xf: Transform3D = box["xf"]
+		var size: Vector3 = box["size"]
+		var local := xf.affine_inverse() * pos
+		if absf(local.x) < size.x * 0.5 + margin and absf(local.z) < size.z * 0.5 + margin:
+			return true
+	return false
 
 
-func _multimesh(mesh: Mesh, xforms: Array[Transform3D], cols: Array, base: Color) -> void:
+static var _tree_cache := {}
+
+## Low-poly tree models: broadleaf, conifer, palm (vertex-coloured, ~150 tris).
+static func _tree_mesh(kind: String) -> ArrayMesh:
+	if _tree_cache.has(kind):
+		return _tree_cache[kind]
+	var st := MeshKit.new_tool()
+	var up := Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3.ZERO)   # lathe axis X -> Y
+	var bark := Color(0.33, 0.24, 0.16)
+	match kind:
+		"broad":
+			MeshKit.lathe(st, [Vector2(0.0, 0.32), Vector2(2.6, 0.22), Vector2(3.4, 0.12)], 6, bark, up)
+			var leaf := Color(0.2, 0.42, 0.14)
+			MeshKit.ellipsoid(st, Vector3(0, 4.6, 0), Vector3(2.6, 2.2, 2.6), 8, leaf)
+			MeshKit.ellipsoid(st, Vector3(1.2, 3.8, 0.6), Vector3(1.8, 1.6, 1.8), 7, leaf.darkened(0.12))
+			MeshKit.ellipsoid(st, Vector3(-1.0, 4.0, -0.9), Vector3(1.9, 1.7, 1.9), 7, leaf.lightened(0.06))
+			MeshKit.ellipsoid(st, Vector3(-0.2, 6.0, 0.3), Vector3(1.6, 1.4, 1.6), 7, leaf.lightened(0.12))
+		"conifer":
+			MeshKit.lathe(st, [Vector2(0.0, 0.25), Vector2(1.6, 0.18)], 6, bark, up)
+			var needle := Color(0.1, 0.26, 0.12)
+			for tier in range(4):
+				var y0 := 1.2 + tier * 2.0
+				var r := 2.6 - tier * 0.55
+				MeshKit.lathe(st, [Vector2(y0, r), Vector2(y0 + 0.3, r * 0.92), Vector2(y0 + 3.0, 0.05)], 8, needle.lightened(tier * 0.05), up)
+		"palm":
+			var path := []
+			for k in range(8):
+				var t := k / 7.0
+				path.append(Vector3(sin(t * 1.4) * 0.9, t * 7.5, 0))
+			MeshKit.tube(st, path, 0.22, 6, Color(0.45, 0.36, 0.24))
+			var crown: Vector3 = path[path.size() - 1]
+			var frond := Color(0.25, 0.42, 0.14)
+			for k in range(8):
+				var ang := TAU * k / 8.0
+				var dir := Vector3(cos(ang), 0, sin(ang))
+				var prev := crown
+				for seg in range(4):
+					var t := (seg + 1) / 4.0
+					var p2: Vector3 = crown + dir * (t * 3.6) + Vector3(0, 0.6 * t - 1.8 * t * t, 0)
+					var side := dir.cross(Vector3.UP) * (0.45 * (1.0 - t * 0.6))
+					MeshKit._quad(st, prev - side, p2 - side, p2 + side, prev + side, frond)
+					MeshKit._quad(st, prev + side, p2 + side, p2 - side, prev - side, frond.darkened(0.15))
+					prev = p2
+	var mesh := MeshKit.finish(st)
+	var mat := StandardMaterial3D.new()
+	mat.vertex_color_use_as_albedo = true
+	mat.vertex_color_is_srgb = true
+	mat.roughness = 0.95
+	mesh.surface_set_material(0, mat)
+	_tree_cache[kind] = mesh
+	return mesh
+
+
+## MultiMeshes grouped by 300 m cells, so distant groups can be culled.
+func _chunked_multimesh(mesh: Mesh, xforms: Array, cols: Array) -> void:
+	var cells := {}
+	for k in range(xforms.size()):
+		var p: Vector3 = xforms[k].origin
+		var key := Vector2i(int(floor(p.x / 300.0)), int(floor(p.z / 300.0)))
+		if not cells.has(key):
+			cells[key] = []
+		cells[key].append(k)
+	for key in cells:
+		var idxs: Array = cells[key]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.mesh = mesh
+		mm.instance_count = idxs.size()
+		for q in range(idxs.size()):
+			mm.set_instance_transform(q, xforms[idxs[q]])
+			mm.set_instance_color(q, cols[idxs[q]])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.visibility_range_end = 1100.0
+		mmi.visibility_range_end_margin = 100.0
+		add_child(mmi)
+
+
+func _multimesh(mesh: Mesh, xforms: Array[Transform3D], cols: Array, base: Color, material: Material = null) -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = not cols.is_empty()
@@ -549,54 +744,8 @@ func _multimesh(mesh: Mesh, xforms: Array[Transform3D], cols: Array, base: Color
 	mat.roughness = 0.95
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
-	mmi.material_override = mat
+	mmi.material_override = material if material != null else mat
 	add_child(mmi)
-
-
-func _build_grandstands() -> void:
-	var concrete := StandardMaterial3D.new()
-	concrete.albedo_color = Color(0.62, 0.62, 0.64)
-	var seats := StandardMaterial3D.new()
-	seats.albedo_color = Color(0.85, 0.32, 0.08)
-	var roof := StandardMaterial3D.new()
-	roof.albedo_color = Color(0.9, 0.9, 0.92)
-	# Two stands along the left of the main straight, plus one on the right.
-	# Each slides along the track until its whole footprint is clear of road.
-	for spec in [[25, -1.0], [55, -1.0], [40, 1.0]]:
-		var side: float = spec[1]
-		var idx := -1
-		for tries in range(0, 400, 5):
-			for sign_ in [1, -1]:
-				var cand: int = (int(spec[0]) + tries * sign_ + points.size()) % points.size()
-				var b0: Transform3D = pose_at(cand, GROUND_Y)
-				var o0: Vector3 = b0.origin + rights[cand] * side * (wall_offset + 9.0 + 6.4)
-				if footprint_clear(Transform3D(b0.basis, o0), Vector3(20.0, 10.0, 54.0), 2.0):
-					idx = cand
-					break
-			if idx >= 0:
-				break
-		if idx < 0:
-			continue
-		var base: Transform3D = pose_at(idx, GROUND_Y)
-		var out: Vector3 = rights[idx] * side
-		var origin: Vector3 = base.origin + out * (wall_offset + 9.0)
-		var basis: Basis = base.basis
-		scenery_boxes.append({"xf": Transform3D(basis, origin + out * 6.4), "size": Vector3(20.0, 10.0, 54.0)})
-		for tier in range(5):
-			var bm := BoxMesh.new()
-			bm.size = Vector3(4.0, 1.0 + tier * 1.0, 50.0)
-			var mi := MeshInstance3D.new()
-			mi.mesh = bm
-			mi.material_override = seats if tier % 2 == 0 else concrete
-			mi.transform = Transform3D(basis, origin + out * (tier * 3.2) + Vector3.UP * (0.5 + tier * 0.5))
-			add_child(mi)
-		var rm := BoxMesh.new()
-		rm.size = Vector3(18.0, 0.4, 52.0)
-		var r := MeshInstance3D.new()
-		r.mesh = rm
-		r.material_override = roof
-		r.transform = Transform3D(basis, origin + out * 7.0 + Vector3.UP * 8.5)
-		add_child(r)
 
 
 ## Street circuit: apartment blocks and hotels right behind the barriers.
@@ -617,15 +766,16 @@ func _build_city() -> void:
 			var p: Vector3 = points[i] + rights[i] * side * (wall_offset + 2.5 + depth * 0.5)
 			var b := Basis.looking_at(-tangents[i], Vector3.UP)
 			var foot := Transform3D(b, p)
-			if footprint_clear(foot, Vector3(depth, h, w), wall_offset - road_half - KERB_W + 1.5):
+			if footprint_clear(foot, Vector3(depth, h, w), wall_offset - road_half - KERB_W + 1.5) and not _reserved(p, maxf(w, depth) * 0.5):
 				xforms.append(Transform3D(Basis(b.x * depth, b.y * h, b.z * w), p + Vector3.UP * (GROUND_Y + h * 0.5)))
 				cols.append(palette[rng.randi() % palette.size()])
 				scenery_boxes.append({"xf": foot, "size": Vector3(depth, h, w)})
 			i += int(w / SPACING) + 1
 	var box := BoxMesh.new()
 	box.size = Vector3.ONE
-	_multimesh(box, xforms, cols, Color.WHITE)
-	_build_grandstands()
+	var facade := ShaderMaterial.new()
+	facade.shader = load("res://shaders/building.gdshader")
+	_multimesh(box, xforms, cols, Color.WHITE, facade)
 
 
 ## True if a box (unscaled transform + size) stays clear of the road and
