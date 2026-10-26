@@ -1,0 +1,76 @@
+extends SceneTree
+## Drag steering and assist levels.
+var failures: Array[String] = []
+func _initialize() -> void:
+	_run()
+func _check(ok: bool, msg: String) -> void:
+	print(("  PASS  " if ok else "  FAIL  ") + msg)
+	if not ok:
+		failures.append(msg)
+func _touch(t: Control, idx: int, pos: Vector2, pressed: bool) -> void:
+	var e := InputEventScreenTouch.new()
+	e.index = idx
+	e.position = pos
+	e.pressed = pressed
+	t._input(e)
+func _drag(t: Control, idx: int, pos: Vector2) -> void:
+	var e := InputEventScreenDrag.new()
+	e.index = idx
+	e.position = pos
+	t._input(e)
+func _run() -> void:
+	await process_frame
+	var save: Node = root.get_node("Save")
+	save.data = save.default_profile()
+	var st: Dictionary = save.data["settings"]
+	st["mode"] = "time_trial"; st["track"] = "silvermoor"; st["car"] = "gp26"
+	st["control_mode"] = "drag"; st["steer_assist"] = "off"; st["brake_assist"] = "off"
+	var race: Node = (load("res://scenes/race.tscn") as PackedScene).instantiate()
+	root.add_child(race)
+	for i in range(10):
+		await process_frame
+	var t: Control = race.hud.touch
+	_check(t.mode == "drag", "drag steering mode is active")
+	var sz: Vector2 = t.size
+	var r: float = t.drag_range()
+	var p0 := Vector2(sz.x * 0.2, sz.y * 0.75)
+	_touch(t, 0, p0, true)
+	_check(absf(t.steer) < 0.001, "touching down doesn't steer (%.2f)" % t.steer)
+	_drag(t, 0, p0 + Vector2(r * 0.5, 0))
+	_check(absf(t.steer - 0.485) < 0.03, "half the travel = about half lock right (%.2f)" % t.steer)
+	_drag(t, 0, p0 + Vector2(-r * 0.25, 0))
+	_check(t.steer < -0.2 and t.steer > -0.3, "dragging back past the start steers left (%.2f)" % t.steer)
+	_drag(t, 0, p0 + Vector2(r * 2.0, 0))
+	_check(t.steer > 0.99, "full lock at the end of travel (%.2f)" % t.steer)
+	_drag(t, 0, p0 + Vector2(r * 1.0, 0))
+	_check(absf(t.steer) < 0.02, "slider follows the thumb: coming back by full travel centres (%.2f)" % t.steer)
+	# A second finger on the gas while steering.
+	var gas_rect: Rect2 = t._regions["gas"]
+	_touch(t, 1, gas_rect.get_center(), true)
+	_drag(t, 0, p0 + Vector2(r * 1.5, 0))
+	_check(t.gas > 0.9 and t.steer > 0.4, "steer and gas at the same time (gas %.1f, steer %.2f)" % [t.gas, t.steer])
+	# The car gets the input.
+	for i in range(3):
+		await physics_frame
+	_check(absf(race.car.steer_input - t.steer) < 0.001, "car receives the drag steering")
+	_touch(t, 0, p0, false)
+	_check(absf(t.steer) < 0.001, "letting go centres the steering")
+	_touch(t, 1, gas_rect.get_center(), false)
+	_check(t.gas < 0.01, "letting go of gas")
+	# A touch outside the steering area doesn't steer.
+	_touch(t, 2, Vector2(sz.x * 0.6, sz.y * 0.5), true)
+	_drag(t, 2, Vector2(sz.x * 0.6 + r, sz.y * 0.5))
+	_check(absf(t.steer) < 0.001, "touches in the middle of the screen don't steer")
+	_touch(t, 2, Vector2(sz.x * 0.6 + r, sz.y * 0.5), false)
+
+	# Assist levels and migration of old on/off saves.
+	_check(is_equal_approx(save.assist_level("steer_assist"), 0.0), "assist off = 0")
+	st["brake_assist"] = "moderate"
+	_check(is_equal_approx(save.assist_level("brake_assist"), 0.5), "moderate = 0.5")
+	var old: Dictionary = save.default_profile()
+	old["settings"]["brake_assist"] = true
+	old["settings"]["steer_assist"] = false
+	save._migrate(old)
+	_check(old["settings"]["brake_assist"] == "full" and old["settings"]["steer_assist"] == "off", "old on/off saves become full/off")
+	print("ALL CHECKS PASSED" if failures.is_empty() else "%d CHECK(S) FAILED" % failures.size())
+	quit(0 if failures.is_empty() else 1)

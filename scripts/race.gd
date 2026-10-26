@@ -304,7 +304,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func _read_input() -> void:
 	var t: TouchControls = hud.touch
 	var steer := 0.0
-	if save.get_setting("control_mode") == "tilt":
+	var control := String(save.get_setting("control_mode"))
+	if control == "tilt":
 		var acc := Input.get_accelerometer()
 		# In landscape, gravity along the screen's x axis = steering-wheel roll.
 		# Full lock at roughly 30 degrees of tilt.
@@ -334,29 +335,35 @@ func _read_input() -> void:
 	# Steering assist (like RR3's): adds a little racing-line steering while
 	# your own input is small, and fades out completely as soon as you steer
 	# yourself, so it never holds you back from using the whole track (or
-	# leaving it). No invisible walls.
-	if bool(save.get_setting("steer_assist")):
+	# leaving it). No invisible walls. Moderate = half the help.
+	var steer_help: float = save.assist_level("steer_assist")
+	if steer_help > 0.0:
 		if _assist_driver == null:
 			_assist_driver = AIDriver.new()
-		var share := STEER_ASSIST_BLEND * clampf(1.0 - absf(steer) * 1.6, 0.0, 1.0)
+		var share := STEER_ASSIST_BLEND * steer_help * clampf(1.0 - absf(steer) * 1.6, 0.0, 1.0)
 		if share > 0.0:
 			steer = lerpf(steer, _assist_driver.line_steer(car, track, player.idx), share)
 
 	# Brake assist: brakes for you when arriving at a corner too fast.
-	if bool(save.get_setting("brake_assist")) and state == State.RACING:
+	# Full: brakes to the ideal corner speed. Moderate: only steps in when
+	# you're clearly too fast, and more gently, so late braking is yours.
+	var brake_help: float = save.assist_level("brake_assist")
+	if brake_help > 0.0 and state == State.RACING:
 		if _assist_profile.size() != track.size():
 			_assist_profile = track.speed_profile(car.spec)
 		var v := car.forward_speed()
 		var ahead := (player.idx + 3 + int(absf(v) * 0.05)) % track.size()
-		var target: float = _assist_profile[ahead] * 1.04
-		if v > target + 1.0:
-			var assist := clampf((v - target) / 6.0, 0.0, 1.0)
+		var full := brake_help >= 1.0
+		var target: float = _assist_profile[ahead] * (1.04 if full else 1.12)
+		var margin := 1.0 if full else 2.5
+		if v > target + margin:
+			var assist := clampf((v - target) / (6.0 if full else 10.0), 0.0, 1.0 if full else 0.6)
 			brk = maxf(brk, assist)
 			gas = minf(gas, 1.0 - assist)
 
 	# Wedged against a wall with the throttle down: recover automatically
 	# when assists are on (otherwise the RESET button is there).
-	if bool(save.get_setting("steer_assist")) and state == State.RACING and gas > 0.5 and absf(car.forward_speed()) < 1.0:
+	if steer_help > 0.0 and state == State.RACING and gas > 0.5 and absf(car.forward_speed()) < 1.0:
 		_wedged += get_physics_process_delta_time()
 		if _wedged > 3.0:
 			_wedged = 0.0

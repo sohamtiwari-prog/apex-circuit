@@ -54,20 +54,26 @@ every build is signed with the same key (`android_signing/`).
 
 ## Controls
 
-| | Tilt mode (default) | Button mode |
-|---|---|---|
-| Steer | Tilt the phone like a steering wheel | ◀ ▶ buttons, bottom-left |
-| Gas | GAS pedal, bottom-right | GAS pedal, bottom-right |
-| Brake / reverse | BRAKE pedal, bottom-left | BRAKE pedal |
+| | Tilt (default) | Drag | Buttons |
+|---|---|---|---|
+| Steer | Tilt the phone like a steering wheel | Put your left thumb anywhere in the lower left and slide | ◀ ▶ buttons, bottom-left |
+| Gas | GAS pedal, bottom-right | GAS, far right | GAS, far right |
+| Brake / reverse | BRAKE pedal, bottom-left | BRAKE, next to GAS | BRAKE, next to GAS |
+
+Drag steering is a floating slider: wherever your thumb lands is straight
+ahead, it follows your thumb past full lock, and it centres when you let go.
+Steering sensitivity (pause menu) sets how far you slide (or tilt) for full lock.
 
 **Reset** (top-right) puts the car back on the track. Pause (**II**) to switch
 steering mode, change tilt sensitivity, invert tilt, turn on auto-accelerate,
 toggle the assists and the racing-line guide, or switch graphics to battery saver.
 
-**Assists** (on by default, like RR3): brake assist brakes for you when you
-arrive at a corner too fast; steering assist adds a little racing-line
-steering while your own input is small and fades out as soon as you steer,
-so you can always use (or leave) the whole track.
+**Assists** (Full by default, like RR3; each can be Off, Moderate or Full):
+brake assist brakes for you when you arrive at a corner too fast (Moderate
+only steps in when you're clearly too fast, and more gently); steering assist
+adds a little racing-line steering while your own input is small and fades
+out as soon as you steer (Moderate adds half as much), so you can always use
+(or leave) the whole track.
 
 **Racing line** (optional): a guide painted on the road ahead, green where you
 can accelerate, yellow where you'll need to ease off, red where you must brake

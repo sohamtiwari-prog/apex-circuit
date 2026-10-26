@@ -15,13 +15,13 @@ func _check(ok: bool, msg: String) -> void:
 		failures.append(msg)
 
 
-func _lap(track_id: String, car_id: String, assists: bool) -> Array:
+func _lap(track_id: String, car_id: String, level: String) -> Array:
 	var save: Node = root.get_node("Save")
 	save.data = save.default_profile()
 	var st: Dictionary = save.data["settings"]
 	st["mode"] = "time_trial"; st["track"] = track_id; st["car"] = car_id
 	st["control_mode"] = "buttons"
-	st["brake_assist"] = assists; st["steer_assist"] = assists
+	st["brake_assist"] = level; st["steer_assist"] = level
 	var race: Node = (load("res://scenes/race.tscn") as PackedScene).instantiate()
 	root.add_child(race)
 	for i in range(120 * 7):
@@ -69,11 +69,14 @@ func _run() -> void:
 		for a in OS.get_cmdline_user_args():
 			specs.append(Array(a.split(",")))
 	for spec in specs:
-		var with_assist: Array = await _lap(spec[0], spec[1], true)
-		var without: Array = await _lap(spec[0], spec[1], false)
-		print("%-11s %-9s assists ON: lap %s, %.0f%% off road | OFF: lap %s, %.0f%% off road" % [spec[0], spec[1],
+		var with_assist: Array = await _lap(spec[0], spec[1], "full")
+		var moderate: Array = await _lap(spec[0], spec[1], "moderate")
+		var without: Array = await _lap(spec[0], spec[1], "off")
+		print("%-11s %-9s FULL: lap %s, %.0f%% off road | MODERATE: lap %s, %.0f%% off | OFF: lap %s, %.0f%% off" % [spec[0], spec[1],
 			"done in %.0fs" % with_assist[2] if with_assist[0] else "NOT finished", with_assist[1],
+			"done in %.0fs" % moderate[2] if moderate[0] else "NOT finished", moderate[1],
 			"done" if without[0] else "NOT finished", without[1]])
+		_check(moderate[1] < with_assist[1] + 60.0 and moderate[1] <= without[1] + 0.5, "%s/%s: moderate sits between full and off" % [spec[0], spec[1]])
 		_check(with_assist[0], "%s/%s: beginner completes the lap with assists" % [spec[0], spec[1]])
 		_check(with_assist[1] < 8.0, "%s/%s: beginner stays on the road with assists" % [spec[0], spec[1]])
 	print("")

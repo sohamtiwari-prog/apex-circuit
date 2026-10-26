@@ -89,6 +89,9 @@ jobs:
       - name: Assists get a beginner round the lap
         run: bash .github/run_test.sh res://tests/assist_test.gd
 
+      - name: Drag steering and assist levels
+        run: bash .github/run_test.sh res://tests/touch_test.gd
+
       - name: No invisible walls at the track edge
         run: bash .github/run_test.sh res://tests/edge_test.gd
 

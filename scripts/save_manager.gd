@@ -38,15 +38,15 @@ func default_profile() -> Dictionary:
 const _DEFAULTS := {
 	"schema": SCHEMA_VERSION,
 	"settings": {
-		"control_mode": "tilt",       # "tilt" or "buttons"
+		"control_mode": "tilt",       # "tilt", "drag" or "buttons"
 		"auto_accelerate": false,
 		"invert_tilt": false,
 		"tilt_sensitivity": 1.0,
 		"camera": 0,
 		"traction_control": true,
 		"abs": true,
-		"brake_assist": true,
-		"steer_assist": true,
+		"brake_assist": "full",       # "off", "moderate" or "full"
+		"steer_assist": "full",
 		"racing_line": false,
 		"graphics": "high",         # "high" or "saver"
 		"car": "gp26",
@@ -180,7 +180,25 @@ func _migrate(profile: Dictionary) -> void:
 			if not laps.has(new_key):
 				laps[new_key] = laps[key]
 			laps.erase(key)
+	# Assists were on/off before they had levels: on -> full.
+	var st: Dictionary = profile["settings"]
+	for key in ["brake_assist", "steer_assist"]:
+		if typeof(st.get(key)) == TYPE_BOOL:
+			st[key] = "full" if st[key] else "off"
 	profile["schema"] = SCHEMA_VERSION
+
+
+## Strength of an assist setting: 0 off, 0.5 moderate, 1 full.
+func assist_level(key: String) -> float:
+	var v: Variant = get_setting(key)
+	if typeof(v) == TYPE_BOOL:
+		return 1.0 if v else 0.0
+	match String(v):
+		"full":
+			return 1.0
+		"moderate":
+			return 0.5
+	return 0.0
 
 
 ## Overlays saved values onto defaults so new fields added in later

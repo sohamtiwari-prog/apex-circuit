@@ -300,8 +300,10 @@ func _build_pause_menu(root: Control) -> void:
 	v.add_theme_constant_override("separation", 8)
 	scroll.add_child(v)
 	_setting(v, "controls", "Steering", func():
-		save.set_setting("control_mode", "buttons" if save.get_setting("control_mode") == "tilt" else "tilt"))
-	_setting(v, "sens", "Tilt sensitivity", func():
+		var order := ["tilt", "drag", "buttons"]
+		var i := order.find(String(save.get_setting("control_mode")))
+		save.set_setting("control_mode", order[(i + 1) % order.size()]))
+	_setting(v, "sens", "Steering sensitivity", func():
 		var steps := [0.6, 0.8, 1.0, 1.3, 1.6, 2.0]
 		var cur := float(save.get_setting("tilt_sensitivity"))
 		var nxt: float = steps[0]
@@ -312,8 +314,8 @@ func _build_pause_menu(root: Control) -> void:
 		save.set_setting("tilt_sensitivity", nxt))
 	_setting(v, "invert", "Invert tilt", func(): _toggle("invert_tilt"))
 	_setting(v, "auto", "Auto-accelerate", func(): _toggle("auto_accelerate"))
-	_setting(v, "steer_assist", "Steering assist", func(): _toggle("steer_assist"))
-	_setting(v, "brake_assist", "Brake assist", func(): _toggle("brake_assist"))
+	_setting(v, "steer_assist", "Steering assist", func(): _cycle_level("steer_assist"))
+	_setting(v, "brake_assist", "Brake assist", func(): _cycle_level("brake_assist"))
 	_setting(v, "tc", "Traction control", func(): _toggle("traction_control"))
 	_setting(v, "abs", "ABS", func(): _toggle("abs"))
 	_setting(v, "line", "Racing line", func(): _toggle("racing_line"))
@@ -328,6 +330,19 @@ func _menu_button(parent: Node, text: String, cb: Callable, primary := false) ->
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	parent.add_child(b)
 	return b
+
+
+## Off -> Moderate -> Full -> Off.
+func _cycle_level(key: String) -> void:
+	var order := ["off", "moderate", "full"]
+	var cur: float = save.assist_level(key)
+	var i := 0 if cur <= 0.0 else (1 if cur < 1.0 else 2)
+	save.set_setting(key, order[(i + 1) % 3])
+
+
+func _level_name(key: String) -> String:
+	var cur: float = save.assist_level(key)
+	return "Off" if cur <= 0.0 else ("Moderate" if cur < 1.0 else "Full")
 
 
 func _toggle(key: String) -> void:
@@ -361,18 +376,18 @@ func _setting(parent: Node, key: String, text: String, change: Callable) -> void
 
 func _refresh_menu() -> void:
 	var on_off := func(k: String) -> String: return "On" if bool(save.get_setting(k)) else "Off"
-	var tilt: bool = save.get_setting("control_mode") == "tilt"
-	(_menu_buttons["controls"] as Label).text = "Tilt phone" if tilt else "Buttons"
+	var control := String(save.get_setting("control_mode"))
+	(_menu_buttons["controls"] as Label).text = {"tilt": "Tilt phone", "drag": "Drag (left thumb)", "buttons": "Buttons"}.get(control, "Tilt phone")
 	(_menu_buttons["sens"] as Label).text = "%.1fx" % float(save.get_setting("tilt_sensitivity"))
 	(_menu_buttons["invert"] as Label).text = on_off.call("invert_tilt")
 	(_menu_buttons["auto"] as Label).text = on_off.call("auto_accelerate")
-	(_menu_buttons["steer_assist"] as Label).text = on_off.call("steer_assist")
-	(_menu_buttons["brake_assist"] as Label).text = on_off.call("brake_assist")
+	(_menu_buttons["steer_assist"] as Label).text = _level_name("steer_assist")
+	(_menu_buttons["brake_assist"] as Label).text = _level_name("brake_assist")
 	(_menu_buttons["tc"] as Label).text = on_off.call("traction_control")
 	(_menu_buttons["abs"] as Label).text = on_off.call("abs")
 	(_menu_buttons["line"] as Label).text = on_off.call("racing_line")
 	(_menu_buttons["graphics"] as Label).text = "Battery saver" if save.get_setting("graphics") == "saver" else "High"
-	touch.configure(String(save.get_setting("control_mode")), bool(save.get_setting("auto_accelerate")))
+	touch.configure(control, bool(save.get_setting("auto_accelerate")), float(save.get_setting("tilt_sensitivity")))
 	settings_changed.emit()
 
 
