@@ -62,6 +62,9 @@ jobs:
       - name: Import project
         run: timeout 300 ~/godot/godot --headless --import || true
 
+      - name: Compile-check scripts
+        run: bash .github/check_scripts.sh
+
       - name: Physics tests
         run: bash .github/run_test.sh res://tests/sim_test.gd
 

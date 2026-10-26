@@ -71,12 +71,12 @@ func _ready() -> void:
 
 	banner_label = _label(38, root)
 	banner_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-		banner_label.offset_top = 110
+	banner_label.offset_top = 110
 	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	warn_label = _label(26, root)
 	warn_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-		warn_label.offset_top = 170
+	warn_label.offset_top = 170
 	warn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	warn_label.add_theme_color_override("font_color", Color(1, 0.75, 0.2))
 
