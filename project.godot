@@ -12,8 +12,8 @@ config_version=5
 
 config/name="Apex Circuit"
 config/description="An original mobile circuit racing game."
-config/version="0.1.0"
-run/main_scene="res://scenes/main.tscn"
+config/version="0.2.0"
+run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.3", "Mobile")
 config/icon="res://icon.svg"
 

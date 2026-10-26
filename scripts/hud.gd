@@ -6,6 +6,7 @@ signal restart_requested
 signal reset_requested
 signal camera_requested
 signal settings_changed
+signal menu_requested
 
 var touch: TouchControls
 var lap_label: Label
@@ -14,6 +15,8 @@ var last_label: Label
 var best_label: Label
 var speed_label: Label
 var unit_label: Label
+var gear_label: Label
+var shift_lights: Array[ColorRect] = []
 var center_label: Label
 var banner_label: Label
 var warn_label: Label
@@ -57,6 +60,21 @@ func _ready() -> void:
 	speed_box.alignment = BoxContainer.ALIGNMENT_END
 	speed_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(speed_box)
+	var lights := HBoxContainer.new()
+	lights.alignment = BoxContainer.ALIGNMENT_CENTER
+	lights.add_theme_constant_override("separation", 6)
+	lights.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	speed_box.add_child(lights)
+	for i in range(10):
+		var light := ColorRect.new()
+		light.custom_minimum_size = Vector2(22, 12)
+		light.color = Color(1, 1, 1, 0.12)
+		light.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lights.add_child(light)
+		shift_lights.append(light)
+	gear_label = _label(44, speed_box)
+	gear_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	gear_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.2))
 	speed_label = _label(64, speed_box)
 	speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	unit_label = _label(20, speed_box)
@@ -181,6 +199,13 @@ func _build_pause_menu(root: Control) -> void:
 				break
 		save.set_setting("tilt_sensitivity", nxt)
 		_refresh_menu())
+	_menu_buttons["tc"] = _button("", v, func():
+		save.set_setting("traction_control", not bool(save.get_setting("traction_control")))
+		_refresh_menu())
+	_menu_buttons["abs"] = _button("", v, func():
+		save.set_setting("abs", not bool(save.get_setting("abs")))
+		_refresh_menu())
+	_menu_buttons["quit"] = _button("Quit to main menu", v, func(): menu_requested.emit())
 	for key in _menu_buttons:
 		(_menu_buttons[key] as Button).custom_minimum_size = Vector2(0, 66)
 	_refresh_menu()
@@ -192,6 +217,8 @@ func _refresh_menu() -> void:
 	(_menu_buttons["auto"] as Button).text = "Auto-accelerate: " + ("On" if save.get_setting("auto_accelerate") else "Off")
 	(_menu_buttons["invert"] as Button).text = "Invert tilt: " + ("On" if save.get_setting("invert_tilt") else "Off")
 	(_menu_buttons["sens"] as Button).text = "Tilt sensitivity: %.1fx" % float(save.get_setting("tilt_sensitivity"))
+	(_menu_buttons["tc"] as Button).text = "Traction control: " + ("On" if save.get_setting("traction_control") else "Off")
+	(_menu_buttons["abs"] as Button).text = "ABS: " + ("On" if save.get_setting("abs") else "Off")
 	touch.configure(String(save.get_setting("control_mode")), bool(save.get_setting("auto_accelerate")))
 	settings_changed.emit()
 
@@ -218,7 +245,7 @@ static func fmt_time(seconds: float) -> String:
 
 
 func set_camera_name(n: String) -> void:
-	cam_button.text = "CAM: " + n
+	cam_button.text = n
 
 
 func update_timing(lap: int, lap_time: float, last: float, best: float, valid: bool) -> void:
@@ -227,6 +254,21 @@ func update_timing(lap: int, lap_time: float, last: float, best: float, valid: b
 	time_label.add_theme_color_override("font_color", Color.WHITE if valid else Color(1, 0.45, 0.35))
 	last_label.text = "LAST  " + fmt_time(last)
 	best_label.text = "BEST  " + fmt_time(best)
+
+
+func update_engine(gear: int, rpm: float, shift_rpm: float, redline: float) -> void:
+	gear_label.text = "R" if gear < 0 else str(gear)
+	# F1-style shift lights: green, then red, then all blue at the shift point.
+	var start := shift_rpm - (redline - shift_rpm) * 6.0
+	var frac := clampf((rpm - start) / (shift_rpm - start), 0.0, 1.0)
+	var lit := int(round(frac * shift_lights.size()))
+	for i in range(shift_lights.size()):
+		var col := Color(1, 1, 1, 0.12)
+		if rpm >= shift_rpm:
+			col = Color(0.25, 0.45, 1.0)
+		elif i < lit:
+			col = Color(0.2, 0.9, 0.3) if i < 4 else (Color(1.0, 0.2, 0.15) if i < 7 else Color(0.6, 0.3, 1.0))
+		shift_lights[i].color = col
 
 
 func update_speed(kmh: float) -> void:

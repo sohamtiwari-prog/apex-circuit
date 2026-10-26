@@ -12,7 +12,7 @@ const SAVE_DIR := "user://save"
 const SAVE_PATH := SAVE_DIR + "/profile.json"
 const BACKUP_PATH := SAVE_DIR + "/profile.bak.json"
 const TMP_PATH := SAVE_DIR + "/profile.tmp.json"
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 2
 
 signal saved
 
@@ -38,8 +38,12 @@ func default_profile() -> Dictionary:
 			"invert_tilt": false,
 			"tilt_sensitivity": 1.0,
 			"camera": 0,
+			"traction_control": true,
+			"abs": true,
+			"car": "gp26",
+			"track": "silvermoor",
 		},
-		"best_laps": {},                  # track_id -> milliseconds
+		"best_laps": {},                  # "track|car" -> milliseconds
 		"stats": {
 			"laps": 0,
 			"distance_m": 0.0,
@@ -59,6 +63,10 @@ func set_setting(key: String, value: Variant) -> void:
 
 
 # ---------------------------------------------------------------- laps
+
+func lap_key(track_id: String, car_id: String) -> String:
+	return track_id + "|" + car_id
+
 
 ## Best lap in milliseconds, or -1 if none recorded.
 func get_best_lap(track_id: String) -> int:
@@ -126,7 +134,21 @@ func _load() -> Dictionary:
 	var profile := default_profile()
 	if loaded != null:
 		_merge(profile, loaded)
+	_migrate(profile)
 	return profile
+
+
+## Upgrades saves from older versions in place.
+func _migrate(profile: Dictionary) -> void:
+	# v1 stored best laps per track only (all set with the Vanta GT).
+	var laps: Dictionary = profile["best_laps"]
+	for key in laps.keys():
+		if not String(key).contains("|"):
+			var new_key := lap_key(String(key), "vanta_gt")
+			if not laps.has(new_key):
+				laps[new_key] = laps[key]
+			laps.erase(key)
+	profile["schema"] = SCHEMA_VERSION
 
 
 ## Overlays saved values onto defaults so new fields added in later

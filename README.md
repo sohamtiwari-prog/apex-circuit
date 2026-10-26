@@ -1,8 +1,21 @@
 # Apex Circuit
 
-An original mobile circuit-racing game for Android, built from scratch in
+A mobile Grand Prix racing game for Android, built from scratch in
 [Godot 4](https://godotengine.org). Inspired by the feel of classic mobile
-sim-racers; every car, track and line of code here is original.
+sim-racers. Cars and series are original designs with fictional names;
+Grand Prix tracks follow real circuit layouts under fictional names.
+
+## Cars and tracks
+
+| Car | | |
+|---|---|---|
+| **Apex GP-26** | Grand Prix car | ~1000 hp, 800 kg, 8-speed seamless, 0-100 in 2.4 s, 340 km/h |
+| **Apex Vanta GT** | Mid-engined GT | 560 hp, 1250 kg, 7-speed, 0-100 in 4.0 s, 319 km/h |
+
+| Track | |
+|---|---|
+| **Silvermoor Circuit** | 5.85 km Grand Prix circuit, real layout of a famous British GP venue |
+| **Kestrel Park** | 2.06 km original club circuit |
 
 ## Install on your phone
 
@@ -22,8 +35,9 @@ every build is signed with the same key (`android_signing/`).
 | Brake / reverse | BRAKE pedal, bottom-left | BRAKE pedal |
 
 Pause (**II**, top-right) to switch steering mode, turn on auto-accelerate,
-invert tilt or change tilt sensitivity. **CAM** cycles chase, far chase,
-hood and bumper cameras. On a computer: arrows/WASD, Space to brake,
+invert tilt, change tilt sensitivity, or toggle traction control and ABS.
+The camera button cycles chase, far chase and the car's onboard cameras
+(GP car: cockpit, T-cam, nose; GT: hood, bumper). On a computer: arrows/WASD, Space to brake,
 C for camera, R to reset, Esc to pause.
 
 ## Progress is never lost
@@ -37,24 +51,35 @@ backup. Android's auto-backup is enabled too.
 
 - [x] **Milestone 1: driving.** One car, the Kestrel Park circuit, tilt/touch controls,
   4 cameras, lap timing with checkpoints and track limits, saved best laps
+- [x] **Milestone 1.5: Grand Prix.** GP car with downforce and aero-scaled brakes, real
+  Silverstone layout, 8-speed gearbox with shift lights, synthesized engine/tyre/wind
+  audio, traction control and ABS, cockpit view, main menu with car and track select
 - [ ] **Milestone 2: racing.** AI opponents, grid starts, positions, results screen
 - [ ] **Milestone 3: career and garage.** Events, currency, buying cars, upgrades
-- [ ] **Milestone 4: content and polish.** More cars and tracks, servicing, engine audio, menus, cockpit view
+- [ ] **Milestone 4: content and polish.** More GP tracks (Monza, Spa, ...), more cars,
+  realistic textures and models, tyre compounds, pit stops, DRS
 
 ## Project layout
 
 ```
 scripts/
-  main.gd            race session: countdown, laps, track limits, input
-  track.gd           procedural circuit: spline, road mesh, walls, scenery
-  car.gd             VehicleBody3D tuning, aero, brakes, car model
+  menu.gd            main menu: car/track select, turntable preview
+  race.gd            race session: countdown, laps, track limits, input
+  track.gd           circuit from data or control points: road mesh, walls, scenery
+  car.gd             VehicleBody3D driving model: gearbox, aero, brakes, TC/ABS
+  car_specs.gd       every car's physics, gearing, sound and camera spec
+  car_body.gd        car 3D models built from primitives
+  car_audio.gd       engine/tyre/wind sound synthesized in code
   ai_driver.gd       pure-pursuit steering + curvature speed planner
   race_camera.gd     chase / hood / bumper cameras
   hud.gd             timing HUD and pause/settings menu
   touch_controls.gd  multi-touch pedals and steering buttons
   save_manager.gd    crash-safe profile saving (autoload "Save")
+tracks/              imported circuit centrelines (JSON)
+tools/
+  import_circuit.py  converts a real circuit outline (GeoJSON) into a track file
 tests/
-  sim_test.gd        physics checks (acceleration, braking, steering, AI lap)
+  sim_test.gd        physics checks per car (0-100, top speed, braking, AI laps)
   game_test.gd       end-to-end: countdown, laps, save, reload, corruption recovery
 ```
 
@@ -69,6 +94,12 @@ godot --headless --fixed-fps 120 --script res://tests/sim_test.gd
 godot --headless --fixed-fps 120 --script res://tests/game_test.gd
 ```
 
-## License
+## License and credits
 
 Code is MIT licensed (see `LICENSE`).
+
+Circuit outlines come from [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits),
+MIT licence, Copyright (c) 2019-2025 Tomislav Bacinger.
+
+This project is not affiliated with Formula 1, the FIA, any racing team,
+car manufacturer or circuit. All names in the game are fictional.

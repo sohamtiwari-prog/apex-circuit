@@ -1,26 +1,27 @@
 class_name Track
 extends Node3D
-## Procedurally built original circuit.
+## A race circuit built procedurally from a centreline.
 ##
-## The layout is a closed loop of control points. It is smoothed into a
-## spline and sampled every SPACING metres; every other system (road mesh,
-## walls, lap timing, AI) works off those samples.
+## Tracks come from data files (tracks/<id>.json, imported from real circuit
+## outlines by tools/import_circuit.py) or from a list of control points.
+## The centreline is sampled every SPACING metres; every other system (road
+## mesh, walls, lap timing, AI) works off those samples.
 
-const TRACK_ID := "kestrel_park"
-const TRACK_NAME := "Kestrel Park"
-
-const ROAD_HALF := 6.5        # half the asphalt width
 const KERB_W := 1.3
 const LINE_W := 0.3
 const SPACING := 2.0
-const WALL_OFFSET := 19.0
 const ROAD_Y := 0.0
 const GROUND_Y := -0.08
 const GRID := 24.0
 
-# Control points (x, z) in metres. Start/finish is the first point,
-# with the cars heading towards +x down the main straight.
-const LAYOUT := [
+## Tracks available in the game, in menu order.
+const CATALOG := [
+	{"id": "silvermoor", "name": "Silvermoor Circuit", "desc": "Grand Prix circuit, 5.85 km, 18 corners"},
+	{"id": "kestrel_park", "name": "Kestrel Park", "desc": "Club circuit, 2.06 km"},
+]
+
+# Original club circuit, defined by control points (x, z) in metres.
+const KESTREL_LAYOUT := [
 	Vector2(0, 0), Vector2(150, 0), Vector2(300, 0), Vector2(380, 20),
 	Vector2(420, 80), Vector2(410, 160), Vector2(360, 210), Vector2(300, 220),
 	Vector2(260, 260), Vector2(270, 330), Vector2(320, 380), Vector2(330, 440),
@@ -29,6 +30,11 @@ const LAYOUT := [
 	Vector2(-160, 290), Vector2(-110, 250), Vector2(-120, 180), Vector2(-170, 130),
 	Vector2(-160, 60), Vector2(-100, 10), Vector2(-50, 0),
 ]
+
+var track_id := "kestrel_park"
+var track_name := "Kestrel Park"
+var road_half := 6.5          # half the asphalt width
+var wall_offset := 19.0
 
 var points := PackedVector3Array()
 var tangents := PackedVector3Array()
@@ -39,8 +45,23 @@ var total_length := 0.0
 var _grid := {}
 
 
-func build() -> void:
-	_sample()
+static func catalog_name(id: String) -> String:
+	for t in CATALOG:
+		if t["id"] == id:
+			return t["name"]
+	return id
+
+
+func build(id: String = "kestrel_park") -> void:
+	track_id = id
+	track_name = catalog_name(id)
+	if id == "kestrel_park":
+		road_half = 6.5
+		wall_offset = 19.0
+		_sample_control(KESTREL_LAYOUT)
+	else:
+		_load_file("res://tracks/%s.json" % id)
+	_derive()
 	_build_grid()
 	_build_ground()
 	_build_road()
@@ -115,14 +136,25 @@ func dist_to_centerline(pos: Vector3, radius: float = 30.0) -> float:
 
 # ------------------------------------------------------------ sampling
 
-func _sample() -> void:
+func _load_file(path: String) -> void:
+	var f := FileAccess.open(path, FileAccess.READ)
+	var data: Dictionary = JSON.parse_string(f.get_as_text())
+	track_name = data.get("name", track_name)
+	road_half = float(data.get("half_width", 7.0))
+	wall_offset = float(data.get("wall_offset", 24.0))
+	points = PackedVector3Array()
+	for p in data["points"]:
+		points.append(Vector3(float(p[0]), ROAD_Y, float(p[1])))
+
+
+func _sample_control(layout: Array) -> void:
 	var curve := Curve3D.new()
 	curve.bake_interval = SPACING
-	var n := LAYOUT.size()
+	var n := layout.size()
 	for i in range(n + 1):
-		var p: Vector2 = LAYOUT[i % n]
-		var pv: Vector2 = LAYOUT[(i - 1 + n) % n]
-		var nx: Vector2 = LAYOUT[(i + 1) % n]
+		var p: Vector2 = layout[i % n]
+		var pv: Vector2 = layout[(i - 1 + n) % n]
+		var nx: Vector2 = layout[(i + 1) % n]
 		var h: Vector2 = (nx - pv) * 0.2
 		curve.add_point(Vector3(p.x, ROAD_Y, p.y), Vector3(-h.x, 0, -h.y), Vector3(h.x, 0, h.y))
 	# Resample at exactly SPACING metres so distances and curvature are uniform.
@@ -134,6 +166,8 @@ func _sample() -> void:
 		var b: Vector3 = curve.sample_baked(k * step, true)
 		points.append(Vector3(b.x, ROAD_Y, b.z))
 
+
+func _derive() -> void:
 	var count := points.size()
 	tangents.resize(count)
 	rights.resize(count)
@@ -148,9 +182,9 @@ func _sample() -> void:
 		d += points[i].distance_to(points[(i + 1) % count])
 	total_length = d
 	for i in range(count):
-		var a: Vector3 = tangents[(i - 3 + count) % count]
-		var b: Vector3 = tangents[(i + 3) % count]
-		curv[i] = a.cross(b).y / (6.0 * SPACING)
+		var a: Vector3 = tangents[(i - 4 + count) % count]
+		var b: Vector3 = tangents[(i + 4) % count]
+		curv[i] = a.cross(b).y / (8.0 * SPACING)
 
 
 func _build_grid() -> void:
@@ -263,7 +297,7 @@ func _build_road() -> void:
 	var red := Color(0.82, 0.12, 0.09)
 	var verge := Color(0.22, 0.4, 0.15)
 	var black := Color(0.06, 0.06, 0.06)
-	var h := ROAD_HALF
+	var h := road_half
 
 	for i in range(n):
 		var j := (i + 1) % n
@@ -330,11 +364,11 @@ func _build_walls() -> void:
 		var count := 0
 		for i in range(0, n, step):
 			var j := (i + step) % n
-			var a: Vector3 = points[i] + rights[i] * WALL_OFFSET * side
-			var b: Vector3 = points[j] + rights[j] * WALL_OFFSET * side
+			var a: Vector3 = points[i] + rights[i] * wall_offset * side
+			var b: Vector3 = points[j] + rights[j] * wall_offset * side
 			var mid := (a + b) * 0.5
 			# Skip segments that fold into the track on tight inside corners.
-			if dist_to_centerline(mid, WALL_OFFSET + 2.0) < WALL_OFFSET - 2.5:
+			if dist_to_centerline(mid, wall_offset + 2.0) < wall_offset - 2.5:
 				continue
 			var dir := b - a
 			dir.y = 0
@@ -401,7 +435,7 @@ func _build_scenery() -> void:
 	var crown_cols: Array[Color] = []
 	for k in range(1400):
 		var pos := Vector3(rng.randf_range(lo.x, hi.x), GROUND_Y, rng.randf_range(lo.y, hi.y))
-		if dist_to_centerline(pos, WALL_OFFSET + 12.0) < WALL_OFFSET + 9.0:
+		if dist_to_centerline(pos, wall_offset + 12.0) < wall_offset + 9.0:
 			continue
 		var s := rng.randf_range(0.8, 1.6)
 		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s))
@@ -448,7 +482,7 @@ func _build_grandstands() -> void:
 		var side: float = spec[1]
 		var base: Transform3D = pose_at(idx, GROUND_Y)
 		var out: Vector3 = rights[idx] * side
-		var origin: Vector3 = base.origin + out * (WALL_OFFSET + 9.0)
+		var origin: Vector3 = base.origin + out * (wall_offset + 9.0)
 		var basis: Basis = base.basis
 		for tier in range(5):
 			var bm := BoxMesh.new()

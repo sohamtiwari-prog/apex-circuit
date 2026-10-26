@@ -1,17 +1,21 @@
 extends Node3D
 ## Time-trial race session: countdown, lap timing with checkpoints and
 ## track limits, best-lap saving, input, resets.
+## The car and track come from the player's saved selection.
 
 enum State { COUNTDOWN, RACING }
 
 const GRAVITY := 9.81
-const OFFTRACK_LIMIT := Track.ROAD_HALF + Track.KERB_W + 0.6   # all four wheels off
-const INVALID_LIMIT := Track.ROAD_HALF + Track.KERB_W + 2.5
 
 var track: Track
 var car: RaceCar
 var cam: RaceCamera
 var hud: Hud
+var audio: CarAudio
+
+var car_id := "gp26"
+var track_id := "silvermoor"
+var lap_key := ""
 
 var state := State.COUNTDOWN
 var countdown := 0.0
@@ -22,28 +26,40 @@ var lap_valid := true
 var progress_idx := 0
 var next_checkpoint := 1
 var flip_timer := 0.0
-var _last_count := -1
+var offtrack_limit := 8.0
+var invalid_limit := 10.0
 var _save_timer := 0.0
-var autopilot: AIDriver = null
-var save: Node                     # the Save autoload, looked up at runtime    # when set, the AI drives the player's car (tests/demo)
+var autopilot: AIDriver = null     # when set, the AI drives the player's car (tests/demo)
+var save: Node                     # the Save autoload, looked up at runtime
 
 
 func _ready() -> void:
 	save = get_node("/root/Save")
+	car_id = String(save.get_setting("car"))
+	track_id = String(save.get_setting("track"))
+	lap_key = save.lap_key(track_id, car_id)
 	DisplayServer.screen_set_keep_on(true)
 	_build_environment()
 
 	track = Track.new()
 	add_child(track)
-	track.build()
+	track.build(track_id)
+	offtrack_limit = track.road_half + Track.KERB_W + 0.6     # all four wheels off
+	invalid_limit = track.road_half + Track.KERB_W + 2.5
 
 	car = RaceCar.new()
+	car.setup(CarSpecs.get_spec(car_id))
 	add_child(car)
+	_apply_assists()
+
+	audio = CarAudio.new()
+	car.add_child(audio)
+	audio.attach(car, true)
 
 	cam = RaceCamera.new()
 	add_child(cam)
-	cam.target = car
-	cam.mode = int(save.get_setting("camera")) % RaceCamera.MODE_NAMES.size()
+	cam.set_target(car)
+	cam.set_mode(int(save.get_setting("camera")))
 	cam.current = true
 
 	hud = Hud.new()
@@ -51,7 +67,9 @@ func _ready() -> void:
 	hud.restart_requested.connect(_restart)
 	hud.reset_requested.connect(_reset_car_to_track)
 	hud.camera_requested.connect(_cycle_camera)
-	hud.set_camera_name(RaceCamera.MODE_NAMES[cam.mode])
+	hud.settings_changed.connect(_apply_assists)
+	hud.menu_requested.connect(_quit_to_menu)
+	hud.set_camera_name(cam.mode_name())
 
 	_restart()
 
@@ -72,7 +90,7 @@ func _build_environment() -> void:
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.7, 0.78, 0.88)
-	env.fog_density = 0.0007
+	env.fog_density = 0.0006
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -86,38 +104,43 @@ func _build_environment() -> void:
 	add_child(sun)
 
 
+func _apply_assists() -> void:
+	if car != null:
+		car.traction_control = bool(save.get_setting("traction_control"))
+		car.abs_enabled = bool(save.get_setting("abs"))
+
+
 # ------------------------------------------------------------ session
 
-func _restart() -> void:
-	var n := track.size()
-	progress_idx = (n - 4) % n
-	car.global_transform = track.pose_at(progress_idx, 0.55)
+func _place_car(idx: int) -> void:
+	car.global_transform = track.pose_at(idx, car.spawn_height())
 	car.linear_velocity = Vector3.ZERO
 	car.angular_velocity = Vector3.ZERO
 	car.reset_controls()
-	car.controls_enabled = false
 	cam.snap()
+
+
+func _restart() -> void:
+	var n := track.size()
+	progress_idx = (n - 5) % n
+	_place_car(progress_idx)
+	car.controls_enabled = false
 	state = State.COUNTDOWN
 	countdown = 3.99
-	_last_count = -1
 	lap = 1
 	lap_time = 0.0
 	last_lap = -1.0
 	lap_valid = true
 	next_checkpoint = 1
 	flip_timer = 0.0
-	hud.show_banner(Track.TRACK_NAME.to_upper() + "  ·  TIME TRIAL", Color.WHITE, 3.0)
+	hud.show_banner("%s  ·  %s  ·  TIME TRIAL" % [track.track_name.to_upper(), String(car.spec["name"]).to_upper()], Color.WHITE, 3.0)
 
 
 func _reset_car_to_track() -> void:
 	var idx := track.nearest_index(car.global_position, -1)
-	car.global_transform = track.pose_at(idx, 0.55)
-	car.linear_velocity = Vector3.ZERO
-	car.angular_velocity = Vector3.ZERO
-	car.reset_controls()
+	_place_car(idx)
 	progress_idx = idx
 	flip_timer = 0.0
-	cam.snap()
 	if state == State.RACING:
 		lap_valid = false
 		hud.show_warning("Car reset: lap invalidated")
@@ -125,15 +148,22 @@ func _reset_car_to_track() -> void:
 
 func _cycle_camera() -> void:
 	var m := cam.cycle()
-	hud.set_camera_name(RaceCamera.MODE_NAMES[m])
+	hud.set_camera_name(cam.mode_name())
 	save.set_setting("camera", m)
+
+
+func _quit_to_menu() -> void:
+	save.save()
+	get_tree().paused = false
+	get_tree().change_scene_to_file("res://scenes/menu.tscn")
 
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		if hud != null and not hud.is_paused():
 			hud.set_paused(true)
-		save.save()
+		if save != null:
+			save.save()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -150,7 +180,7 @@ func _unhandled_input(event: InputEvent) -> void:
 # ------------------------------------------------------------ per frame
 
 func _read_input() -> void:
-	var t := hud.touch
+	var t: TouchControls = hud.touch
 	var steer := 0.0
 	if save.get_setting("control_mode") == "tilt":
 		var acc := Input.get_accelerometer()
@@ -164,8 +194,8 @@ func _read_input() -> void:
 		steer = clampf(s, -1.0, 1.0)
 	else:
 		steer = t.steer
-	var gas := t.gas
-	var brk := t.brake
+	var gas: float = t.gas
+	var brk: float = t.brake
 
 	# Keyboard, for testing on a computer.
 	if Input.is_physical_key_pressed(KEY_LEFT) or Input.is_physical_key_pressed(KEY_A):
@@ -193,23 +223,20 @@ func _physics_process(delta: float) -> void:
 	var lat := absf(track.lateral(pos, idx))
 
 	# Grass slows the car; going well wide invalidates the lap (track limits).
-	car.surface_drag = 0.55 if lat > OFFTRACK_LIMIT else 0.0
-	if state == State.RACING and lat > INVALID_LIMIT and lap_valid:
+	car.surface_drag = 0.55 if lat > offtrack_limit else 0.0
+	if state == State.RACING and lat > invalid_limit and lap_valid:
 		lap_valid = false
 		hud.show_warning("Track limits: lap invalidated", 2.5)
 
 	if state == State.COUNTDOWN:
 		countdown -= delta
-		var c := int(ceil(countdown))
-		if c != _last_count:
-			_last_count = c
 		if countdown <= 0.0:
 			state = State.RACING
 			car.controls_enabled = true
 			hud.show_center("GO!")
 			get_tree().create_timer(0.8).timeout.connect(func(): hud.show_center(""))
 		else:
-			hud.show_center(str(c))
+			hud.show_center(str(int(ceil(countdown))))
 	else:
 		lap_time += delta
 		save.add_distance(absf(car.forward_speed()) * delta)
@@ -238,18 +265,19 @@ func _physics_process(delta: float) -> void:
 		_save_timer = 0.0
 		save.save()
 
-	var best_ms: int = save.get_best_lap(Track.TRACK_ID)
+	var best_ms: int = save.get_best_lap(lap_key)
 	hud.update_timing(lap, lap_time if state == State.RACING else 0.0, last_lap,
 		best_ms / 1000.0 if best_ms >= 0 else -1.0, lap_valid)
 	hud.update_speed(car.speed_kmh())
+	hud.update_engine(car.gear, car.rpm, float(car.spec["upshift_rpm"]), float(car.spec["redline"]))
 
 
 func _complete_lap() -> void:
 	last_lap = lap_time
 	var ms := int(round(lap_time * 1000.0))
 	if lap_valid:
-		var prev_best: int = save.get_best_lap(Track.TRACK_ID)
-		var is_best: bool = save.submit_lap(Track.TRACK_ID, ms)
+		var prev_best: int = save.get_best_lap(lap_key)
+		var is_best: bool = save.submit_lap(lap_key, ms)
 		if is_best:
 			var msg := "NEW BEST  " + Hud.fmt_time(lap_time)
 			if prev_best >= 0:
