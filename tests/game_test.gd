@@ -21,6 +21,7 @@ func _check(ok: bool, msg: String) -> void:
 func _run() -> void:
 	var save: Node = root.get_node("Save")
 	save.data = save.default_profile()     # start from a clean profile
+	save.data["settings"]["mode"] = "time_trial"
 	save.save()
 
 	# Main menu builds and shows a car.
@@ -39,22 +40,22 @@ func _run() -> void:
 	var main := scene.instantiate()
 	root.add_child(main)
 	await physics_frame
-	_check(main.state == 0, "starts in countdown")
-	for i in range(120 * 5):
+	_check(main.state == 0, "starts on the grid (start lights)")
+	for i in range(120 * 7):
 		await physics_frame
-	_check(main.state == 1, "countdown finishes and racing starts")
+	_check(main.state == 1, "lights go out and the session starts")
 
 	main.autopilot = load("res://scripts/ai_driver.gd").new()
-	var start_lap: int = main.lap
+	var start_lap: int = main.player.lap
 	var frames := 0
 	var max_gear := 0
-	while main.lap < start_lap + 2 and frames < 120 * 400:
+	while main.player.lap < start_lap + 2 and frames < 120 * 400:
 		await physics_frame
 		frames += 1
 		max_gear = maxi(max_gear, main.car.gear)
 	_check(max_gear >= 7, "gearbox shifts up through the gears (max %d)" % max_gear)
-	_check(main.lap >= start_lap + 2, "two laps completed (lap counter %d)" % main.lap)
-	print("  last lap: %.3f s" % main.last_lap)
+	_check(main.player.lap >= start_lap + 2, "two laps completed (lap counter %d)" % main.player.lap)
+	print("  last lap: %.3f s" % main.player.last_lap)
 	_check(main.track.track_id == "silvermoor" and main.car.spec["id"] == "gp26", "race uses the selected car and track")
 
 	# Old (v1) saves keep their best lap, re-keyed to the car it was set with.

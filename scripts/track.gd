@@ -123,6 +123,29 @@ func nearest_index(pos: Vector3, hint: int = -1) -> int:
 	return best
 
 
+## Cheap per-frame tracking: walks from `hint` towards the nearest sample.
+## Cars move well under a sample per tick, so this takes a few steps.
+func track_index(pos: Vector3, hint: int) -> int:
+	if hint < 0:
+		return nearest_index(pos, -1)
+	var n := points.size()
+	var best := hint
+	var p: Vector3 = points[best]
+	var best_d := (p.x - pos.x) * (p.x - pos.x) + (p.z - pos.z) * (p.z - pos.z)
+	for dir in [1, -1]:
+		var i: int = best
+		for step in range(40):
+			var j: int = (i + dir + n) % n
+			var q: Vector3 = points[j]
+			var d := (q.x - pos.x) * (q.x - pos.x) + (q.z - pos.z) * (q.z - pos.z)
+			if d >= best_d:
+				break
+			best_d = d
+			best = j
+			i = j
+	return best
+
+
 ## Signed lateral offset from the centerline (+ = right of travel).
 func lateral(pos: Vector3, idx: int) -> float:
 	var p: Vector3 = points[idx]

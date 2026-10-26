@@ -27,6 +27,10 @@ func attach(target: RaceCar, local_player: bool) -> void:
 	_cyl = car.spec["cylinders"]
 	var tone: String = car.spec["engine_tone"]
 	_on = _player3d(_engine_wave(tone, true), -2.0)
+	if not local_player:
+		# Opponents: a single engine voice keeps a full grid cheap to mix.
+		_on.max_distance = 220.0
+		return
 	_off = _player3d(_engine_wave(tone, false), -8.0)
 	_tyre = _player3d(_noise_wave("tyre"), -80.0)
 	if local_player:
@@ -56,9 +60,12 @@ func _process(delta: float) -> void:
 	var firing := car.rpm / 60.0 * _cyl * 0.5
 	var pitch := clampf(firing / _base_hz, 0.2, 4.0)
 	_on.pitch_scale = pitch
-	_off.pitch_scale = pitch
 	var eng_load := car.engine_load
 	var rev := clampf((car.rpm - float(car.spec["idle_rpm"])) / (float(car.spec["redline"]) - float(car.spec["idle_rpm"])), 0.0, 1.0)
+	if _off == null:
+		_on.volume_db = lerpf(-12.0, -2.0 + rev * 3.0, maxf(eng_load, 0.4))
+		return
+	_off.pitch_scale = pitch
 	_on.volume_db = lerpf(-30.0, -1.0 + rev * 3.0, eng_load)
 	_off.volume_db = lerpf(-6.0 + rev * 2.0, -30.0, eng_load)
 	var slip := car.tyre_slip

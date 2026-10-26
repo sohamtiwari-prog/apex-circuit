@@ -23,6 +23,15 @@ var warn_label: Label
 var pause_panel: PanelContainer
 var cam_button: Button
 var _menu_buttons := {}
+var pos_label: Label
+var board: VBoxContainer
+var lights_box: HBoxContainer
+var lights: Array[Panel] = []
+var results_panel: PanelContainer
+var _race_mode := false
+var _last_valid := true
+var _last_lit := -1
+var _total_laps := 0
 # Looked up at runtime (not by global name) so this script also compiles in tests.
 var save: Node
 var _banner_time := 0.0
@@ -60,17 +69,17 @@ func _ready() -> void:
 	speed_box.alignment = BoxContainer.ALIGNMENT_END
 	speed_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(speed_box)
-	var lights := HBoxContainer.new()
-	lights.alignment = BoxContainer.ALIGNMENT_CENTER
-	lights.add_theme_constant_override("separation", 6)
-	lights.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	speed_box.add_child(lights)
+	var shift_box := HBoxContainer.new()
+	shift_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	shift_box.add_theme_constant_override("separation", 6)
+	shift_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	speed_box.add_child(shift_box)
 	for i in range(10):
 		var light := ColorRect.new()
 		light.custom_minimum_size = Vector2(22, 12)
 		light.color = Color(1, 1, 1, 0.12)
 		light.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		lights.add_child(light)
+		shift_box.add_child(light)
 		shift_lights.append(light)
 	gear_label = _label(44, speed_box)
 	gear_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -111,7 +120,33 @@ func _ready() -> void:
 	var pb := _button("II", bar, func(): set_paused(true))
 	pb.custom_minimum_size = Vector2(90, 72)
 
+	# Race position (big) and a mini leaderboard under the timing block.
+	pos_label = _label(64, timing)
+	pos_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.2))
+	board = VBoxContainer.new()
+	board.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board.add_theme_constant_override("separation", 2)
+	timing.add_child(board)
+
+	# Start lights: five pairs of red lamps across the top.
+	lights_box = HBoxContainer.new()
+	lights_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	lights_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	lights_box.offset_top = 40
+	lights_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	lights_box.add_theme_constant_override("separation", 14)
+	lights_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(lights_box)
+	for i in range(5):
+		var lamp := Panel.new()
+		lamp.custom_minimum_size = Vector2(64, 64)
+		lamp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lights_box.add_child(lamp)
+		lights.append(lamp)
+	lights_box.visible = false
+
 	_build_pause_menu(root)
+	_build_results(root)
 	set_paused(false)
 
 
@@ -249,9 +284,11 @@ func set_camera_name(n: String) -> void:
 
 
 func update_timing(lap: int, lap_time: float, last: float, best: float, valid: bool) -> void:
-	lap_label.text = "LAP %d" % maxi(lap, 1)
+	lap_label.text = ("LAP %d / %d" % [maxi(lap, 1), _total_laps]) if _race_mode else ("LAP %d" % maxi(lap, 1))
 	time_label.text = fmt_time(lap_time)
-	time_label.add_theme_color_override("font_color", Color.WHITE if valid else Color(1, 0.45, 0.35))
+	if valid != _last_valid:
+		_last_valid = valid
+		time_label.add_theme_color_override("font_color", Color.WHITE if valid else Color(1, 0.45, 0.35))
 	last_label.text = "LAST  " + fmt_time(last)
 	best_label.text = "BEST  " + fmt_time(best)
 
@@ -262,6 +299,11 @@ func update_engine(gear: int, rpm: float, shift_rpm: float, redline: float) -> v
 	var start := shift_rpm - (redline - shift_rpm) * 6.0
 	var frac := clampf((rpm - start) / (shift_rpm - start), 0.0, 1.0)
 	var lit := int(round(frac * shift_lights.size()))
+	if rpm >= shift_rpm:
+		lit = 99
+	if lit == _last_lit:
+		return
+	_last_lit = lit
 	for i in range(shift_lights.size()):
 		var col := Color(1, 1, 1, 0.12)
 		if rpm >= shift_rpm:
@@ -269,6 +311,103 @@ func update_engine(gear: int, rpm: float, shift_rpm: float, redline: float) -> v
 		elif i < lit:
 			col = Color(0.2, 0.9, 0.3) if i < 4 else (Color(1.0, 0.2, 0.15) if i < 7 else Color(0.6, 0.3, 1.0))
 		shift_lights[i].color = col
+
+
+func set_race_mode(race: bool, laps: int) -> void:
+	_race_mode = race
+	_total_laps = laps
+	pos_label.visible = race
+	board.visible = race
+
+
+func show_lights(lit: int, out: bool) -> void:
+	lights_box.visible = not out
+	for i in range(lights.size()):
+		var sb := StyleBoxFlat.new()
+		sb.set_corner_radius_all(32)
+		sb.bg_color = Color(1.0, 0.08, 0.05) if i < lit else Color(0.12, 0.02, 0.02, 0.85)
+		sb.border_color = Color(0.05, 0.05, 0.05)
+		sb.set_border_width_all(6)
+		lights[i].add_theme_stylebox_override("panel", sb)
+
+
+func update_position(pos: int, total: int, rows: Array) -> void:
+	pos_label.text = "P%d / %d" % [pos, total]
+	for c in board.get_children():
+		c.queue_free()
+	var last := 0
+	for r in rows:
+		if int(r["pos"]) > last + 1:
+			var dots := _label(18, board)
+			dots.text = "   ..."
+		last = int(r["pos"])
+		var l := _label(20, board)
+		l.text = "%2d  %-14s %s" % [r["pos"], r["name"], r["gap"]]
+		if r["player"]:
+			l.add_theme_color_override("font_color", Color(1.0, 0.75, 0.2))
+
+
+func _build_results(root: Control) -> void:
+	results_panel = PanelContainer.new()
+	results_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.03, 0.04, 0.06, 0.94)
+	sb.set_content_margin_all(28)
+	results_panel.add_theme_stylebox_override("panel", sb)
+	results_panel.visible = false
+	results_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	root.add_child(results_panel)
+
+
+func hide_results() -> void:
+	results_panel.visible = false
+
+
+func show_results(rows: Array, on_restart: Callable, on_menu: Callable) -> void:
+	for c in results_panel.get_children():
+		c.queue_free()
+	touch.release_all()
+	touch.visible = false
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	results_panel.add_child(v)
+	var title := _label(44, v)
+	var me := 0
+	for r in rows:
+		if r["player"]:
+			me = int(r["pos"])
+	title.text = "RACE RESULT  ·  YOU FINISHED P%d" % me
+	title.add_theme_color_override("font_color", Color(1.0, 0.75, 0.2) if me <= 3 else Color.WHITE)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	v.add_child(scroll)
+	var grid := GridContainer.new()
+	grid.columns = 5
+	grid.add_theme_constant_override("h_separation", 36)
+	grid.add_theme_constant_override("v_separation", 6)
+	scroll.add_child(grid)
+	for h in ["POS", "DRIVER", "TEAM", "TIME / GAP", "BEST LAP"]:
+		var l := _label(20, grid)
+		l.text = h
+		l.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
+	for r in rows:
+		var col := Color(1.0, 0.75, 0.2) if r["player"] else Color.WHITE
+		for val in [str(r["pos"]), r["name"], r["team"], r["gap"], r["best"]]:
+			var l := _label(24, grid)
+			l.text = val
+			l.add_theme_color_override("font_color", col)
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 18)
+	bar.alignment = BoxContainer.ALIGNMENT_END
+	v.add_child(bar)
+	var again := _button("Race again", bar, func():
+		touch.visible = true
+		on_restart.call())
+	again.custom_minimum_size = Vector2(280, 76)
+	var menu := _button("Main menu", bar, func(): on_menu.call())
+	menu.custom_minimum_size = Vector2(280, 76)
+	results_panel.visible = true
 
 
 func update_speed(kmh: float) -> void:

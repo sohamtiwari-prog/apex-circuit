@@ -43,12 +43,20 @@ func default_profile() -> Dictionary:
 			"car": "gp26",
 			"team": 0,
 			"track": "silvermoor",
+			"mode": "race",             # "race" or "time_trial"
+			"laps": 3,
+			"opponents": 19,
+			"difficulty": "medium",     # easy, medium, hard
 		},
 		"best_laps": {},                  # "track|car" -> milliseconds
 		"stats": {
 			"laps": 0,
 			"distance_m": 0.0,
+			"races": 0,
+			"wins": 0,
+			"podiums": 0,
 		},
+		"best_finish": {},               # "track|car" -> best race position
 	}
 
 
@@ -85,6 +93,20 @@ func submit_lap(track_id: String, ms: int) -> bool:
 		data["best_laps"][track_id] = ms
 	save()
 	return is_best
+
+
+func record_race(track_id: String, car_id: String, position: int, field: int) -> void:
+	var st: Dictionary = data["stats"]
+	st["races"] = int(st["races"]) + 1
+	if position == 1:
+		st["wins"] = int(st["wins"]) + 1
+	if position <= 3:
+		st["podiums"] = int(st["podiums"]) + 1
+	var key := lap_key(track_id, car_id)
+	var best := int(data["best_finish"].get(key, 99))
+	if position < best:
+		data["best_finish"][key] = position
+	save()
 
 
 func add_distance(meters: float) -> void:

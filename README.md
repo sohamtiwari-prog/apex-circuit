@@ -42,6 +42,15 @@ yet modelled (the source data has none).
 New versions install **over** the old one and keep your progress, because
 every build is signed with the same key (`android_signing/`).
 
+## Game modes
+
+- **Race:** up to 20 cars (choose 20, 12 or 6 in the menu), standing start
+  with five red lights, 1/3/5/10 laps, Easy/Medium/Hard AI. You start
+  mid-grid. Live position, gaps and leaderboard; full results at the flag.
+  AI drivers follow a computed racing line, overtake when faster and hold
+  station when there is no room.
+- **Time trial:** you against the clock; best laps saved per car and track.
+
 ## Controls
 
 | | Tilt mode (default) | Button mode |
@@ -70,7 +79,7 @@ backup. Android's auto-backup is enabled too.
 - [x] **Milestone 1.5: Grand Prix.** GP car with downforce and aero-scaled brakes, real
   Silverstone layout, 8-speed gearbox with shift lights, synthesized engine/tyre/wind
   audio, traction control and ABS, cockpit view, main menu with car and track select
-- [ ] **Milestone 2: racing.** AI opponents, grid starts, positions, results screen
+- [x] **Milestone 2: racing.** 20-car grids, start lights, overtaking AI, positions, results
 - [ ] **Milestone 3: career and garage.** Events, currency, buying cars, upgrades
 - [ ] **Milestone 4: content and polish.** More GP tracks (Monza, Spa, ...), more cars,
   realistic textures and models, tyre compounds, pit stops, DRS
@@ -80,7 +89,7 @@ backup. Android's auto-backup is enabled too.
 ```
 scripts/
   menu.gd            main menu: car/track select, turntable preview
-  race.gd            race session: countdown, laps, track limits, input
+  race.gd            session: grid, start lights, laps, positions, traffic, results
   track.gd           circuit from data or control points: road mesh, walls, scenery
   car.gd             VehicleBody3D driving model: gearbox, aero, brakes, TC/ABS
   car_specs.gd       every car's physics, gearing, sound and camera spec
@@ -102,6 +111,8 @@ tests/
   tracks_test.gd     the AI completes a clean lap of every track
   grip_test.gd       measures each car's cornering grip (calibrates the AI)
   cars_test.gd       every car: 0-100, top speed, clean AI lap
+  race_test.gd       a full 20-car race to the results screen
+  perf_test.gd       simulation cost per grid size
   car_showcase.gd    renders every car for visual review
 ```
 

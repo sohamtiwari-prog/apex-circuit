@@ -20,7 +20,7 @@ func update(car: RaceCar, track: Track) -> void:
 	if _profile.size() != n:
 		_profile = track.speed_profile(car.spec)
 	var pos := car.global_position
-	idx = track.nearest_index(pos, idx)
+	idx = track.track_index(pos, idx)
 	var v := car.forward_speed()
 
 	# --- steering

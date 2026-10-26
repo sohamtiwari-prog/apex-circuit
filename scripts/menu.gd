@@ -12,6 +12,7 @@ var team_box: Control
 var team_label: Label
 var track_buttons := {}
 var best_label: Label
+var _option_buttons := {}
 var info_label: Label
 
 
@@ -199,6 +200,11 @@ func _build_ui() -> void:
 	right.custom_minimum_size = Vector2(360, 0)
 	right.add_theme_constant_override("separation", 12)
 	cols.add_child(right)
+	_option_buttons = {}
+	_option("mode", right, [["race", "Mode: Race"], ["time_trial", "Mode: Time trial"]])
+	_option("laps", right, [[3, "Laps: 3"], [5, "Laps: 5"], [10, "Laps: 10"], [1, "Laps: 1"]])
+	_option("opponents", right, [[19, "Grid: 20 cars"], [11, "Grid: 12 cars"], [5, "Grid: 6 cars"]])
+	_option("difficulty", right, [["medium", "AI: Medium"], ["hard", "AI: Hard"], ["easy", "AI: Easy"]])
 	info_label = _label("", 22, right, Color(1, 1, 1, 0.8))
 	info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	best_label = _label("", 30, right)
@@ -215,6 +221,43 @@ func _build_ui() -> void:
 	race.add_theme_stylebox_override("pressed", sbp)
 	race.pressed.connect(_start)
 	right.add_child(race)
+
+
+## A button that cycles through `choices` ([value, label] pairs) for a setting.
+func _option(key: String, parent: Node, choices: Array) -> void:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(360, 58)
+	b.add_theme_font_size_override("font_size", 24)
+	var sb := _style(Color(0.08, 0.09, 0.12, 0.88), Color(1, 1, 1, 0.18))
+	for st in ["normal", "hover", "pressed", "focus"]:
+		b.add_theme_stylebox_override(st, sb)
+	parent.add_child(b)
+	_option_buttons[key] = [b, choices]
+	b.pressed.connect(func():
+		var cur: Variant = save.get_setting(key)
+		var i := 0
+		for k in range(choices.size()):
+			if str(choices[k][0]) == str(cur):
+				i = k
+		var nxt: Array = choices[(i + 1) % choices.size()]
+		save.set_setting(key, nxt[0])
+		_refresh_options())
+	_refresh_options()
+
+
+func _refresh_options() -> void:
+	var race: bool = save.get_setting("mode") == "race"
+	for key in _option_buttons:
+		var b: Button = _option_buttons[key][0]
+		var choices: Array = _option_buttons[key][1]
+		var cur := str(save.get_setting(key))
+		b.text = choices[0][1]
+		for c in choices:
+			if str(c[0]) == cur:
+				b.text = c[1]
+		if key != "mode":
+			b.visible = race
 
 
 func _select_car(id: String, persist: bool) -> void:
