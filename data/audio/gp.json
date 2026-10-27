@@ -1,0 +1,69 @@
+{
+ "sample_rate": 32000,
+ "cycles": 8,
+ "per_cycle": 1024,
+ "rpm_map": [
+  [
+   4000.0,
+   2300.0
+  ],
+  [
+   12000.0,
+   8600.0
+  ]
+ ],
+ "layers": [
+  {
+   "rpm": 2000.0,
+   "on": "gp_on_0.pcm",
+   "off": "gp_off_0.pcm"
+  },
+  {
+   "rpm": 2500.0,
+   "on": "gp_on_1.pcm",
+   "off": "gp_off_1.pcm"
+  },
+  {
+   "rpm": 3100.0,
+   "on": "gp_on_2.pcm",
+   "off": "gp_off_2.pcm"
+  },
+  {
+   "rpm": 3800.0,
+   "on": "gp_on_3.pcm",
+   "off": "gp_off_3.pcm"
+  },
+  {
+   "rpm": 4600.0,
+   "on": "gp_on_4.pcm",
+   "off": "gp_off_4.pcm"
+  },
+  {
+   "rpm": 5500.0,
+   "on": "gp_on_5.pcm",
+   "off": "gp_off_5.pcm"
+  },
+  {
+   "rpm": 6500.0,
+   "on": "gp_on_6.pcm",
+   "off": "gp_off_6.pcm"
+  },
+  {
+   "rpm": 7600.0,
+   "on": "gp_on_7.pcm",
+   "off": "gp_off_7.pcm"
+  },
+  {
+   "rpm": 8800.0,
+   "on": "gp_on_8.pcm",
+   "off": "gp_off_8.pcm"
+  },
+  {
+   "rpm": 9600.0,
+   "on": "gp_on_9.pcm",
+   "off": "gp_off_9.pcm"
+  }
+ ],
+ "crackle": "gp_crackle.pcm",
+ "shift": "gp_shift.pcm"
+}

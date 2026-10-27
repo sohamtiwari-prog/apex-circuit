@@ -185,9 +185,9 @@ static func gp26() -> Dictionary:
 		"downshift_rpm": 10200.0,
 		"peak_rpm": 10800.0,
 		"shift_time": 0.04,
-		"cylinders": 6,
+		"cylinders": 12,
 		"engine_base_hz": 250.0,
-		"engine_tone": "gp",
+		"engine_tone": "v12gp",          # recorded V12 (scripts/car_audio.gd)
 
 		"cams": [
 			{"name": "Cockpit", "pos": Vector3(0, 0.6, 0.3), "pitch": -2.0, "cockpit": true},

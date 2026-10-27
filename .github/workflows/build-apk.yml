@@ -127,6 +127,9 @@ jobs:
       - name: Driver ranking
         run: bash .github/run_test.sh res://tests/rank_test.gd
 
+      - name: V12 engine sound
+        run: bash .github/run_test.sh res://tests/audio_test.gd
+
       - name: Export APK
         env:
           # The same key must sign every build, or Android refuses to update the

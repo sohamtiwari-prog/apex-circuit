@@ -191,6 +191,19 @@ heights, rolling land and woods beyond. The Riviera has its harbour (with
 yachts) and the tunnel under the hotel. Far trees switch to simple models and
 the landscape is tiled, so frame cost stays about where it was on flat ground.
 
+## Engine sound
+
+The GP car has a V12 voice built from a model of the engine
+(`tools/engine_sound.py`): twelve exhaust pulses per cycle through two banks of
+pipes with their reflections, the tailpipe bark, fixed body resonances, small
+cylinder-to-cylinder differences (the roar under the note), combustion noise
+and a little saturation. It is pre-rendered as engine-cycle tables at ten rpm
+points, on and off throttle, all phase-locked; your car generates its sound
+live from one engine phase that morphs between neighbouring tables, so it
+stays one sharp voice and the pitch follows the revs exactly. Revs are voiced
+as a big V12 (2300-8600 rpm for the car's 4000-12000) to keep it deep. Upshifts
+crack, the overrun crackles. Road cars keep their synthesized engines.
+
 ## Look
 
 Procedural sky with clouds, filmic tonemapping and glow; rubbered-in racing
