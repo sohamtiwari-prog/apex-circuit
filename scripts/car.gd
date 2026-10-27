@@ -167,7 +167,7 @@ func _ready() -> void:
 	continuous_cd = true          # no tunnelling through barriers at 300+ km/h
 	# Layer 1: the track and barriers. Layer 2: cars.
 	collision_layer = 2
-	collision_mask = 1 | 2
+	collision_mask = 1                # cars touch each other via CarContacts, not the solver
 	# Slippery bodywork: touching cars glance off each other instead of locking.
 	var pm := PhysicsMaterial.new()
 	pm.friction = 0.12
@@ -195,9 +195,13 @@ func _ready() -> void:
 
 
 ## A ghost car can't be hit by (or hit) other cars; the track still holds it.
+var is_ghost := false              # passes through other cars (after a reset)
+
+
 func set_ghost(on: bool) -> void:
 	collision_layer = 0 if on else 2
-	collision_mask = 1 if on else (1 | 2)
+	collision_mask = 1
+	is_ghost = on
 
 
 func forward_speed() -> float:

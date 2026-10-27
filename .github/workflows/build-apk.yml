@@ -80,6 +80,9 @@ jobs:
       - name: Full 20-car race
         run: bash .github/run_test.sh res://tests/race_test.gd
 
+      - name: Car-to-car contact is a nudge, not a launch
+        run: bash .github/run_test.sh res://tests/collision_test.gd
+
       - name: No scenery on the road
         run: bash .github/run_test.sh res://tests/scenery_test.gd
 

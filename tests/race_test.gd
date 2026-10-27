@@ -46,34 +46,31 @@ func _run() -> void:
 	var hits := {"soft": 0, "hard": 0}
 	var last_hit := {}                 # pair -> race time of the last counted hit
 	var hit_log: Array[String] = []
-	for e in race.entrants:
-		var c: RigidBody3D = e.car
-		c.contact_monitor = true
-		c.max_contacts_reported = 4
-		c.body_entered.connect(func(other: Node) -> void:
-			if other is RigidBody3D and c.get_instance_id() < other.get_instance_id():
-				var rel: float = (c.linear_velocity - other.linear_velocity).length()
-				# One incident per pair of cars per 2 s (a long scrape is one incident).
-				var pair := "%d-%d" % [c.get_instance_id(), other.get_instance_id()]
-				if race.race_time - float(last_hit.get(pair, -99.0)) < 2.0:
-					return
-				if rel > 4.0:
-					last_hit[pair] = race.race_time
-					hits["hard"] += 1
-					if hit_log.size() < 12:
-						var oe = null
-						for x in race.entrants:
-							if x.car == other:
-								oe = x
-						var gap: float = race.track.cum[oe.idx] - race.track.cum[e.idx]
-						var dl: float = race.track.lateral(other.global_position, oe.idx) - race.track.lateral(c.global_position, e.idx)
-						var drv_a = e.ai if e.ai != null else race.autopilot
-						var drv_b = oe.ai if oe.ai != null else race.autopilot
-						hit_log.append("%.0f m/s at %.0f m, t=%.1fs: B is %+.1f m ahead, %+.1f m right; vA %.1f vB %.1f; capA %.0f capB %.0f laneA %+.1f laneB %+.1f brkA %.1f brkB %.1f" % [rel, race.track.cum[e.idx], race.race_time, gap, dl,
-							c.forward_speed(), other.forward_speed(), drv_a.speed_cap, drv_b.speed_cap, drv_a.lane_offset, drv_b.lane_offset, c.brake_input, other.brake_input])
-				elif rel > 1.0:
-					hits["soft"] += 1)
-
+	# Car-to-car contacts come from CarContacts (cars don't collide through
+	# the physics solver any more).
+	race.car_contact.connect(func(c: RaceCar, other: RaceCar, closing: float) -> void:
+		var rel: float = (c.linear_velocity - other.linear_velocity).length()
+		# One incident per pair of cars per 2 s (a long scrape is one incident).
+		var pair := "%d-%d" % [mini(c.get_instance_id(), other.get_instance_id()), maxi(c.get_instance_id(), other.get_instance_id())]
+		if race.race_time - float(last_hit.get(pair, -99.0)) < 2.0:
+			return
+		var e = null
+		var oe = null
+		for x in race.entrants:
+			if x.car == c:
+				e = x
+			if x.car == other:
+				oe = x
+		if rel > 4.0:
+			last_hit[pair] = race.race_time
+			hits["hard"] += 1
+			if hit_log.size() < 12 and e != null and oe != null:
+				var gap: float = race.track.cum[oe.idx] - race.track.cum[e.idx]
+				var dl: float = race.track.lateral(other.global_position, oe.idx) - race.track.lateral(c.global_position, e.idx)
+				hit_log.append("%.0f m/s at %.0f m, t=%.1fs: B is %+.1f m ahead, %+.1f m right; vA %.1f vB %.1f" % [rel, race.track.cum[e.idx], race.race_time, gap, dl, c.forward_speed(), other.forward_speed()])
+		elif rel > 1.0:
+			hits["soft"] += 1
+	)
 	var t0 := Time.get_ticks_usec()
 	var frames := 0
 	var resets := 0

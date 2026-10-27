@@ -407,6 +407,20 @@ func _on_chat(from: int, text: String) -> void:
 	hud.show_chat(who, text)
 
 
+## Car-to-car contact between the cars simulated on this phone
+## (scripts/car_contacts.gd); other players' cars are handled by NetRace.
+## A car-to-car contact began: (car_a, car_b, closing speed m/s).
+signal car_contact(a: RaceCar, b: RaceCar, closing: float)
+var _touching := {}
+func _car_contacts(delta: float) -> void:
+	var cars: Array = []
+	for e in entrants:
+		if not e.remote and not e.car.freeze and not e.car.is_ghost:
+			cars.append(e.car)
+	for hit in CarContacts.step(cars, delta, _touching):
+		car_contact.emit(hit[0], hit[1], hit[2])
+
+
 func leave_to_menu() -> void:
 	_quit_to_menu()
 
@@ -541,6 +555,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		_read_input()
 
+	_car_contacts(delta)
 	match state:
 		State.GRID:
 			_update_lights(delta)

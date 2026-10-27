@@ -106,7 +106,7 @@ static func make_local_bot(c: RaceCar) -> void:
 	c.freeze = false
 	c.set_physics_process(true)
 	c.collision_layer = 2
-	c.collision_mask = 1 | 2
+	c.collision_mask = 1
 	c.linear_velocity = c.remote_vel
 	c.controls_enabled = true
 
