@@ -47,6 +47,7 @@ func _run() -> void:
 				# 30 degrees towards the barrier at ~300 km/h.
 				_put(race, idx, side * clampf(track.wall_at(idx, side) - 9.0, -track.road_half, track.road_half), -side * 0.52, 83.0)
 				var worst := 0.0
+				var beyond := 0.0
 				var hint := idx
 				for f in 150:
 					hud.touch.steer = 0.0
@@ -54,15 +55,19 @@ func _run() -> void:
 					hud.touch.brake = 0.0
 					await physics_frame
 					hint = track.track_index(car.global_position, hint)
-					var lat: float = absf(track.lateral(car.global_position, hint))
+					var lat_s: float = track.lateral(car.global_position, hint)
+					var lat: float = absf(lat_s)
 					worst = maxf(worst, lat)
+					# Beyond the barrier where the car actually is.
+					if lat > track.wall_at(hint, signf(lat_s)) + 2.0:
+						beyond = maxf(beyond, lat)
 					if car.global_position.y < track.points[hint].y - 4.0:
 						worst = 999.0
 				var w: float = track.wall_at(idx, side)
 				if worst > w - 3.0:
 					hits += 1
-				if worst > w + 2.0:
-					escapes.append("%d%s(%.0fm)" % [idx, "R" if side > 0 else "L", worst])
+				if beyond > 0.0 or worst >= 999.0:
+					escapes.append("%d%s(%.0fm)" % [idx, "R" if side > 0 else "L", maxf(beyond, worst)])
 		print("  %-11s wall %.0f m: %d hits, escapes %s" % [tid, track.wall_offset, hits, str(escapes)])
 		_check(escapes.is_empty(), "%s: flat-out barrier hits never get through (%d/64 escaped)" % [tid, escapes.size()])
 		# Reset from outside the barriers, upside down, and from far away.

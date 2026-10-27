@@ -22,6 +22,7 @@ func _test(car_id: String) -> void:
 	var track := Track.new()
 	world.add_child(track)
 	track.build("silvermoor")
+	test_strip(world)
 	var car := RaceCar.new()
 	car.setup(CarSpecs.get_spec(car_id))
 	world.add_child(car)
@@ -97,3 +98,15 @@ func _run() -> void:
 	else:
 		print("%d CHECK(S) FAILED" % failures.size())
 		quit(1)
+
+## Flat test strip away from the circuit for straight-line runs (the
+## landscape out there is scenery only; cars never drive on it in a race).
+static func test_strip(parent: Node) -> void:
+	var body := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(4400, 1, 80)
+	cs.shape = box
+	body.add_child(cs)
+	body.position = Vector3(0, Track.GROUND_Y - 0.5, 1800)
+	parent.add_child(body)

@@ -161,6 +161,21 @@ cornering force at any speed. Grass costs grip and speed, gravel traps bog
 you down, asphalt run-off is safe. Traction control and ABS keep cornering
 grip first; switch them off and you can spin the rears or lock the fronts.
 
+## Real elevation and landscape
+
+Every real circuit has its true height profile, measured from F1 car-position
+telemetry (about 25-30 qualifying laps per track, aligned to our centreline,
+pooled and smoothed): Ardennes 102 m from top to bottom (down to the
+compression, up the hill and the long straight to the highest corner), Styria
+63 m, Entrelagos 43 m, Riviera 42 m, Desert 16 m, Brianza 12 m, Silvermoor
+11 m. The same data put each lap's start on the real timing line.
+`tools/elevation_from_telemetry.py` does this; `tools/terrain.py` then builds
+each venue's landscape (`tracks/<id>.terrain`): level shelves by the track for
+verges, pits and stands, smooth hillsides between stretches at different
+heights, rolling land and woods beyond. The Riviera has its harbour (with
+yachts) and the tunnel under the hotel. Far trees switch to simple models and
+the landscape is tiled, so frame cost stays about where it was on flat ground.
+
 ## Look
 
 Procedural sky with clouds, filmic tonemapping and glow; rubbered-in racing
@@ -257,6 +272,11 @@ Code is MIT licensed (see `LICENSE`).
 
 Circuit outlines come from [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits),
 MIT licence, Copyright (c) 2019-2025 Tomislav Bacinger.
+
+Elevation profiles are derived from position telemetry published by
+[TracingInsights](https://github.com/TracingInsights/2025) (Apache-2.0,
+originally from the F1 live-timing feed via FastF1); only smoothed height
+profiles are kept.
 
 This project is not affiliated with Formula 1, the FIA, any racing team,
 car manufacturer or circuit. All names in the game are fictional.

@@ -35,6 +35,9 @@ func build(t: Track) -> void:
 	_gantry()
 	_pits_and_stands()
 	_bridges()
+	if track.track_id == "riviera":
+		_tunnel(1460.0, 1900.0)
+		_yachts()
 	_hills()
 	_brake_boards()
 	_marshal_posts()
@@ -120,6 +123,10 @@ func _material(key: String) -> Material:
 			m.roughness = 1.0
 		"hills":
 			m.roughness = 1.0
+		"lamp":
+			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		"tunnel":
+			m.roughness = 0.95
 	return m
 
 
@@ -301,7 +308,7 @@ func _gantry() -> void:
 	var i := 3 % n
 	var p: Vector3 = track.points[i]
 	var r: Vector3 = track.rights[i]
-	var basis := Basis.looking_at(-track.tangents[i], Vector3.UP)
+	var basis := Basis.looking_at(-track.htangents[i], Vector3.UP)
 	var span := track.wall_offset + 0.8
 	var y := 7.2
 	var steel := Color(0.24, 0.25, 0.28)
@@ -311,7 +318,7 @@ func _gantry() -> void:
 	_box("metal", Transform3D(basis, p + Vector3(0, y - 1.1, 0)), Vector3(span * 2.0 + 0.6, 0.15, 0.4), steel)
 	# Light panel facing the grid (the cars approach from -tangent... the grid
 	# is behind the line, so the panel faces backwards along the track).
-	var panel_c := p + Vector3(0, y - 1.0, 0) - track.tangents[i] * 0.45
+	var panel_c := p + Vector3(0, y - 1.0, 0) - track.htangents[i] * 0.45
 	_box("metal", Transform3D(basis, panel_c), Vector3(5.6, 1.5, 0.35), Color(0.04, 0.04, 0.05))
 	_lamp_off = StandardMaterial3D.new()
 	_lamp_off.albedo_color = Color(0.12, 0.02, 0.02)
@@ -330,7 +337,7 @@ func _gantry() -> void:
 		var mi := MeshInstance3D.new()
 		mi.mesh = lamp_mesh
 		var x := (col - 2.0) * 1.05
-		mi.transform = Transform3D(basis.rotated(basis.x, PI * 0.5), panel_c + basis.x * x - track.tangents[i] * 0.2 + Vector3(0, 0.3, 0))
+		mi.transform = Transform3D(basis.rotated(basis.x, PI * 0.5), panel_c + basis.x * x - track.htangents[i] * 0.2 + Vector3(0, 0.3, 0))
 		mi.material_override = _lamp_off
 		add_child(mi)
 		var mi2 := MeshInstance3D.new()
@@ -342,7 +349,7 @@ func _gantry() -> void:
 		_lamp_pairs.append(mi2)
 	# Ad banner on the beam.
 	var ad := _ad_uv(0, 3.0)
-	var fwd: Vector3 = -track.tangents[i]
+	var fwd: Vector3 = -track.htangents[i]
 	var b0 := p - r * span + Vector3(0, y - 0.35, 0) + fwd * 0.36
 	var b1 := p + r * span + Vector3(0, y - 0.35, 0) + fwd * 0.36
 	_quad("ads", b0, b1, b1 + Vector3(0, 0.7, 0), b0 + Vector3(0, 0.7, 0), Color.WHITE, ad)
@@ -413,7 +420,7 @@ func _pit_complex(start_s: float, length: float, side: float) -> bool:
 		return false
 	for k in range(0, samples.size(), 4):
 		var i: int = samples[k]
-		var xf := Transform3D(Basis.looking_at(-track.tangents[i], Vector3.UP), track.points[i] + track.rights[i] * side * (bld0 + depth * 0.5))
+		var xf := Transform3D(Basis.looking_at(-track.htangents[i], Vector3.UP), track.points[i] + track.rights[i] * side * (bld0 + depth * 0.5))
 		if not track.footprint_clear(xf, Vector3(depth + 22.0, 10, 10), 2.0):
 			return false
 	var lane_col := Color(0.3, 0.3, 0.31)
@@ -493,7 +500,7 @@ func _grandstand_run(start_s: float, length: float, side: float) -> bool:
 		var i: int = samples[k]
 		var j: int = samples[k + step]
 		var seg := track.points[i].distance_to(track.points[j])
-		var xf := Transform3D(Basis.looking_at(-track.tangents[i], Vector3.UP), (track.points[i] + track.points[j]) * 0.5 + (track.rights[i] + track.rights[j]) * 0.5 * side * (off + depth * 0.5))
+		var xf := Transform3D(Basis.looking_at(-track.htangents[i], Vector3.UP), (track.points[i] + track.points[j]) * 0.5 + (track.rights[i] + track.rights[j]) * 0.5 * side * (off + depth * 0.5))
 		if not track.footprint_clear(xf, Vector3(depth + 2.0, 10.0, seg + 1.0), 1.5):
 			return false
 	for k in range(0, samples.size() - step, step):
@@ -543,13 +550,15 @@ func _grandstand_run(start_s: float, length: float, side: float) -> bool:
 			_quad("concrete", fa, pa + Vector3(0, topy, 0), pb + Vector3(0, topy, 0), fb2, roof_col.darkened(0.3))
 		if k % (step * 3) == 0:
 			_box("metal", Transform3D(Basis(), pa + Vector3(0, topy * 0.5, 0) - ri * 0.4), Vector3(0.35, topy, 0.35), Color(0.55, 0.56, 0.6))
-		_reserve(Transform3D(Basis.looking_at(-track.tangents[i], Vector3.UP), (track.points[i] + track.points[j]) * 0.5 + (ri + rj) * 0.5 * (off + depth * 0.5)), Vector3(depth + 2.0, 10.0, seg + 1.0))
+		_reserve(Transform3D(Basis.looking_at(-track.htangents[i], Vector3.UP), (track.points[i] + track.points[j]) * 0.5 + (ri + rj) * 0.5 * (off + depth * 0.5)), Vector3(depth + 2.0, 10.0, seg + 1.0))
 	return true
 
 
 ## Keeps trees and buildings out of this box later.
-func _reserve(xf: Transform3D, size: Vector3) -> void:
-	track.scenery_boxes.append({"xf": xf, "size": size})
+## overhead: a structure that spans the road above car height (the hotel
+## over the tunnel): other scenery keeps clear, but it's meant to be there.
+func _reserve(xf: Transform3D, size: Vector3, overhead := false) -> void:
+	track.scenery_boxes.append({"xf": xf, "size": size, "overhead": overhead})
 
 
 # ------------------------------------------------------------ bridges
@@ -568,14 +577,14 @@ func _bridges() -> void:
 			continue
 		var p: Vector3 = track.points[i]
 		var r: Vector3 = track.rights[i]
-		var basis := Basis.looking_at(-track.tangents[i], Vector3.UP)
+		var basis := Basis.looking_at(-track.htangents[i], Vector3.UP)
 		var span := track.wall_offset + 2.0
 		var y := 7.5
 		var col := Color(0.86, 0.86, 0.88)
 		for side in [-1.0, 1.0]:
 			_box("concrete", Transform3D(basis, p + r * span * side + Vector3(0, y * 0.5, 0)), Vector3(3.0, y, 3.0), col)
 		_box("concrete", Transform3D(basis, p + Vector3(0, y + 0.6, 0)), Vector3(span * 2.0 + 3.0, 1.2, 3.2), col)
-		var fwd: Vector3 = track.tangents[i]
+		var fwd: Vector3 = track.htangents[i]
 		var ad := _ad_uv(i, 4.0)
 		var l0 := p - r * (span + 1.5) + Vector3(0, y + 1.2, 0)
 		var l1 := p + r * (span + 1.5) + Vector3(0, y + 1.2, 0)
@@ -624,7 +633,7 @@ func _hills() -> void:
 		var h1 := height * (0.35 + 0.65 * (noise.get_noise_1d(float(k + 1) / seg * 12.0) * 0.5 + 0.5))
 		var d0 := Vector3(cos(a0), 0, sin(a0))
 		var d1 := Vector3(cos(a1), 0, sin(a1))
-		var c3 := Vector3(centre.x, Track.GROUND_Y - 0.5, centre.y)
+		var c3 := Vector3(centre.x, (track.terrain_base if not track.terrain_h.is_empty() else Track.GROUND_Y) - 0.5, centre.y)
 		var in0 := c3 + d0 * radius
 		var in1 := c3 + d1 * radius
 		var top0 := c3 + d0 * (radius + 500.0) + Vector3(0, h0, 0)
@@ -642,6 +651,97 @@ func _hill_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, col: Color) -> v
 		_quad("hills", a, d, c, b, col)
 	else:
 		_quad("hills", a, b, c, d, col)
+
+
+# ------------------------------------------------------------ street-circuit landmarks
+
+## The harbour-side tunnel under the grand hotel: walls, ceiling with lamp
+## strips, portals, and the hotel block on top.
+func _tunnel(from_m: float, to_m: float) -> void:
+	var n := track.size()
+	var i0 := int(from_m / Track.SPACING)
+	var i1 := int(to_m / Track.SPACING)
+	var height := 6.6
+	var concrete := Color(0.62, 0.6, 0.56)
+	var ceiling := Color(0.32, 0.31, 0.3)
+	var step := 2
+	for k in range(i0, i1, step):
+		var i := k % n
+		var j := (k + step) % n
+		var pi: Vector3 = track.points[i]
+		var pj: Vector3 = track.points[j]
+		var li := track.wall_at(i, -1.0) + 0.5
+		var lj := track.wall_at(j, -1.0) + 0.5
+		var ri := track.wall_at(i, 1.0) + 0.5
+		var rj := track.wall_at(j, 1.0) + 0.5
+		var al: Vector3 = pi - track.rights[i] * li
+		var bl: Vector3 = pj - track.rights[j] * lj
+		var ar: Vector3 = pi + track.rights[i] * ri
+		var br: Vector3 = pj + track.rights[j] * rj
+		var up := Vector3(0, height, 0)
+		var down := Vector3(0, -0.3, 0)
+		_quad("tunnel", al + down, bl + down, bl + up, al + up, concrete)
+		_quad("tunnel", br + down, ar + down, ar + up, br + up, concrete)
+		_quad("tunnel", al + up, bl + up, br + up, ar + up, ceiling)
+		var thick := Vector3(0, height + 1.6, 0)
+		_quad("tunnel", ar + thick, br + thick, bl + thick, al + thick, concrete.darkened(0.2))
+		if k % 4 == 0:
+			for o in [-1.6, 1.6]:
+				var c: Vector3 = (pi + pj) * 0.5 + track.rights[i] * o + Vector3(0, height - 0.08, 0)
+				_box("lamp", Transform3D(Basis.looking_at(-track.htangents[i], Vector3.UP), c), Vector3(0.35, 0.08, 2.6), Color(1.0, 0.93, 0.75))
+	# Portal faces above each opening, and the hotel over the tunnel.
+	for e in [i0 % n, i1 % n]:
+		var p: Vector3 = track.points[e]
+		var r: Vector3 = track.rights[e]
+		var w := track.wall_at(e, 1.0) + track.wall_at(e, -1.0) + 1.0
+		var xf := Transform3D(Basis.looking_at(-track.htangents[e], Vector3.UP), p + r * (track.wall_at(e, 1.0) - track.wall_at(e, -1.0)) * 0.5 + Vector3(0, height + 3.0, 0))
+		_box("tunnel", xf, Vector3(w + 6.0, 6.0, 1.2), concrete.darkened(0.1))
+	var cream := Color(0.93, 0.89, 0.8)
+	for k in range(i0 + 10, i1 - 10, 22):
+		var i := k % n
+		var p: Vector3 = track.points[i]
+		var b := Basis.looking_at(-track.htangents[i], Vector3.UP)
+		var size := Vector3(track.wall_offset * 2.0 + 26.0, 22.0, 46.0)
+		var xf := Transform3D(b, p + Vector3(0, height + 1.6 + size.y * 0.5, 0))
+		_box("concrete", xf, size, cream)
+		for f in range(1, 6):
+			var band := Transform3D(b, p + Vector3(0, height + 1.6 + f * 3.8, 0))
+			_box("glass", band, Vector3(size.x + 0.1, 1.3, size.z + 0.1), Color(0.18, 0.24, 0.3))
+		_reserve(Transform3D(b, p), Vector3(size.x, 30.0, size.z), true)
+
+
+## Motor yachts moored in the harbour.
+func _yachts() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1929
+	var placed := 0
+	var spots: Array = []
+	for attempt in range(1500):
+		if placed >= 34:
+			break
+		var i := rng.randi() % track.size()
+		var side := -1.0 if rng.randf() < 0.5 else 1.0
+		var p: Vector3 = track.points[i] + track.rights[i] * side * rng.randf_range(42.0, 190.0)
+		if track.ground_height(p.x, p.z) > track.sea_level - 2.5:
+			continue
+		var length := rng.randf_range(14.0, 34.0)
+		var clash := false
+		for q in spots:
+			if Vector2(q.x - p.x, q.z - p.z).length() < length * 0.8 + 10.0:
+				clash = true
+				break
+		if clash:
+			continue
+		spots.append(p)
+		placed += 1
+		var b := Basis(Vector3.UP, rng.randf_range(-0.3, 0.3) + (PI * 0.5 if rng.randf() < 0.5 else 0.0))
+		var beam := length * rng.randf_range(0.2, 0.25)
+		var base := Vector3(p.x, track.sea_level, p.z)
+		_box("concrete", Transform3D(b, base + Vector3(0, 0.6, 0)), Vector3(beam, 2.0, length), Color(0.96, 0.96, 0.95))
+		_box("concrete", Transform3D(b, base + b.z * (length * 0.08) + Vector3(0, 2.3, 0)), Vector3(beam * 0.8, 1.6, length * 0.55), Color(0.98, 0.98, 0.97))
+		_box("glass", Transform3D(b, base + b.z * (length * 0.08) + Vector3(0, 2.4, 0)), Vector3(beam * 0.82, 0.6, length * 0.5), Color(0.1, 0.14, 0.2))
+		if length > 24.0:
+			_box("concrete", Transform3D(b, base + b.z * (length * 0.12) + Vector3(0, 3.7, 0)), Vector3(beam * 0.6, 1.2, length * 0.32), Color(0.98, 0.98, 0.97))
 
 
 # ------------------------------------------------------------ braking boards
@@ -709,7 +809,7 @@ func _board_set(corner: int) -> void:
 		var i := posmod(corner - int((dist + 40.0) / Track.SPACING), n)
 		var lat := track.road_half + Track.KERB_W + 3.5
 		var base: Vector3 = track.points[i] + track.rights[i] * lat * side
-		var fwd: Vector3 = track.tangents[i]
+		var fwd: Vector3 = track.htangents[i]
 		# Text reads left to right for a driver looking down the track.
 		var right: Vector3 = track.rights[i]
 		var w := 1.0
@@ -735,7 +835,7 @@ func _marshal_posts() -> void:
 		var side := 1.0 if (i / every) % 2 == 0 else -1.0
 		var out: Vector3 = track.rights[i] * side
 		var p: Vector3 = track.points[i] + out * (track.wall_offset + 3.0)
-		var basis := Basis.looking_at(-track.tangents[i], Vector3.UP)
+		var basis := Basis.looking_at(-track.htangents[i], Vector3.UP)
 		var xf := Transform3D(basis, p + Vector3(0, 1.3, 0))
 		if not track.footprint_clear(Transform3D(basis, p), Vector3(3.0, 3.0, 3.0), 1.0):
 			continue
@@ -794,7 +894,7 @@ func _flagpoles() -> void:
 		if not track.footprint_clear(Transform3D(Basis(), p), Vector3(1, 1, 1), 1.0):
 			continue
 		_box("metal", Transform3D(Basis(), p + Vector3(0, 4.5, 0)), Vector3(0.08, 9.0, 0.08), Color(0.8, 0.8, 0.82))
-		var fwd: Vector3 = track.tangents[i]
+		var fwd: Vector3 = track.htangents[i]
 		var col: Color = colours[k % colours.size()]
 		var top := p + Vector3(0, 8.6, 0)
 		# Two-panel flag with a slight wave.

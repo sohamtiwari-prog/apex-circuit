@@ -12,7 +12,7 @@ const SAVE_DIR := "user://save"
 const SAVE_PATH := SAVE_DIR + "/profile.json"
 const BACKUP_PATH := SAVE_DIR + "/profile.bak.json"
 const TMP_PATH := SAVE_DIR + "/profile.tmp.json"
-const SCHEMA_VERSION := 2
+const SCHEMA_VERSION := 3
 
 signal saved
 
@@ -192,6 +192,15 @@ func _migrate(profile: Dictionary) -> void:
 	for key in ["brake_assist", "steer_assist"]:
 		if typeof(st.get(key)) == TYPE_BOOL:
 			st[key] = "full" if st[key] else "off"
+	# v3: tracks got real elevation and start on the real timing line, so
+	# sector splits and ghost laps from before no longer line up.
+	if int(profile.get("schema", 1)) < 3:
+		profile["best_sectors"] = {}
+		profile["best_minis"] = {}
+		var dir := DirAccess.open("user://ghosts")
+		if dir != null:
+			for f in dir.get_files():
+				dir.remove(f)
 	profile["schema"] = SCHEMA_VERSION
 
 

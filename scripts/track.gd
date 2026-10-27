@@ -3,7 +3,9 @@ extends Node3D
 ## A race circuit built procedurally from a centreline.
 ##
 ## Tracks come from data files (tracks/<id>.json, imported from real circuit
-## outlines by tools/import_circuit.py) or from a list of control points.
+## outlines by tools/import_circuit.py, with real elevation from
+## tools/elevation_from_telemetry.py and a landscape heightmap from
+## tools/terrain.py) or from a list of control points.
 ## The centreline is sampled every SPACING metres; every other system (road
 ## mesh, walls, lap timing, AI) works off those samples.
 
@@ -46,6 +48,8 @@ var style := "park"             # park, forest, city, desert
 var points := PackedVector3Array()
 var tangents := PackedVector3Array()
 var rights := PackedVector3Array()
+var ups := PackedVector3Array()             # road surface normal (tilts with the slope)
+var htangents := PackedVector3Array()       # level direction of travel (for buildings, signs)
 var cum := PackedFloat32Array()
 var curv := PackedFloat32Array()     # signed, 1/radius; negative = right-hander
 var total_length := 0.0
@@ -69,6 +73,19 @@ var _profiles := {}
 var scenery_boxes: Array = []
 var trackside: Trackside
 
+# Landscape heightmap (tools/terrain.py): true ground heights on a grid.
+var terrain_h := PackedFloat32Array()
+var _tx0 := 0.0
+var _tz0 := 0.0
+var _tstep := 8.0
+var _tw := 0
+var _th := 0
+var terrain_base := 0.0
+var terrain_wild := PackedByteArray()      # 0 mown by the track .. 255 rough land
+var sea_level := NAN                       # coastal tracks: water height
+var _ground_mat: ShaderMaterial
+var detail := 1.0                          # scenery density (0.55 in battery saver)
+
 
 static func catalog_entry(id: String) -> Dictionary:
 	for t in CATALOG:
@@ -87,13 +104,16 @@ static func catalog_name(id: String) -> String:
 func build(id: String = "kestrel_park") -> void:
 	track_id = id
 	track_name = catalog_name(id)
+	var sv := get_node_or_null("/root/Save") if is_inside_tree() else null
+	if sv != null and String(sv.get_setting("graphics")) == "saver":
+		detail = 0.55
 	style = catalog_entry(id)["style"]
-	if id == "kestrel_park":
+	if id == "kestrel_park" and not FileAccess.file_exists("res://tracks/kestrel_park.json"):
 		road_half = 6.5
 		wall_offset = 19.0
 		_sample_control(KESTREL_LAYOUT)
 	else:
-		_load_file("res://tracks/%s.json" % id)
+		_load_file("res://tracks/%s.json" % id, true)
 	_derive()
 	_derive_line()
 	_derive_runoff()
@@ -199,15 +219,38 @@ func dist_to_centerline(pos: Vector3, radius: float = 30.0) -> float:
 
 # ------------------------------------------------------------ sampling
 
-func _load_file(path: String) -> void:
+func _load_file(path: String, with_terrain := false) -> void:
 	var f := FileAccess.open(path, FileAccess.READ)
 	var data: Dictionary = JSON.parse_string(f.get_as_text())
 	track_name = data.get("name", track_name)
 	road_half = float(data.get("half_width", 7.0))
 	wall_offset = float(data.get("wall_offset", 24.0))
 	points = PackedVector3Array()
-	for p in data["points"]:
-		points.append(Vector3(float(p[0]), ROAD_Y, float(p[1])))
+	var elev: Array = data.get("elev", [])
+	var pts: Array = data["points"]
+	for k in pts.size():
+		var p: Array = pts[k]
+		var y := float(elev[k]) if k < elev.size() else 0.0
+		points.append(Vector3(float(p[0]), ROAD_Y + y, float(p[1])))
+	terrain_h = PackedFloat32Array()
+	if with_terrain and data.has("terrain"):
+		var tm: Dictionary = data["terrain"]
+		var bytes := FileAccess.get_file_as_bytes(path.get_basename() + ".terrain")
+		_tw = int(tm["w"])
+		_th = int(tm["h"])
+		if bytes.size() >= _tw * _th * 2:
+			_tx0 = float(tm["x0"])
+			_tz0 = float(tm["z0"])
+			_tstep = float(tm["step"])
+			terrain_base = float(tm.get("base", 0.0))
+			var off := float(tm["offset"])
+			var sc := float(tm["scale"])
+			terrain_h.resize(_tw * _th)
+			for k in _tw * _th:
+				terrain_h[k] = off + sc * bytes.decode_u16(k * 2)
+			if bytes.size() >= _tw * _th * 3:
+				terrain_wild = bytes.slice(_tw * _th * 2, _tw * _th * 3)
+			sea_level = float(tm.get("sea_level", NAN))
 	line_offset = PackedFloat32Array()
 	if data.has("line"):
 		for o in data["line"]:
@@ -218,10 +261,10 @@ func _load_file(path: String) -> void:
 ## Centreline of a catalog track without building anything (menu maps).
 static func outline(id: String) -> PackedVector3Array:
 	var t := Track.new()
-	if id == "kestrel_park":
+	if id == "kestrel_park" and not FileAccess.file_exists("res://tracks/kestrel_park.json"):
 		t._sample_control(KESTREL_LAYOUT)
 	else:
-		t._load_file("res://tracks/%s.json" % id)
+		t._load_file("res://tracks/%s.json" % id, false)
 	var pts := t.points
 	t.free()
 	return pts
@@ -259,6 +302,8 @@ func _derive() -> void:
 	var count := points.size()
 	tangents.resize(count)
 	rights.resize(count)
+	ups.resize(count)
+	htangents.resize(count)
 	cum.resize(count)
 	curv.resize(count)
 	var d := 0.0
@@ -266,12 +311,14 @@ func _derive() -> void:
 		var t: Vector3 = (points[(i + 1) % count] - points[(i - 1 + count) % count]).normalized()
 		tangents[i] = t
 		rights[i] = t.cross(Vector3.UP).normalized()
+		ups[i] = rights[i].cross(t).normalized()
+		htangents[i] = Vector3(t.x, 0.0, t.z).normalized()
 		cum[i] = d
 		d += points[i].distance_to(points[(i + 1) % count])
 	total_length = d
 	for i in range(count):
-		var a: Vector3 = tangents[(i - 4 + count) % count]
-		var b: Vector3 = tangents[(i + 4) % count]
+		var a: Vector3 = htangents[(i - 4 + count) % count]
+		var b: Vector3 = htangents[(i + 4) % count]
 		curv[i] = a.cross(b).y / (8.0 * SPACING)
 
 
@@ -326,28 +373,187 @@ func _build_ground() -> void:
 			mat.set_shader_parameter("alt_color", base.lightened(0.04))
 			mat.set_shader_parameter("stripe_strength", 0.0)
 			mat.set_shader_parameter("far_color", Color(0.82, 0.7, 0.52))
+			mat.set_shader_parameter("wild_color", Color(0.74, 0.58, 0.38))
+			mat.set_shader_parameter("wild_color2", Color(0.84, 0.7, 0.5))
 		"city":
 			mat.set_shader_parameter("alt_color", base)
 			mat.set_shader_parameter("stripe_strength", 0.0)
 			mat.set_shader_parameter("far_color", base)
+			# Hillside town: terraces and gardens.
+			mat.set_shader_parameter("wild_color", Color(0.5, 0.47, 0.42))
+			mat.set_shader_parameter("wild_color2", Color(0.24, 0.34, 0.18))
+		"forest":
+			mat.set_shader_parameter("alt_color", base.lightened(0.09))
+			mat.set_shader_parameter("far_color", base.lerp(Color(0.35, 0.45, 0.42), 0.35))
+			mat.set_shader_parameter("wild_color", Color(0.08, 0.17, 0.06))
+			mat.set_shader_parameter("wild_color2", Color(0.17, 0.15, 0.08))
 		_:
 			mat.set_shader_parameter("alt_color", base.lightened(0.09))
 			mat.set_shader_parameter("far_color", base.lerp(Color(0.45, 0.55, 0.5), 0.35))
+			mat.set_shader_parameter("wild_color", Color(0.19, 0.33, 0.11))
+			mat.set_shader_parameter("wild_color2", Color(0.33, 0.39, 0.15))
+	_ground_mat = mat
+	var floor_y := GROUND_Y
+	if not terrain_h.is_empty():
+		_build_terrain(mat)
+		floor_y = terrain_base - 0.3
+		if not is_nan(sea_level):
+			floor_y = sea_level - 6.0
+			_build_water()
+	# Far plane out to the horizon (the landscape eases down to its level).
 	var plane := PlaneMesh.new()
-	plane.size = Vector2(4000, 4000)
+	plane.size = Vector2(6000, 6000)
 	var mi := MeshInstance3D.new()
 	mi.mesh = plane
 	mi.material_override = mat
-	mi.position.y = GROUND_Y
+	mi.position = Vector3(_tx0 + _tstep * _tw * 0.5, floor_y, _tz0 + _tstep * _th * 0.5) if not terrain_h.is_empty() else Vector3(0, floor_y, 0)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
 
+	# Driving surfaces are the road and verge meshes; this is only a safety
+	# net far below (a car that gets under the track is put back on it).
 	var body := StaticBody3D.new()
-	body.position.y = GROUND_Y
+	var lowest := INF
+	for p in points:
+		lowest = minf(lowest, p.y)
+	body.position.y = (lowest - 25.0) if not terrain_h.is_empty() else GROUND_Y
 	var cs := CollisionShape3D.new()
 	cs.shape = WorldBoundaryShape3D.new()
 	body.add_child(cs)
 	add_child(body)
+
+
+## Sea for coastal tracks: one big water plane (the terrain has a sea bed).
+func _build_water() -> void:
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(8000, 8000)
+	plane.subdivide_width = 0
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/water.gdshader")
+	mat.set_shader_parameter("ripples", _noise_texture(0.05, Color(0, 0, 0), Color(1, 1, 1)))
+	var mi := MeshInstance3D.new()
+	mi.mesh = plane
+	mi.material_override = mat
+	mi.position = Vector3(_tx0 + _tstep * _tw * 0.5, sea_level, _tz0 + _tstep * _th * 0.5)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+
+
+## 0 on the mown shelf by the track .. 1 on open land (from the terrain file;
+## -1 if this track has none). Cheap: a lookup, not a search.
+func wildness(x: float, z: float) -> float:
+	if terrain_wild.is_empty():
+		return -1.0
+	var ix := clampi(int(round((x - _tx0) / _tstep)), 0, _tw - 1)
+	var iz := clampi(int(round((z - _tz0) / _tstep)), 0, _th - 1)
+	return terrain_wild[iz * _tw + ix] / 255.0
+
+
+## True if (x, z) is open water.
+func is_water(x: float, z: float) -> bool:
+	return not is_nan(sea_level) and ground_height(x, z) < sea_level - 0.5
+
+
+## Ground height (m) at a world position: the landscape heightmap, or the
+## flat ground if this track has none.
+func ground_height(x: float, z: float) -> float:
+	if terrain_h.is_empty():
+		return GROUND_Y
+	var fx := clampf((x - _tx0) / _tstep, 0.0, _tw - 1.001)
+	var fz := clampf((z - _tz0) / _tstep, 0.0, _th - 1.001)
+	var ix := int(fx)
+	var iz := int(fz)
+	var tx := fx - ix
+	var tz := fz - iz
+	var k := iz * _tw + ix
+	var a := lerpf(terrain_h[k], terrain_h[k + 1], tx)
+	var b := lerpf(terrain_h[k + _tw], terrain_h[k + _tw + 1], tx)
+	return lerpf(a, b, tz)
+
+
+## Landscape mesh. Under the road and verges (out to just past the
+## barriers) it is pushed down out of sight, so those always sit on top.
+func _build_terrain(mat: Material) -> void:
+	var hs := terrain_h.duplicate()
+	var n := points.size()
+	for i in n:
+		var p: Vector3 = points[i]
+		var t := Vector2(tangents[i].x, tangents[i].z).normalized()
+		var r := Vector2(rights[i].x, rights[i].z).normalized()
+		var reach := maxf(wall_at(i, -1.0), wall_at(i, 1.0)) + 3.0 + _tstep
+		var ix0 := int(floor((p.x - reach - _tx0) / _tstep))
+		var ix1 := int(ceil((p.x + reach - _tx0) / _tstep))
+		var iz0 := int(floor((p.z - reach - _tz0) / _tstep))
+		var iz1 := int(ceil((p.z + reach - _tz0) / _tstep))
+		for iz in range(maxi(iz0, 0), mini(iz1, _th - 1) + 1):
+			for ix in range(maxi(ix0, 0), mini(ix1, _tw - 1) + 1):
+				var rel := Vector2(_tx0 + ix * _tstep - p.x, _tz0 + iz * _tstep - p.z)
+				if absf(rel.dot(t)) > 1.6:
+					continue
+				var lat := rel.dot(r)
+				if absf(lat) <= wall_at(i, signf(lat)) + 2.5:
+					var k := iz * _tw + ix
+					hs[k] = minf(hs[k], p.y - 0.5)
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var cols := PackedColorArray()
+	verts.resize(_tw * _th)
+	norms.resize(_tw * _th)
+	cols.resize(_tw * _th)
+	var has_wild := terrain_wild.size() == _tw * _th
+	for iz in _th:
+		for ix in _tw:
+			var k := iz * _tw + ix
+			verts[k] = Vector3(_tx0 + ix * _tstep, hs[k], _tz0 + iz * _tstep)
+			var hl := terrain_h[k - 1] if ix > 0 else terrain_h[k]
+			var hr := terrain_h[k + 1] if ix < _tw - 1 else terrain_h[k]
+			var hd := terrain_h[k - _tw] if iz > 0 else terrain_h[k]
+			var hu := terrain_h[k + _tw] if iz < _th - 1 else terrain_h[k]
+			norms[k] = Vector3(hl - hr, 2.0 * _tstep, hd - hu).normalized()
+			cols[k] = Color(1, 1, 1, terrain_wild[k] / 255.0 if has_wild else 0.0)
+	# Tiles of 32 x 32 cells, so the parts off screen aren't drawn.
+	var tile := 32
+	for ty in range(0, _th - 1, tile):
+		for tx in range(0, _tw - 1, tile):
+			var w := mini(tile, _tw - 1 - tx) + 1
+			var h := mini(tile, _th - 1 - ty) + 1
+			var tv := PackedVector3Array()
+			var tn := PackedVector3Array()
+			var tc := PackedColorArray()
+			tv.resize(w * h)
+			tn.resize(w * h)
+			tc.resize(w * h)
+			for y in h:
+				for x in w:
+					var k := (ty + y) * _tw + tx + x
+					tv[y * w + x] = verts[k]
+					tn[y * w + x] = norms[k]
+					tc[y * w + x] = cols[k]
+			var idx := PackedInt32Array()
+			idx.resize((w - 1) * (h - 1) * 6)
+			var q := 0
+			for y in h - 1:
+				for x in w - 1:
+					var a := y * w + x
+					var b := a + 1
+					var c := a + w
+					var d := c + 1
+					idx[q] = a; idx[q + 1] = b; idx[q + 2] = c
+					idx[q + 3] = b; idx[q + 4] = d; idx[q + 5] = c
+					q += 6
+			var arrays := []
+			arrays.resize(Mesh.ARRAY_MAX)
+			arrays[Mesh.ARRAY_VERTEX] = tv
+			arrays[Mesh.ARRAY_NORMAL] = tn
+			arrays[Mesh.ARRAY_COLOR] = tc
+			arrays[Mesh.ARRAY_INDEX] = idx
+			var mesh := ArrayMesh.new()
+			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			var mi := MeshInstance3D.new()
+			mi.mesh = mesh
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(mi)
 
 
 # ------------------------------------------------------------ road
@@ -379,6 +585,7 @@ func _pt(i: int, j: int, t: float, off: float, dy := 0.0) -> Vector3:
 func _band(st: SurfaceTool, faces: PackedVector3Array, i: int, j: int,
 		off0: float, off1: float, col: Color, t0: float = 0.0, t1: float = 1.0,
 		dy0 := 0.0, dy1 := 0.0) -> void:
+	var up: Vector3 = ups[i] if ups.size() == points.size() else Vector3.UP
 	var seg: float = points[i].distance_to(points[j])
 	var v0: float = (cum[i] + t0 * seg) / 8.0
 	var v1: float = (cum[i] + t1 * seg) / 8.0
@@ -395,7 +602,7 @@ func _band(st: SurfaceTool, faces: PackedVector3Array, i: int, j: int,
 		Vector2(off1, l0), Vector2(off0, l1), Vector2(off1, l1)]
 	for k in range(6):
 		st.set_color(col)
-		st.set_normal(Vector3.UP)
+		st.set_normal(up)
 		st.set_uv(uvs[k])
 		st.set_uv2(uv2s[k])
 		st.add_vertex(verts[k])
@@ -545,6 +752,11 @@ func _build_road() -> void:
 	var h := road_half
 	var outer := h + KERB_W
 	var low := GROUND_Y + 0.012
+	# Grass verges from the kerb (or run-off) out to just past the barrier:
+	# the driving surface off the road, drawn with the ground material.
+	var v_verts := PackedVector3Array()
+	var v_norms := PackedVector3Array()
+	var have_terrain := not terrain_h.is_empty()
 
 	for i in range(n):
 		var j := (i + 1) % n
@@ -586,6 +798,21 @@ func _build_road() -> void:
 					_band(st, faces, i, j, -b, -a, col, 0.0, 1.0, low, low)
 				else:
 					_band(st, faces, i, j, a, b, col, 0.0, 1.0, low, low)
+			if have_terrain:
+				var v0 := outer + 1.0 + (runoff_width if kind != RUNOFF_NONE else 0.0)
+				var v1 := maxf(wall_at(i, side), wall_at(j, side)) + 2.5
+				if v1 > v0:
+					# Straight into packed arrays (much faster than SurfaceTool).
+					var lift := Vector3(0, low, 0)
+					var a0: Vector3 = points[i] + rights[i] * (v0 * side) + lift
+					var a1: Vector3 = points[i] + rights[i] * (v1 * side) + lift
+					var b0: Vector3 = points[j] + rights[j] * (v0 * side) + lift
+					var b1: Vector3 = points[j] + rights[j] * (v1 * side) + lift
+					var quad := [a0, b0, a1, a1, b0, b1] if side > 0.0 else [a1, b1, a0, a0, b1, b0]
+					for v in quad:
+						v_verts.append(v)
+						v_norms.append(ups[i])
+						faces.append(v)
 		if i == 0:
 			# Chequered start/finish line: 2 rows x 20 cells.
 			var cells := 20
@@ -611,6 +838,22 @@ func _build_road() -> void:
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
+	if have_terrain:
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = v_verts
+		arrays[Mesh.ARRAY_NORMAL] = v_norms
+		var cols := PackedColorArray()
+		cols.resize(v_verts.size())
+		cols.fill(Color(1, 1, 1, 0))       # mown
+		arrays[Mesh.ARRAY_COLOR] = cols
+		var vmesh := ArrayMesh.new()
+		vmesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		var vmi := MeshInstance3D.new()
+		vmi.mesh = vmesh
+		vmi.material_override = _ground_mat
+		vmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(vmi)
 
 	var body := StaticBody3D.new()
 	var shape := ConcavePolygonShape3D.new()
@@ -735,11 +978,40 @@ func _build_scenery() -> void:
 		attempts = 3000
 	elif style == "desert":
 		attempts = 260
-	for k in range(attempts):
-		var pos := Vector3(rng.randf_range(lo.x, hi.x), GROUND_Y, rng.randf_range(lo.y, hi.y))
-		if dist_to_centerline(pos, wall_offset + 14.0) < wall_offset + 7.0:
+	# Woods: trees cluster where this noise is high (the Ardennes is nearly
+	# all forest; parkland circuits have copses on the hills).
+	var woods := FastNoiseLite.new()
+	woods.seed = points.size()
+	woods.frequency = 1.0 / 180.0
+	var wood_cut := -0.35 if style == "forest" else 0.18
+	var band := 0
+	if style == "forest":
+		band = 6500
+	elif style == "park" and not terrain_h.is_empty():
+		band = 2600
+	var total := int((attempts + band) * detail)
+	for k in range(total):
+		var pos: Vector3
+		if k < int(attempts * detail):
+			pos = Vector3(rng.randf_range(lo.x, hi.x), GROUND_Y, rng.randf_range(lo.y, hi.y))
+		else:
+			# Close to the circuit, where they're seen.
+			var i := rng.randi() % points.size()
+			var side := -1.0 if rng.randf() < 0.5 else 1.0
+			pos = points[i] + rights[i] * side * (wall_offset + rng.randf_range(10.0, 230.0))
+			if woods.get_noise_2d(pos.x, pos.z) < wood_cut:
+				continue
+		var wild := wildness(pos.x, pos.z)
+		if wild < 0.0:
+			if dist_to_centerline(pos, wall_offset + 14.0) < wall_offset + 7.0:
+				continue
+		elif wild <= 0.0:
+			continue                   # the mown shelf by the track (wall + 10 m)
+		pos.y = ground_height(pos.x, pos.z) - 0.25
+		if is_water(pos.x, pos.z):
 			continue
-		if _reserved(pos, 4.0):
+		# Stands and pits are all on the shelf, so only check nearby trees.
+		if wild < 0.99 and _reserved(pos, 4.0):
 			continue
 		var kind := "broad"
 		match style:
@@ -757,7 +1029,7 @@ func _build_scenery() -> void:
 	for kind in kinds:
 		if kinds[kind].is_empty():
 			continue
-		_chunked_multimesh(_tree_mesh(kind), kinds[kind], tints[kind])
+		_chunked_multimesh(_tree_mesh(kind), kinds[kind], tints[kind], _tree_mesh(kind + "_far"))
 
 
 ## True if pos is inside (or within margin of) any reserved scenery box.
@@ -814,6 +1086,15 @@ static func _tree_mesh(kind: String) -> ArrayMesh:
 					MeshKit._quad(st, prev - side, p2 - side, p2 + side, prev + side, frond)
 					MeshKit._quad(st, prev + side, p2 + side, p2 - side, prev - side, frond.darkened(0.15))
 					prev = p2
+		# Far versions (~1/10 the triangles), shown beyond ~260 m.
+		"broad_far":
+			MeshKit.ellipsoid(st, Vector3(0, 4.5, 0), Vector3(2.9, 2.8, 2.9), 4, Color(0.2, 0.42, 0.14))
+			MeshKit.lathe(st, [Vector2(0.0, 0.3), Vector2(2.6, 0.2)], 3, bark, up)
+		"conifer_far":
+			MeshKit.lathe(st, [Vector2(0.6, 2.7), Vector2(9.6, 0.05)], 5, Color(0.11, 0.27, 0.13), up)
+		"palm_far":
+			MeshKit.lathe(st, [Vector2(0.0, 0.22), Vector2(7.3, 0.18)], 3, Color(0.45, 0.36, 0.24), up)
+			MeshKit.lathe(st, [Vector2(6.0, 3.4), Vector2(7.8, 0.3)], 5, Color(0.25, 0.42, 0.14), up)
 	var mesh := MeshKit.finish(st)
 	var mat := StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true
@@ -824,12 +1105,14 @@ static func _tree_mesh(kind: String) -> ArrayMesh:
 	return mesh
 
 
-## MultiMeshes grouped by 300 m cells, so distant groups can be culled.
-func _chunked_multimesh(mesh: Mesh, xforms: Array, cols: Array) -> void:
+## MultiMeshes grouped by 150 m cells, so distant groups can be culled; with
+## a far mesh, near cells draw the full model and far cells the cheap one.
+func _chunked_multimesh(mesh: Mesh, xforms: Array, cols: Array, far_mesh: Mesh = null) -> void:
+	var cell := 150.0 if far_mesh != null else 300.0
 	var cells := {}
 	for k in range(xforms.size()):
 		var p: Vector3 = xforms[k].origin
-		var key := Vector2i(int(floor(p.x / 300.0)), int(floor(p.z / 300.0)))
+		var key := Vector2i(int(floor(p.x / cell)), int(floor(p.z / cell)))
 		if not cells.has(key):
 			cells[key] = []
 		cells[key].append(k)
@@ -843,11 +1126,29 @@ func _chunked_multimesh(mesh: Mesh, xforms: Array, cols: Array) -> void:
 		for q in range(idxs.size()):
 			mm.set_instance_transform(q, xforms[idxs[q]])
 			mm.set_instance_color(q, cols[idxs[q]])
+		var reach := 1100.0 if style != "forest" else 900.0
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
-		mmi.visibility_range_end = 1100.0
-		mmi.visibility_range_end_margin = 100.0
+		mmi.visibility_range_end = reach if far_mesh == null else 270.0
+		mmi.visibility_range_end_margin = 100.0 if far_mesh == null else 20.0
 		add_child(mmi)
+		if far_mesh != null:
+			var lo := MultiMesh.new()
+			lo.transform_format = MultiMesh.TRANSFORM_3D
+			lo.use_colors = true
+			lo.mesh = far_mesh
+			lo.instance_count = idxs.size()
+			for q in range(idxs.size()):
+				lo.set_instance_transform(q, mm.get_instance_transform(q))
+				lo.set_instance_color(q, mm.get_instance_color(q))
+			var far := MultiMeshInstance3D.new()
+			far.multimesh = lo
+			far.visibility_range_begin = 270.0
+			far.visibility_range_begin_margin = 20.0
+			far.visibility_range_end = reach
+			far.visibility_range_end_margin = 80.0
+			far.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(far)
 
 
 func _multimesh(mesh: Mesh, xforms: Array[Transform3D], cols: Array, base: Color, material: Material = null) -> void:
@@ -877,6 +1178,7 @@ func _build_city() -> void:
 	var n := points.size()
 	var xforms: Array[Transform3D] = []
 	var cols: Array[Color] = []
+	var have_ground := not terrain_h.is_empty()
 	var palette := [Color(0.93, 0.88, 0.78), Color(0.95, 0.8, 0.62), Color(0.86, 0.72, 0.6),
 		Color(0.9, 0.9, 0.88), Color(0.98, 0.86, 0.7), Color(0.8, 0.74, 0.7)]
 	for side in [-1.0, 1.0]:
@@ -886,10 +1188,21 @@ func _build_city() -> void:
 			var depth := rng.randf_range(14.0, 26.0)
 			var h := rng.randf_range(12.0, 48.0)
 			var p: Vector3 = points[i] + rights[i] * side * (wall_offset + 2.5 + depth * 0.5)
-			var b := Basis.looking_at(-tangents[i], Vector3.UP)
+			var b := Basis.looking_at(-htangents[i], Vector3.UP)
 			var foot := Transform3D(b, p)
-			if footprint_clear(foot, Vector3(depth, h, w), wall_offset - road_half - KERB_W + 1.5) and not _reserved(p, maxf(w, depth) * 0.5):
-				xforms.append(Transform3D(Basis(b.x * depth, b.y * h, b.z * w), p + Vector3.UP * (GROUND_Y + h * 0.5)))
+			var beyond: Vector3 = points[i] + rights[i] * side * (wall_offset + depth + 30.0)
+			var seaside := is_water(beyond.x, beyond.z) or is_water(p.x, p.z)
+			if not seaside and footprint_clear(foot, Vector3(depth, h, w), wall_offset - road_half - KERB_W + 1.5) and not _reserved(p, maxf(w, depth) * 0.5):
+				# On a hillside: stand on the lowest corner, rise above the highest.
+				var g := INF
+				var gt := -INF
+				for c in [Vector3(-0.5, 0, -0.5), Vector3(0.5, 0, -0.5), Vector3(-0.5, 0, 0.5), Vector3(0.5, 0, 0.5)]:
+					var q: Vector3 = foot * Vector3(c.x * depth, 0, c.z * w)
+					var gh := ground_height(q.x, q.z) if have_ground else p.y + GROUND_Y
+					g = minf(g, minf(gh, p.y + GROUND_Y))
+					gt = maxf(gt, gh)
+				var tall := h + maxf(gt - g, 0.0)
+				xforms.append(Transform3D(Basis(b.x * depth, b.y * tall, b.z * w), Vector3(p.x, g - 0.5 + tall * 0.5, p.z)))
 				cols.append(palette[rng.randi() % palette.size()])
 				scenery_boxes.append({"xf": foot, "size": Vector3(depth, h, w)})
 			i += int(w / SPACING) + 1
