@@ -40,6 +40,7 @@ var _crackle: AudioStreamPlayer3D
 var _shift: AudioStreamPlayer3D
 var _last_gear := 0
 var _flutter := 0.0
+var replay_mode := false          # replays: no wind (that's the driver's ears)
 static var _v12_data: Dictionary = {}
 
 
@@ -101,7 +102,7 @@ func _process(delta: float) -> void:
 	_tyre.volume_db = -80.0 if slip < 0.05 or spd < 4.0 else lerpf(-24.0, -4.0, slip)
 	_tyre.pitch_scale = 0.9 + slip * 0.25
 	if _wind != null:
-		_wind.volume_db = -80.0 if spd < 5.0 else lerpf(-34.0, -9.0, clampf(spd / 90.0, 0.0, 1.0))
+		_wind.volume_db = -80.0 if spd < 5.0 or replay_mode else lerpf(-34.0, -9.0, clampf(spd / 90.0, 0.0, 1.0))
 		_wind.pitch_scale = 0.8 + clampf(spd / 90.0, 0.0, 1.0) * 0.5
 
 
@@ -281,7 +282,7 @@ func _process_v12(delta: float) -> void:
 	var slip := car.tyre_slip
 	_tyre.volume_db = -80.0 if slip < 0.05 or spd < 4.0 else lerpf(-24.0, -4.0, slip)
 	_tyre.pitch_scale = 0.9 + slip * 0.25
-	_wind.volume_db = -80.0 if spd < 5.0 else lerpf(-34.0, -9.0, clampf(spd / 90.0, 0.0, 1.0))
+	_wind.volume_db = -80.0 if spd < 5.0 or replay_mode else lerpf(-34.0, -9.0, clampf(spd / 90.0, 0.0, 1.0))
 	_wind.pitch_scale = 0.8 + clampf(spd / 90.0, 0.0, 1.0) * 0.5
 
 

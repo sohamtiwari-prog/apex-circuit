@@ -661,7 +661,8 @@ func _tunnel(from_m: float, to_m: float) -> void:
 	var n := track.size()
 	var i0 := int(from_m / Track.SPACING)
 	var i1 := int(to_m / Track.SPACING)
-	var height := 6.6
+	var height := Track.TUNNEL_H
+	track.add_tunnel(i0, i1)
 	var concrete := Color(0.62, 0.6, 0.56)
 	var ceiling := Color(0.32, 0.31, 0.3)
 	var step := 2

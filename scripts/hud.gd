@@ -13,6 +13,13 @@ signal camera_requested
 signal settings_changed
 signal menu_requested
 signal chat_requested(index: int)
+signal replay_requested
+var replay_button: Button             # on the results screen
+var replay_available := true:          # pause menu "Watch replay" (single player)
+	set(v):
+		replay_available = v
+		if _menu_buttons.has("replay"):
+			_menu_buttons["replay"].visible = v
 
 var touch: TouchControls
 var gauge: RevGauge
@@ -95,6 +102,7 @@ func _ready() -> void:
 	_build_gauge(root)
 	_build_minimap(root)
 	_build_drs(root)
+	_build_tow(root)
 	_build_messages(root)
 	_build_lights(root)
 	_build_pause_menu(root)
@@ -265,6 +273,47 @@ func _build_drs(root: Control) -> void:
 	_drs.add_child(_drs_lbl)
 
 
+var _tow: PanelContainer
+var _tow_bar: ColorRect
+
+## Slipstream: a pill that fills as the tow gets stronger.
+func _build_tow(root: Control) -> void:
+	_tow = PanelContainer.new()
+	_tow.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_tow.offset_left = -440
+	_tow.offset_right = -276
+	_tow.offset_top = -74
+	_tow.offset_bottom = -30
+	_tow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tow.visible = false
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.75))
+	sb.border_color = Color("5ec8ff")
+	sb.set_border_width_all(3)
+	_tow.add_theme_stylebox_override("panel", sb)
+	root.add_child(_tow)
+	var stack := Control.new()
+	stack.custom_minimum_size = Vector2(0, 32)
+	_tow.add_child(stack)
+	_tow_bar = ColorRect.new()
+	_tow_bar.color = Color("5ec8ff", 0.45)
+	_tow_bar.position = Vector2(-8, -2)
+	_tow_bar.size = Vector2(0, 36)
+	stack.add_child(_tow_bar)
+	var l := UIStyle.label("SLIPSTREAM", 24, Color("5ec8ff"), "extrabold", true)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	stack.add_child(l)
+
+
+func set_tow(t: float) -> void:
+	if _tow == null:
+		return
+	var on := t > 0.12 and gauge.visible
+	_tow.visible = on
+	if on:
+		_tow_bar.size.x = (_tow.size.x - 12.0) * clampf(t, 0.0, 1.0)
+
+
 ## 0 hidden, 1 not available, 2 available (opens on the next straight), 3 open.
 func set_drs(st: int) -> void:
 	if st == _drs_state:
@@ -389,6 +438,7 @@ func _build_pause_menu(root: Control) -> void:
 	_menu_buttons["reset"] = _menu_button(left, "Put car back on track", func():
 		set_paused(false)
 		reset_requested.emit())
+	_menu_buttons["replay"] = _menu_button(left, "Watch replay", func(): replay_requested.emit())
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	left.add_child(sp)
@@ -884,7 +934,7 @@ func _set_live_visible(on: bool) -> void:
 
 
 ## rows: [{pos, name, team, gap, best, player, color, fastest}]
-func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_text := "Race again", rank: Dictionary = {}) -> void:
+func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_text := "Race again", rank: Dictionary = {}, on_replay: Callable = Callable()) -> void:
 	for c in results_panel.get_children():
 		c.queue_free()
 	touch.release_all()
@@ -935,9 +985,22 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 12)
 	left.add_child(gap)
-	var menu := UIStyle.button("Main menu", func(): on_menu.call(), false, 26)
+	var lower := HBoxContainer.new()
+	lower.add_theme_constant_override("separation", 12)
+	left.add_child(lower)
+	replay_button = null
+	if on_replay.is_valid():
+		var rp := UIStyle.button("Replay", func(): on_replay.call(), false, 26)
+		rp.custom_minimum_size = Vector2(0, 64)
+		rp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rp.add_theme_color_override("font_disabled_color", Color(UIStyle.FOG, 0.5))
+		rp.add_theme_stylebox_override("disabled", UIStyle.panel(Color(UIStyle.TARMAC, 0.5)))
+		lower.add_child(rp)
+		replay_button = rp
+	var menu := UIStyle.button("Menu", func(): on_menu.call(), false, 26)
 	menu.custom_minimum_size = Vector2(0, 64)
-	left.add_child(menu)
+	menu.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lower.add_child(menu)
 
 	if not rank.is_empty():
 		_rank_column(cols, rank)

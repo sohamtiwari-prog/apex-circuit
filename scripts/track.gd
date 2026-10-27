@@ -86,6 +86,55 @@ var sea_level := NAN                       # coastal tracks: water height
 var terrain_drawn := PackedFloat32Array()  # heights as drawn (pushed down under the road)
 var _ground_mat: ShaderMaterial
 var detail := 1.0                          # scenery density (0.55 in battery saver)
+## Tree tops by 6 m cell (for replay cameras: is the view blocked?).
+const TREE_CELL := 6.0
+var tree_tops := {}
+## Tunnels (sample index ranges, end may run past the lap), for sight lines.
+const TUNNEL_H := 6.6
+var tunnels: Array = []
+
+
+func add_tunnel(i0: int, i1: int) -> void:
+	var n := points.size()
+	var box := AABB(points[i0 % n], Vector3.ZERO)
+	for k in range(i0, i1):
+		box = box.expand(points[k % n])
+	tunnels.append({"i0": i0, "i1": i1, "box": box.grow(40.0)})
+
+
+func in_tunnel(i: int) -> bool:
+	var n := points.size()
+	for t in tunnels:
+		var k := posmod(i - int(t["i0"]), n)
+		if k < int(t["i1"]) - int(t["i0"]):
+			return true
+	return false
+
+
+## For sight lines: 1 inside a tunnel's bore, -1 in its walls or the
+## buildings over it, 0 nowhere near a tunnel.
+func tunnel_at(p: Vector3) -> int:
+	var n := points.size()
+	for t in tunnels:
+		if not (t["box"] as AABB).has_point(p):
+			continue
+		var best := -1
+		var best_d := INF
+		for k in range(int(t["i0"]), int(t["i1"]), 3):
+			var q: Vector3 = points[k % n]
+			var d := (q.x - p.x) * (q.x - p.x) + (q.z - p.z) * (q.z - p.z)
+			if d < best_d:
+				best_d = d
+				best = k % n
+		best = track_index(p, best)
+		if not in_tunnel(best):
+			continue
+		var lat := lateral(p, best)
+		if absf(lat) <= wall_at(best, signf(lat)) + 0.4 and p.y < points[best].y + TUNNEL_H:
+			return 1
+		if absf(lat) < wall_offset + 30.0:
+			return -1
+	return 0
 
 
 static func catalog_entry(id: String) -> Dictionary:
@@ -1096,6 +1145,8 @@ func _build_scenery() -> void:
 		var sc := rng.randf_range(0.8, 1.45)
 		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc * rng.randf_range(0.9, 1.15), sc))
 		kinds[kind].append(Transform3D(b, pos))
+		var cell := Vector2i(floori(pos.x / TREE_CELL), floori(pos.z / TREE_CELL))
+		tree_tops[cell] = maxf(float(tree_tops.get(cell, -INF)), pos.y + (13.0 if kind == "conifer" else 10.0) * sc)
 		var g := rng.randf()
 		tints[kind].append(Color(0.85 + 0.25 * g, 0.9 + 0.15 * g, 0.8 + 0.2 * rng.randf()))
 	for kind in kinds:

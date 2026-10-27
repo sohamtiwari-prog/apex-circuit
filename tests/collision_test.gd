@@ -132,5 +132,33 @@ func _run() -> void:
 	var v_after := (l.forward_speed() + r.forward_speed()) * 0.5
 	print("    side by side: speed %.1f -> %.1f m/s (both on part throttle); yaw %.2f rad/s; gap now %.2f m" % [v_before, v_after, max_yaw, -_overlap()])
 	_check(v_after > v_before - 1.5 and max_yaw < 0.8, "rubbing wheels barely changes speed or direction")
+	# Slipstream: two cars flat out down the longest straight, 12 m apart.
+	var i2 := (start + 10) % n
+	var lead: RaceCar = cars[0]
+	var tail: RaceCar = cars[1]
+	lead.global_transform = track.pose_at(i2 + 9, lead.spawn_height())
+	tail.global_transform = track.pose_at(i2, tail.spawn_height())
+	for c in cars:
+		c.angular_velocity = Vector3.ZERO
+		c.reset_controls()
+		c.controls_enabled = true
+		c.linear_velocity = c.global_basis.z * 60.0
+	var max_tow := 0.0
+	var gap0 := (lead.global_position - tail.global_position).length()
+	for f in 240:
+		lead.throttle = 1.0
+		tail.throttle = 1.0
+		await physics_frame
+		CarContacts.slipstream(cars, cars)
+		max_tow = maxf(max_tow, tail.tow)
+		if lead.tow > 0.01:
+			max_tow = -1.0
+			break
+	var gap1 := (lead.global_position - tail.global_position).length()
+	print("    slipstream: tow up to %.2f; gap %.1f -> %.1f m over 2 s flat out (lead %.1f, tail %.1f m/s)" % [max_tow, gap0, gap1, lead.forward_speed(), tail.forward_speed()])
+	_check(max_tow > 0.5 and gap1 < gap0 - 1.0 and tail.forward_speed() > lead.forward_speed(), "a car in the slipstream closes up on the one ahead (and the leader gets no tow)")
+	for c in cars:
+		c.tow = 0.0
+
 	print("ALL CHECKS PASSED" if failures.is_empty() else "%d CHECK(S) FAILED" % failures.size())
 	quit(0 if failures.is_empty() else 1)

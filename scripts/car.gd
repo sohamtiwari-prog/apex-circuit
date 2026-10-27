@@ -42,6 +42,8 @@ var remote := false               # driven by the network (another phone), not s
 var remote_vel := Vector3.ZERO
 var _light_t := 0.0
 var drs_open := false             # set by race logic in DRS zones (GP car)
+var tow := 0.0                     # slipstream behind another car, 0..1 (set by race logic)
+const SLIPSTREAM := 0.24           # drag shed in the closest tow (about 7% more top speed)
 
 const STEER_SPEED := 3.4          # steering input travel per second (full lock in ~0.3 s)
 const GRASS_GRIP := 0.62
@@ -363,7 +365,7 @@ func _physics_process(delta: float) -> void:
 
 	var vel := linear_velocity
 	# DRS: the rear-wing flap opens, shedding drag (and some rear downforce).
-	var drag := _drag * (0.78 if drs_open else 1.0)
+	var drag := _drag * (0.78 if drs_open else 1.0) * (1.0 - SLIPSTREAM * tow)
 	var down := _downforce * (0.86 if drs_open else 1.0)
 	apply_central_force(-vel * vel.length() * drag)
 	apply_force(-global_basis.y * down * v * v, global_basis * Vector3(0, 0, _down_z))

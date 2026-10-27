@@ -157,6 +157,21 @@ now for what's coming at your current speed.
   activation lines. Within 1 s of the car ahead at detection (from lap 2;
   always in time trial), the flap opens through the zone, cutting drag ~22%,
   until you brake. The AI uses it too.
+- **Replays:** watch the whole race again from the results screen, or the
+  last 30 seconds from the pause menu. Every car is recorded 20 times a
+  second. Cameras: TV towers round the track (broadcast-style zoom, on
+  grandstand and building roofs where there's no room), helicopter, blimp
+  (straight down), drone orbit, chase, every onboard and a rear-facing one.
+  Auto is a director that cuts between them. Play/pause, skip 10 s, drag
+  the timeline, 1/2 and 1/4 slow motion (the sound slows too), 2x, follow
+  any car. **Highlights** jumps to the start, overtakes, contacts, new
+  leaders, fastest laps and the flag; they're marked on the timeline. The
+  controls fade while you watch (tap to bring them back), or tap the eye
+  for a clean picture.
+- **Slipstream:** tuck in behind a car on a straight and its wake cuts your
+  drag (up to 24% when close, fading by 40 m): you close in and can pull out
+  to pass. The SLIPSTREAM pill fills to show how strong the tow is. The AI
+  gets it too.
 - **Ghost car (time trial):** your best lap, replayed as a see-through car,
   saved per car and track.
 - **Braking boards:** 300 / 200 / 100 m boards before every big stop.
@@ -175,6 +190,14 @@ Steering maps through the tyre curve, so 30% tilt gives about 30% of the
 cornering force at any speed. Grass costs grip and speed, gravel traps bog
 you down, asphalt run-off is safe. Traction control and ABS keep cornering
 grip first; switch them off and you can spin the rears or lock the fronts.
+
+Car-to-car contact (scripts/car_contacts.gd) is soft and fair rather than a
+rigid crash: each car is a rounded shape seen from above, and overlapping
+cars are pushed apart by a firm, heavily damped spring, sideways only. The
+car doing the hitting takes 60% of the speed change, the car hit 40%: tap
+someone at 12 m/s and they gain about 5 m/s while you lose about 6.5,
+instead of them shooting off and you stopping dead. Low body friction and a
+reduced turning effect mean rubbing wheels or a nudge doesn't spin anyone.
 
 ## Real elevation and landscape
 
@@ -259,6 +282,10 @@ scripts/
   rev_gauge.gd       rev arc / shift lights / gear / speed
   mini_map.gd        live circuit map (also the menu track preview)
   race_camera.gd     chase / hood / bumper cameras
+  car_contacts.gd    soft car-to-car contact and slipstream
+  replay.gd          records every car; replay playback, seeking, highlights
+  replay_camera.gd   TV towers, helicopter, blimp, drone, chase, onboards, auto director
+  replay_ui.gd       replay controls and timeline
   hud.gd             timing tower, lap timing, pause menu, classification
   touch_controls.gd  multi-touch pedals and steering buttons
   save_manager.gd    crash-safe profile saving (autoload "Save")
@@ -277,6 +304,8 @@ tests/
   grip_test.gd       measures each car's cornering grip (calibrates the AI)
   cars_test.gd       every car: 0-100, top speed, clean AI lap
   race_test.gd       a full 20-car race to the results screen
+  collision_test.gd  rear-end hits, offset hits, rubbing wheels, slipstream
+  replay_test.gd     recording, smooth playback, every replay camera, restore after
   perf_test.gd       simulation cost per grid size
   edge_test.gd       no invisible walls: leaving and rejoining the track
   handling_diag.gd   step-steer response, the numbers behind the handling

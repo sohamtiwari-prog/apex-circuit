@@ -83,6 +83,9 @@ jobs:
       - name: Car-to-car contact is a nudge, not a launch
         run: bash .github/run_test.sh res://tests/collision_test.gd
 
+      - name: Replays and replay cameras
+        run: bash .github/run_test.sh res://tests/replay_test.gd
+
       - name: No scenery on the road
         run: bash .github/run_test.sh res://tests/scenery_test.gd
 

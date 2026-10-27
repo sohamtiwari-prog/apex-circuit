@@ -100,6 +100,7 @@ var save: Node                     # the Save autoload, looked up at runtime
 var net: NetRace = null            # multiplayer session, if any
 var Net: Node                      # the Net autoload, looked up at runtime
 var _tod := ""
+var replay: Replay
 
 
 func _ready() -> void:
@@ -193,6 +194,13 @@ func _ready() -> void:
 		hud.enable_chat(Net.CHAT)
 		hud.chat_requested.connect(func(i: int): Net.chat(i))
 		Net.chat_received.connect(_on_chat)
+
+	replay = Replay.new()
+	add_child(replay)
+	replay.setup(self)
+	replay.finished.connect(_on_replay_closed)
+	hud.replay_requested.connect(func(): watch_replay(true))
+	hud.replay_available = net == null
 
 	_restart()
 
@@ -323,6 +331,7 @@ func _restart() -> void:
 	_results_shown = false
 	_ranked = false
 	hud.hide_results()
+	replay.clear()
 	# Player starts mid-grid in a race; on the line in a time trial.
 	var player_slot := mini(9, entrants.size() - 1) if mode == "race" else 0
 	var k := 0
@@ -393,6 +402,41 @@ func _reset_to_track(e: Entrant, manual: bool) -> void:
 			hud.show_warning("Car reset: lap invalidated")
 
 
+## Replays: from the results (the whole race) or the pause menu (the last
+## 30 seconds, then back to the pause menu).
+var _replay_from_pause := false
+
+func watch_replay(from_pause: bool) -> void:
+	if replay.playing or not replay.can_play():
+		return
+	if net != null:
+		for e in entrants:
+			if not e.finished:
+				return
+	_replay_from_pause = from_pause
+	var from := replay.race_start_frame()
+	if from_pause:
+		hud.set_paused(false)
+		from = maxi(replay.count - int(Replay.HZ * 30.0), 0)
+	replay.start(from)
+
+
+func _on_replay_closed() -> void:
+	if _replay_from_pause:
+		hud.set_paused(true)
+
+
+## Slipstream for the cars simulated here (scripts/car_contacts.gd).
+func _slipstream() -> void:
+	var mine: Array = []
+	var all: Array = []
+	for e in entrants:
+		all.append(e.car)
+		if not e.remote:
+			mine.append(e.car)
+	CarContacts.slipstream(mine, all)
+
+
 func _cycle_camera() -> void:
 	var m := cam.cycle()
 	hud.set_camera_name(cam.mode_name())
@@ -442,13 +486,17 @@ func _quit_to_menu() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
-		if hud != null and not hud.is_paused() and not _results_shown:
+		if replay != null and replay.playing:
+			replay.set_paused(true)
+		elif hud != null and not hud.is_paused() and not _results_shown:
 			hud.set_paused(true)
 		if save != null:
 			save.save()
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if replay.playing:
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
 			KEY_ESCAPE, KEY_P:
@@ -549,6 +597,8 @@ func _read_input() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if replay.playing:
+		return                          # the replay is posing the cars
 	_tick += 1
 	if autopilot != null:
 		autopilot.update(car, track)
@@ -606,8 +656,19 @@ func _physics_process(delta: float) -> void:
 			_assist_profile = track.speed_profile(car.spec)
 		line_guide.update_guide(car, track, _assist_profile, player.idx, delta)
 
+	if _tick % 2 == 1:
+		_slipstream()
+	if net != null and _results_shown and _tick % 30 == 0 and hud.replay_button != null:
+		# With friends, the replay opens once every car is home (watching
+		# stops this phone's part of the race).
+		var done := true
+		for e in entrants:
+			done = done and e.finished
+		hud.replay_button.disabled = not done
+		hud.replay_button.text = "Replay" if done else "Replay soon"
 	if _tick % 3 == 0:
 		_update_hud()
+	replay.capture(delta)
 
 
 func _update_lights(delta: float) -> void:
@@ -854,6 +915,7 @@ func _complete_lap(e: Entrant) -> void:
 	if mode == "race" and e.lap >= total_laps:
 		e.finished = true
 		e.finish_time = race_time
+	replay.on_lap(e, lap_time)
 	if e.is_player:
 		_player_lap(lap_time)
 		if e.finished:
@@ -921,12 +983,15 @@ func _show_results() -> void:
 			"best": Hud.fmt_time(e.best_lap) if e.best_lap > 0.0 else "-", "player": e.is_player,
 			"color": e.car.spec["color"], "fastest": e == fastest})
 	var rank := _award_rank(fastest == player)
+	var watch := func(): watch_replay(false)
 	if net == null:
-		hud.show_results(rows, func(): _restart(), func(): _quit_to_menu(), "Race again", rank)
+		hud.show_results(rows, func(): _restart(), func(): _quit_to_menu(), "Race again", rank, watch)
 	elif Net.is_host():
-		hud.show_results(rows, func(): net.back_to_lobby(), func(): _quit_to_menu(), "Back to lobby", rank)
+		hud.show_results(rows, func(): net.back_to_lobby(), func(): _quit_to_menu(), "Back to lobby", rank, watch)
 	else:
-		hud.show_results(rows, Callable(), func(): _quit_to_menu(), "Race again", rank)
+		hud.show_results(rows, Callable(), func(): _quit_to_menu(), "Race again", rank, watch)
+	if net != null and hud.replay_button != null:
+		hud.replay_button.disabled = true      # until every car is home (see _physics_process)
 
 
 ## Rank points for this finish (races only, once per race).
@@ -1075,6 +1140,7 @@ func _update_hud() -> void:
 		best_ms / 1000.0 if best_ms >= 0 else -1.0, lap_valid or mode == "race")
 	hud.update_engine(car.gear, car.rpm, float(car.spec["upshift_rpm"]), float(car.spec["redline"]),
 		float(car.spec["idle_rpm"]), car.speed_kmh())
+	hud.set_tow(car.tow)
 	if car.spec["body"] == "gp" and not track.drs_zones.is_empty():
 		hud.set_drs(3 if car.drs_open else (2 if player.drs_armed else 1))
 	else:

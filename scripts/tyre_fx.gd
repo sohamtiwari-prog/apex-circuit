@@ -87,6 +87,11 @@ func _mark(w: CarWheel, c: RaceCar, strength: float) -> void:
 	_last[w] = p
 
 
+func stop_smoke() -> void:
+	for c in _smoke:
+		(_smoke[c] as CPUParticles3D).emitting = false
+
+
 func _set_smoke(c: RaceCar, on: bool) -> void:
 	if not _smoke.has(c):
 		if not on:

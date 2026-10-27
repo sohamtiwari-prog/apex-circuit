@@ -124,3 +124,34 @@ static func step(cars: Array, delta: float, touching: Dictionary) -> Array:
 	touching.clear()
 	touching.merge(now)
 	return began
+
+
+## Slipstream: close behind another car on a straight, its wake cuts your
+## drag (RaceCar.SLIPSTREAM at most, strongest closest, gone by 40 m).
+## Sets `tow` on each car in `cars`, looking at every car in `others`.
+const TOW_RANGE := 40.0
+
+static func slipstream(cars: Array, others: Array) -> void:
+	for car in cars:
+		var c: RaceCar = car
+		var best := 0.0
+		var v := c.forward_speed()
+		if v > 25.0:
+			var fwd := c.global_basis.z
+			var right := c.global_basis.x
+			for other in others:
+				var o: RaceCar = other
+				if o == c:
+					continue
+				var d := o.global_position - c.global_position
+				var along := d.dot(fwd)
+				if along < 4.0 or along > TOW_RANGE:
+					continue
+				if absf(d.dot(right)) > 1.6 + along * 0.02:
+					continue
+				# Only a car going the same way, not much slower.
+				if o.global_basis.z.dot(fwd) < 0.97 or o.forward_speed() < v * 0.75:
+					continue
+				best = maxf(best, 1.0 - (along - 4.0) / (TOW_RANGE - 4.0))
+			best *= clampf((v - 25.0) / 15.0, 0.0, 1.0)
+		c.tow = move_toward(c.tow, best, 0.08)

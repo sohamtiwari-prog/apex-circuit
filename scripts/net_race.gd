@@ -205,7 +205,7 @@ static func _circles(c: RaceCar) -> Array:
 ## Also every drawn frame, so other cars glide even when the frame rate and
 ## the physics rate don't line up.
 func _process(_delta: float) -> void:
-	if ended or race == null:
+	if ended or race == null or race.replay.playing:
 		return
 	# Between physics steps: the fraction of the next step already elapsed.
 	var at := net_time() + Engine.get_physics_interpolation_fraction() / float(Engine.physics_ticks_per_second) - delay

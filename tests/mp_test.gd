@@ -146,12 +146,39 @@ func _run() -> void:
 	# Host: back to the lobby together.
 	if role == "host":
 		_check(await _wait(func(): return other.finished, 120.0), "host: the friend finishes too")
-		await _wait(func(): return false, 3.0)
+		# Replays open once every car is home.
+		var all_home := func():
+			for e in race.entrants:
+				if not e.finished:
+					return false
+			return true
+		_check(await _wait(all_home, 90.0), "host: every car finishes")
+		await _wait(func(): return false, 1.0)
+		_check(race.hud.replay_button != null and not race.hud.replay_button.disabled, "host: Replay is available once everyone is home")
+		race.watch_replay(false)
+		await _wait(func(): return false, 2.0)
+		_check(race.replay.playing, "host: the replay plays")
+		race.replay.stop()
+		await _wait(func(): return false, 4.0)
 		race.net.back_to_lobby()
 		_check(await _wait(func(): return current_scene != null and current_scene.name == "Lobby", 10.0), "host: back to the lobby")
 		await _wait(func(): return false, 4.0)
 	else:
+		var all_home := func():
+			for e in race.entrants:
+				if not e.finished:
+					return false
+			return true
+		await _wait(all_home, 90.0)
+		await _wait(func(): return false, 1.0)
+		race.watch_replay(false)
+		var watching: bool = race.replay.playing
+		if watching:
+			race.replay.cycle_speed()
+			race.replay.cycle_speed()      # 1/4 speed: sound slowed until the replay closes
+		_check(watching, "client: watching the replay when the host heads back")
 		_check(await _wait(func(): return current_scene != null and current_scene.name == "Lobby", 40.0), "client: the host brings everyone back to the lobby")
+		_check(is_equal_approx(AudioServer.playback_speed_scale, 1.0) and not AudioServer.is_bus_mute(0), "client: sound back to normal after leaving mid-replay")
 	print("ALL CHECKS PASSED" if failures.is_empty() else "%d CHECK(S) FAILED" % failures.size())
 	net.leave()
 	quit(0 if failures.is_empty() else 1)
