@@ -30,8 +30,9 @@ func _run() -> void:
 	net.my_id = 1
 	net.room_code = "K7QD"
 	lobby._enter_as_host()
-	lobby._players()[2] = {"name": "Cousin", "car": "gp26", "team": 3, "ping": 96}
-	lobby._players()[3] = {"name": "Kabir", "car": "vanta_gt", "team": 0, "ping": 212}
+	lobby._players()[1]["rp"] = 1290
+	lobby._players()[2] = {"name": "Cousin", "car": "gp26", "team": 3, "ping": 96, "rp": 6420}
+	lobby._players()[3] = {"name": "Kabir", "car": "vanta_gt", "team": 0, "ping": 212, "rp": 380}
 	lobby._refresh_lobby()
 	lobby._on_chat(2, "Let's go!")
 	lobby._on_chat(1, "GG")

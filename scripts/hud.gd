@@ -588,6 +588,79 @@ func set_ideal(t: float) -> void:
 	_ideal_val.text = fmt_time(t)
 
 
+## Results: rank points earned (with the breakdown) and progress to the next
+## rank, animated from where you were; a banner when you move up.
+func _rank_column(cols: Control, rank: Dictionary) -> void:
+	var award: Dictionary = rank["award"]
+	var before: int = rank["before"]
+	var after: int = rank["after"]
+	var col := VBoxContainer.new()
+	col.custom_minimum_size = Vector2(340, 0)
+	col.add_theme_constant_override("separation", 2)
+	cols.add_child(col)
+	col.add_child(UIStyle.label("Rank points", 30, UIStyle.FOG, "bold", true))
+	var gain := UIStyle.label("+0", 76, UIStyle.APEX, "extrabold", true)
+	col.add_child(gain)
+	for line in award["lines"]:
+		var h := HBoxContainer.new()
+		col.add_child(h)
+		var n := UIStyle.label(String(line[0]), 20, UIStyle.FOG, "semibold")
+		n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(n)
+		h.add_child(UIStyle.label(String(line[1]), 20, UIStyle.PAPER, "bold", true))
+	var sp := Control.new()
+	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(sp)
+	var promoted := Ranks.tier_index(after) > Ranks.tier_index(before) or Ranks.stars_of(after) > Ranks.stars_of(before)
+	if promoted:
+		var up := UIStyle.label("Promoted!", 30, Ranks.tier_color(after), "extrabold", true)
+		col.add_child(up)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	col.add_child(row)
+	var badge := RankBadge.new()
+	badge.custom_minimum_size = Vector2(72, 80)
+	badge.rp = before
+	row.add_child(badge)
+	var names := VBoxContainer.new()
+	names.add_theme_constant_override("separation", -4)
+	row.add_child(names)
+	var tier := UIStyle.label(Ranks.tier_name(before), 30, Ranks.tier_color(before), "extrabold", true)
+	names.add_child(tier)
+	var total := UIStyle.label("%d RP" % before, 20, UIStyle.FOG, "bold", true)
+	names.add_child(total)
+	var bar := _rank_bar(col)
+	var next := UIStyle.label("", 19, UIStyle.FOG, "semibold")
+	col.add_child(next)
+	var set_rp := func(v: float):
+		var rp := int(round(v))
+		var pr := Ranks.progress(rp)
+		bar.size.x = bar.get_parent().size.x * clampf(float(pr.x) / maxf(pr.y, 1), 0.0, 1.0)
+		bar.color = Ranks.tier_color(rp)
+		gain.text = "+%d" % (rp - before)
+		total.text = "%d RP" % rp
+		tier.text = Ranks.tier_name(rp)
+		tier.add_theme_color_override("font_color", Ranks.tier_color(rp))
+		badge.rp = rp
+		next.text = "%d RP to %s" % [pr.y - pr.x, Ranks.next_name(rp)]
+	set_rp.call(float(before))
+	var tw := create_tween()
+	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tw.tween_interval(0.5)
+	tw.tween_method(set_rp, float(before), float(after), 1.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+
+func _rank_bar(parent: Control) -> ColorRect:
+	var back := ColorRect.new()
+	back.color = Color(UIStyle.PAPER, 0.12)
+	back.custom_minimum_size = Vector2(0, 12)
+	parent.add_child(back)
+	var fill := ColorRect.new()
+	fill.size = Vector2(0, 12)
+	back.add_child(fill)
+	return fill
+
+
 func update_engine(gear: int, rpm: float, shift_rpm: float, redline: float, idle := 1000.0, kmh := -1.0) -> void:
 	gauge.set_engine(gear, rpm, shift_rpm, redline, idle, kmh if kmh >= 0.0 else float(gauge.speed))
 
@@ -811,7 +884,7 @@ func _set_live_visible(on: bool) -> void:
 
 
 ## rows: [{pos, name, team, gap, best, player, color, fastest}]
-func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_text := "Race again") -> void:
+func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_text := "Race again", rank: Dictionary = {}) -> void:
 	for c in results_panel.get_children():
 		c.queue_free()
 	touch.release_all()
@@ -865,6 +938,9 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 	var menu := UIStyle.button("Main menu", func(): on_menu.call(), false, 26)
 	menu.custom_minimum_size = Vector2(0, 64)
 	left.add_child(menu)
+
+	if not rank.is_empty():
+		_rank_column(cols, rank)
 
 	# Right: the classification.
 	var right := VBoxContainer.new()

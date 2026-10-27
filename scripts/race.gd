@@ -82,6 +82,8 @@ var invalid_limit := 10.0
 var _save_timer := 0.0
 var _tick := 0
 var _results_shown := false
+var _ranked := false                 # this race's rank points have been awarded
+var _difficulty := "medium"
 var _assist_profile := PackedFloat32Array()
 var _assist_centre := PackedFloat32Array()
 var _assist_driver: AIDriver = null
@@ -108,6 +110,7 @@ func _ready() -> void:
 	mode = String(save.get_setting("mode"))
 	total_laps = int(save.get_setting("laps"))
 	_tod = String(save.get_setting("time_of_day"))
+	_difficulty = String(save.get_setting("difficulty"))
 	var net_info: Dictionary = {}
 	if Net.is_online() and not Net.start_info.is_empty():
 		net_info = Net.start_info
@@ -115,6 +118,7 @@ func _ready() -> void:
 		track_id = String(st["track"])
 		total_laps = int(st["laps"])
 		_tod = String(st.get("tod", "day"))
+		_difficulty = String(st.get("difficulty", "medium"))
 		mode = "race"
 		for g in net_info["grid"]:
 			if g["kind"] == "player" and int(g["id"]) == Net.my_id:
@@ -317,6 +321,7 @@ func _place(e: Entrant, xform: Transform3D) -> void:
 
 func _restart() -> void:
 	_results_shown = false
+	_ranked = false
 	hud.hide_results()
 	# Player starts mid-grid in a race; on the line in a time trial.
 	var player_slot := mini(9, entrants.size() - 1) if mode == "race" else 0
@@ -900,12 +905,30 @@ func _show_results() -> void:
 		rows.append({"pos": e.position, "name": e.name, "team": e.team, "gap": gap,
 			"best": Hud.fmt_time(e.best_lap) if e.best_lap > 0.0 else "-", "player": e.is_player,
 			"color": e.car.spec["color"], "fastest": e == fastest})
+	var rank := _award_rank(fastest == player)
 	if net == null:
-		hud.show_results(rows, func(): _restart(), func(): _quit_to_menu())
+		hud.show_results(rows, func(): _restart(), func(): _quit_to_menu(), "Race again", rank)
 	elif Net.is_host():
-		hud.show_results(rows, func(): net.back_to_lobby(), func(): _quit_to_menu(), "Back to lobby")
+		hud.show_results(rows, func(): net.back_to_lobby(), func(): _quit_to_menu(), "Back to lobby", rank)
 	else:
-		hud.show_results(rows, Callable(), func(): _quit_to_menu())
+		hud.show_results(rows, Callable(), func(): _quit_to_menu(), "Race again", rank)
+
+
+## Rank points for this finish (races only, once per race).
+func _award_rank(fastest_lap: bool) -> Dictionary:
+	if mode != "race" or _ranked or player == null or not player.finished:
+		return {}
+	_ranked = true
+	var humans := 0
+	for e in entrants:
+		if e.is_player or e.net_id > 0:
+			humans += 1
+	var award := Ranks.race_points(player.position, entrants.size(), _difficulty, total_laps, fastest_lap, humans > 1)
+	var before := int(save.data.get("rank_points", 0))
+	var after: int = save.add_rank_points(int(award["total"]))
+	if Net.is_online():
+		Net.set_meta("my_rp", after)
+	return {"award": award, "before": before, "after": after}
 
 
 # ------------------------------------------------------------ race order

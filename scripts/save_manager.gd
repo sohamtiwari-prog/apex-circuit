@@ -65,6 +65,8 @@ const _DEFAULTS := {
 	"best_laps": {},                  # "track|car" -> milliseconds
 	"best_sectors": {},               # "track|car" -> [ms, ms, ms], best of each sector
 	"best_minis": {},                 # "track|car" -> [ms x 24], best of each minisector
+	"rank_points": 0,                 # driver ranking (scripts/ranks.gd); only ever goes up
+	"ranked_races": 0,
 	"stats": {
 		"laps": 0,
 		"distance_m": 0.0,
@@ -109,6 +111,14 @@ func submit_lap(track_id: String, ms: int) -> bool:
 		data["best_laps"][track_id] = ms
 	save()
 	return is_best
+
+
+## Adds rank points from a race; saves. Returns the new total.
+func add_rank_points(points: int) -> int:
+	data["rank_points"] = int(data.get("rank_points", 0)) + maxi(points, 0)
+	data["ranked_races"] = int(data.get("ranked_races", 0)) + 1
+	save()
+	return int(data["rank_points"])
 
 
 func record_race(track_id: String, car_id: String, position: int, field: int) -> void:

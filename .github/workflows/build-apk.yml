@@ -121,6 +121,12 @@ jobs:
       - name: Barriers hold and Reset works on every track
         run: bash .github/run_test.sh res://tests/barrier_test.gd
 
+      - name: Landscape never shows through the road or verges
+        run: bash .github/run_test.sh res://tests/ground_test.gd
+
+      - name: Driver ranking
+        run: bash .github/run_test.sh res://tests/rank_test.gd
+
       - name: Export APK
         env:
           # The same key must sign every build, or Android refuses to update the

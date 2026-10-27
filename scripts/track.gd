@@ -83,6 +83,7 @@ var _th := 0
 var terrain_base := 0.0
 var terrain_wild := PackedByteArray()      # 0 mown by the track .. 255 rough land
 var sea_level := NAN                       # coastal tracks: water height
+var terrain_drawn := PackedFloat32Array()  # heights as drawn (pushed down under the road)
 var _ground_mat: ShaderMaterial
 var detail := 1.0                          # scenery density (0.55 in battery saver)
 
@@ -400,13 +401,17 @@ func _build_ground() -> void:
 		if not is_nan(sea_level):
 			floor_y = sea_level - 6.0
 			_build_water()
-	# Far plane out to the horizon (the landscape eases down to its level).
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(6000, 6000)
+	# Far ground out to the horizon: a ring AROUND the landscape (which eases
+	# down to this level at its edge), never across it.
 	var mi := MeshInstance3D.new()
-	mi.mesh = plane
+	if terrain_h.is_empty():
+		var plane := PlaneMesh.new()
+		plane.size = Vector2(6000, 6000)
+		mi.mesh = plane
+		mi.position = Vector3(0, floor_y, 0)
+	else:
+		mi.mesh = _far_ring(floor_y)
 	mi.material_override = mat
-	mi.position = Vector3(_tx0 + _tstep * _tw * 0.5, floor_y, _tz0 + _tstep * _th * 0.5) if not terrain_h.is_empty() else Vector3(0, floor_y, 0)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
 
@@ -449,9 +454,70 @@ func wildness(x: float, z: float) -> float:
 	return terrain_wild[iz * _tw + ix] / 255.0
 
 
+## Height of the drawn landscape at (x, z), interpolated across the same
+## triangles the mesh uses (tests check it stays under the road and verges).
+func drawn_ground(x: float, z: float) -> float:
+	if terrain_drawn.is_empty():
+		return -INF
+	var fx := clampf((x - _tx0) / _tstep, 0.0, _tw - 1.001)
+	var fz := clampf((z - _tz0) / _tstep, 0.0, _th - 1.001)
+	var ix := int(fx)
+	var iz := int(fz)
+	var tx := fx - ix
+	var tz := fz - iz
+	var k := iz * _tw + ix
+	var a := terrain_drawn[k]
+	var b := terrain_drawn[k + 1]
+	var c := terrain_drawn[k + _tw]
+	var d := terrain_drawn[k + _tw + 1]
+	# Triangles (a, b, c) and (b, d, c).
+	if tx + tz <= 1.0:
+		return a + (b - a) * tx + (c - a) * tz
+	return d + (c - d) * (1.0 - tx) + (b - d) * (1.0 - tz)
+
+
 ## True if (x, z) is open water.
 func is_water(x: float, z: float) -> bool:
 	return not is_nan(sea_level) and ground_height(x, z) < sea_level - 0.5
+
+
+## Flat ground from the landscape's edge out to 3 km beyond it.
+func far_ring_rect() -> Rect2:
+	return Rect2(_tx0, _tz0, _tstep * (_tw - 1), _tstep * (_th - 1))
+
+
+func _far_ring(y: float) -> ArrayMesh:
+	var r := far_ring_rect()
+	var x0 := r.position.x
+	var z0 := r.position.y
+	var x1 := r.end.x
+	var z1 := r.end.y
+	var big := 3000.0
+	var quads := [
+		[Vector2(x0 - big, z0 - big), Vector2(x1 + big, z0)],        # south strip
+		[Vector2(x0 - big, z1), Vector2(x1 + big, z1 + big)],        # north strip
+		[Vector2(x0 - big, z0), Vector2(x0, z1)],                    # west
+		[Vector2(x1, z0), Vector2(x1 + big, z1)],                    # east
+	]
+	var v := PackedVector3Array()
+	var nrm := PackedVector3Array()
+	for q in quads:
+		var a: Vector2 = q[0]
+		var b: Vector2 = q[1]
+		var p00 := Vector3(a.x, y, a.y)
+		var p10 := Vector3(b.x, y, a.y)
+		var p01 := Vector3(a.x, y, b.y)
+		var p11 := Vector3(b.x, y, b.y)
+		for p in [p00, p10, p01, p01, p10, p11]:
+			v.append(p)
+			nrm.append(Vector3.UP)
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = v
+	arrays[Mesh.ARRAY_NORMAL] = nrm
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 
 ## Ground height (m) at a world position: the landscape heightmap, or the
@@ -480,7 +546,11 @@ func _build_terrain(mat: Material) -> void:
 		var p: Vector3 = points[i]
 		var t := Vector2(tangents[i].x, tangents[i].z).normalized()
 		var r := Vector2(rights[i].x, rights[i].z).normalized()
-		var reach := maxf(wall_at(i, -1.0), wall_at(i, 1.0)) + 3.0 + _tstep
+		# Push down every vertex of every triangle that touches the road or the
+		# verges (out to a grid step past them), so a steep bank behind the
+		# barrier can't slant up through the verge.
+		var extra := 2.5 + _tstep + 1.0
+		var reach := maxf(wall_at(i, -1.0), wall_at(i, 1.0)) + extra + _tstep
 		var ix0 := int(floor((p.x - reach - _tx0) / _tstep))
 		var ix1 := int(ceil((p.x + reach - _tx0) / _tstep))
 		var iz0 := int(floor((p.z - reach - _tz0) / _tstep))
@@ -488,12 +558,14 @@ func _build_terrain(mat: Material) -> void:
 		for iz in range(maxi(iz0, 0), mini(iz1, _th - 1) + 1):
 			for ix in range(maxi(ix0, 0), mini(ix1, _tw - 1) + 1):
 				var rel := Vector2(_tx0 + ix * _tstep - p.x, _tz0 + iz * _tstep - p.z)
-				if absf(rel.dot(t)) > 1.6:
-					continue
 				var lat := rel.dot(r)
-				if absf(lat) <= wall_at(i, signf(lat)) + 2.5:
+				# Samples fan out on the outside of corners: widen the slab there.
+				if absf(rel.dot(t)) > 1.3 * (1.0 + absf(lat * curv[i])) + 0.3:
+					continue
+				if absf(lat) <= wall_at(i, signf(lat)) + extra:
 					var k := iz * _tw + ix
 					hs[k] = minf(hs[k], p.y - 0.5)
+	terrain_drawn = hs
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
 	var cols := PackedColorArray()

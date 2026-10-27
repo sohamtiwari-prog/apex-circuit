@@ -10,7 +10,7 @@ var _dir := Vector3.ZERO
 
 
 func _ready() -> void:
-	near = 0.05
+	near = 0.1          # (0.05 cost depth precision: distant surfaces flickered on phones)
 	far = 2400.0
 	fov = 70.0
 	# Run after the car each physics tick.

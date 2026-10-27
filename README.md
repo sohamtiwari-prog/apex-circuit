@@ -55,6 +55,19 @@ every build is signed with the same key (`android_signing/`).
   One phone hosts and picks the track, laps, grid size, bot difficulty and
   time of day; everyone picks their own car. See below.
 
+## Driver ranking
+
+Every race finish earns rank points (RP), and they never go down. Points
+depend on where you finish (P1 75 on a 20-car, 3-lap, medium race; last place
+still earns a few), with bonuses for a win, a podium and the fastest lap, and
+multipliers for harder bots (easy x0.6, hard x1.4), longer races (1 lap x0.5
+up to 10 laps x1.8), bigger grids and racing friends (x1.2). Ranks climb from
+Rookie through Bronze, Silver, Gold, Platinum and Diamond (III, II, I each)
+and Champion to **Legend** at 6000 RP, and past that a star for every 1000 RP.
+Your rank is on the main menu (tap it for the whole ladder), the results
+screen shows what you earned and animates your progress, and friends see each
+other's ranks in the lobby.
+
 ## Racing with friends
 
 Everyone needs the app on an Android phone. One person taps **Friends** and

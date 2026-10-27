@@ -67,8 +67,14 @@ func _ready() -> void:
 	if Net.is_online() and Net.my_id != 0:
 		Net.start_info = {}
 		_show_lobby()
+		# Back from a race: ranks may have gone up.
 		if Net.is_host():
+			if _players().has(1):
+				_players()[1]["rp"] = _my_rp()
 			_broadcast_lobby()
+		else:
+			var me: Dictionary = _players().get(Net.my_id, {})
+			Net.send(1, {"t": "hello", "name": String(me.get("name", _my_name())), "car": String(save.get_setting("car")), "team": int(save.get_setting("team")), "rp": _my_rp()})
 	else:
 		_show_connect()
 
@@ -476,6 +482,14 @@ func _refresh_lobby() -> void:
 		h.add_theme_constant_override("separation", 12)
 		row.add_child(h)
 		var ink := UIStyle.INK if int(id) == Net.my_id else UIStyle.PAPER
+		var rp := int(p.get("rp", 0))
+		var badge := RankBadge.new()
+		badge.custom_minimum_size = Vector2(30, 34)
+		badge.rp = rp
+		h.add_child(badge)
+		var tier := UIStyle.label(Ranks.tier_name(rp), 18, Ranks.tier_color(rp) if int(id) != Net.my_id else UIStyle.INK, "extrabold", true)
+		tier.custom_minimum_size = Vector2(110, 0)
+		h.add_child(tier)
 		var n := UIStyle.label(String(p["name"]) + ("  (host)" if int(id) == 1 else ""), 24, ink, "bold")
 		n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(n)
@@ -514,12 +528,12 @@ func _step_car(d: int) -> void:
 	var cur := ids.find(String(save.get_setting("car")))
 	var id: String = ids[posmod(cur + d, ids.size())]
 	save.set_setting("car", id)
-	var pick := {"name": _my_name(), "car": id, "team": int(save.get_setting("team"))}
+	var pick := {"name": _my_name(), "car": id, "team": int(save.get_setting("team")), "rp": _my_rp()}
 	if Net.is_host():
 		_players()[1] = pick
 		_broadcast_lobby()
 	else:
-		Net.send(1, {"t": "hello", "name": pick["name"], "car": id, "team": pick["team"]})
+		Net.send(1, {"t": "hello", "name": pick["name"], "car": id, "team": pick["team"], "rp": pick["rp"]})
 		_players()[Net.my_id] = pick
 		_refresh_lobby()
 
@@ -539,7 +553,7 @@ func _step_track(d: int) -> void:
 
 func _enter_as_host() -> void:
 	_players().clear()
-	_players()[1] = {"name": _my_name(), "car": String(save.get_setting("car")), "team": int(save.get_setting("team"))}
+	_players()[1] = {"name": _my_name(), "car": String(save.get_setting("car")), "team": int(save.get_setting("team")), "rp": _my_rp()}
 	Net.set_meta("settings", _default_settings())
 	_show_status("", UIStyle.FOG)
 	_show_lobby()
@@ -551,7 +565,7 @@ func _on_joined() -> void:
 		return
 	_players().clear()
 	_show_status("", UIStyle.FOG)
-	Net.send(1, {"t": "hello", "name": _my_name(), "car": String(save.get_setting("car")), "team": int(save.get_setting("team"))})
+	Net.send(1, {"t": "hello", "name": _my_name(), "car": String(save.get_setting("car")), "team": int(save.get_setting("team")), "rp": _my_rp()})
 	_show_lobby()
 
 
@@ -582,7 +596,7 @@ func _on_message(from: int, m: Dictionary) -> void:
 	match String(m.get("t", "")):
 		"hello":
 			if Net.is_host():
-				_players()[from] = {"name": String(m.get("name", "Player")).substr(0, 14), "car": String(m.get("car", "gp26")), "team": int(m.get("team", 0))}
+				_players()[from] = {"name": String(m.get("name", "Player")).substr(0, 14), "car": String(m.get("car", "gp26")), "team": int(m.get("team", 0)), "rp": maxi(int(m.get("rp", 0)), 0)}
 				_broadcast_lobby()
 		"lobby":
 			Net.set_meta("players", m["players"])
@@ -667,6 +681,10 @@ func _toast(text: String) -> void:
 	while _chat_lines.size() > 3:
 		_chat_lines.pop_front()
 	_chat_lbl.text = "\n".join(_chat_lines)
+
+
+func _my_rp() -> int:
+	return int(save.data.get("rank_points", 0))
 
 
 func _to_menu() -> void:
