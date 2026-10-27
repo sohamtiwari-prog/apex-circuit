@@ -98,6 +98,21 @@ jobs:
       - name: No invisible walls at the track edge
         run: bash .github/run_test.sh res://tests/edge_test.gd
 
+      - name: Start the online relay (for multiplayer tests)
+        run: |
+          cd server && npm install --no-audit --no-fund
+          PORT=8090 nohup node relay.js > /tmp/relay.log 2>&1 &
+          sleep 2 && curl -sf http://127.0.0.1:8090/ && echo " relay up"
+
+      - name: Multiplayer connection tests
+        run: timeout 300 ~/godot/godot --headless --script res://tests/net_test.gd -- ws://127.0.0.1:8090
+
+      - name: Multiplayer race over Wi-Fi (two phones)
+        run: LOGDIR=/tmp bash tests/run_mp_test.sh ~/godot/godot lan
+
+      - name: Multiplayer race online (two phones via relay)
+        run: LOGDIR=/tmp bash tests/run_mp_test.sh ~/godot/godot online ws://127.0.0.1:8090
+
       - name: Export APK
         env:
           # The same key must sign every build, or Android refuses to update the

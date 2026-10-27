@@ -50,6 +50,9 @@ const _DEFAULTS := {
 		"racing_line": false,
 		"ghost": true,
 		"time_of_day": "day",       # "day" or "sunset"
+		"player_name": "",          # multiplayer
+		"last_ip": "",
+		"server_url": "",
 		"graphics": "high",         # "high" or "saver"
 		"car": "gp26",
 		"team": 0,

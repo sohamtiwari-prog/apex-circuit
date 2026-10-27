@@ -1,0 +1,10 @@
+# One-click deploy of the online relay to Render (free plan).
+services:
+  - type: web
+    name: apex-circuit-relay
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /

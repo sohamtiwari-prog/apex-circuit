@@ -51,6 +51,34 @@ every build is signed with the same key (`android_signing/`).
   keep a safe braking gap, overtake only into free space and check their
   mirrors, so a full grid races without piling up.
 - **Time trial:** you against the clock; best laps saved per car and track.
+- **Friends:** race your friends, with bots filling the grid up to 20 cars.
+  One phone hosts and picks the track, laps, grid size, bot difficulty and
+  time of day; everyone picks their own car. See below.
+
+## Racing with friends
+
+Everyone needs the app on an Android phone. One person taps **Friends** and
+hosts; the others join. The host's phone runs the bots, the start lights and
+the timing, so the host should have a decent connection and keep the app open.
+
+**Same place (Wi-Fi or hotspot):** no internet needed.
+1. Everyone joins the same Wi-Fi, or connects to the host's phone hotspot.
+2. Host taps **Host a game here**.
+3. Friends see the game under **Games nearby** and tap it. If it doesn't
+   appear (some routers block this), type the address the host's lobby shows.
+
+**Online (anywhere):** uses a small free relay server you deploy once.
+1. Sign in to [render.com](https://render.com) with GitHub, then
+   **New → Blueprint** and pick this repository. It reads `render.yaml` and
+   creates the `apex-circuit-relay` service (free plan).
+2. If Render gives it a different address than
+   `apex-circuit-relay.onrender.com`, paste `wss://<your address>` into
+   **Server address** in the Friends screen (it's remembered).
+3. Host taps **Create an online game** and shares the 4-letter code; friends
+   type it and tap **Join**.
+
+The free server sleeps when unused, so the first connection of the day can
+take up to a minute.
 
 ## Controls
 
@@ -141,6 +169,7 @@ backup. Android's auto-backup is enabled too.
   Silverstone layout, 8-speed gearbox with shift lights, synthesized engine/tyre/wind
   audio, traction control and ABS, cockpit view, main menu with car and track select
 - [x] **Milestone 2: racing.** 20-car grids, start lights, overtaking AI, positions, results
+- [x] **Multiplayer.** Race friends over Wi-Fi/hotspot or online, bots fill the grid
 - [ ] **Milestone 3: career and garage.** Events, currency, buying cars, upgrades
 - [ ] **Milestone 4: content and polish.** More GP tracks (Monza, Spa, ...), more cars,
   realistic textures and models, tyre compounds, pit stops, DRS
@@ -170,6 +199,9 @@ scripts/
   hud.gd             timing tower, lap timing, pause menu, classification
   touch_controls.gd  multi-touch pedals and steering buttons
   save_manager.gd    crash-safe profile saving (autoload "Save")
+  net.gd             multiplayer connection: Wi-Fi (ENet + discovery) or online relay (autoload "Net")
+  net_race.gd        multiplayer race sync: car states, interpolation, standings
+  lobby.gd           Friends screen: host/join, players, race settings
 tracks/              imported circuit centrelines (JSON)
 tools/
   import_circuit.py  converts a real circuit outline (GeoJSON) into a track file

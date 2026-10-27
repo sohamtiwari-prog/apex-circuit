@@ -20,6 +20,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 Save="*res://scripts/save_manager.gd"
+Net="*res://scripts/net.gd"
 
 [display]
 

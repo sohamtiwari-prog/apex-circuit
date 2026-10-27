@@ -247,9 +247,12 @@ func _build_track_side(cols: Control) -> void:
 	var modes := HBoxContainer.new()
 	modes.add_theme_constant_override("separation", 8)
 	v.add_child(modes)
-	for m in [["race", "Race"], ["time_trial", "Time trial"]]:
+	for m in [["race", "Race"], ["time_trial", "Time trial"], ["friends", "Friends"]]:
 		var key: String = m[0]
 		var b := UIStyle.button(m[1], func():
+			if key == "friends":
+				get_tree().change_scene_to_file("res://scenes/lobby.tscn")
+				return
 			save.set_setting("mode", key)
 			_refresh_mode(), false, 22)
 		b.custom_minimum_size = Vector2(0, 52)

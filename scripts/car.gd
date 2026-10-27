@@ -38,6 +38,8 @@ var engine_load := 0.0            # 0..1, how hard the engine is working
 var tyre_slip := 0.0              # 0..1, worst wheel, for tyre squeal and smoke
 var wheels_on_grass := 0
 var body: CarBody
+var remote := false               # driven by the network (another phone), not simulated here
+var remote_vel := Vector3.ZERO
 var _light_t := 0.0
 var drs_open := false             # set by race logic in DRS zones (GP car)
 
@@ -198,7 +200,7 @@ func set_ghost(on: bool) -> void:
 
 
 func forward_speed() -> float:
-	return linear_velocity.dot(global_basis.z)
+	return (remote_vel if remote else linear_velocity).dot(global_basis.z)
 
 
 func speed_kmh() -> float:

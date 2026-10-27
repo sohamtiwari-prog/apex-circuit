@@ -47,6 +47,11 @@ var lights_box: PanelContainer
 var lights: Array[Panel] = []
 
 var _race_mode := false
+var net_mode := false:                 # multiplayer: the game never pauses
+	set(v):
+		net_mode = v
+		if _menu_buttons.has("restart"):
+			(_menu_buttons["restart"] as Button).visible = not v
 var _last_valid := true
 var _total_laps := 0
 var _best_seen := -1.0
@@ -448,7 +453,7 @@ func _refresh_menu() -> void:
 
 
 func set_paused(p: bool) -> void:
-	get_tree().paused = p
+	get_tree().paused = p and not net_mode
 	pause_panel.visible = p
 	touch.release_all()
 	if not p:
@@ -653,7 +658,7 @@ func _set_live_visible(on: bool) -> void:
 
 
 ## rows: [{pos, name, team, gap, best, player, color, fastest}]
-func show_results(rows: Array, on_restart: Callable, on_menu: Callable) -> void:
+func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_text := "Race again") -> void:
 	for c in results_panel.get_children():
 		c.queue_free()
 	touch.release_all()
@@ -689,12 +694,18 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable) -> void:
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	left.add_child(sp)
-	var again := UIStyle.button("Race again", func():
-		touch.visible = true
-		_set_live_visible(true)
-		on_restart.call(), true, 30)
-	again.custom_minimum_size = Vector2(0, 74)
-	left.add_child(again)
+	if on_restart.is_valid():
+		var again := UIStyle.button(again_text, func():
+			touch.visible = true
+			_set_live_visible(true)
+			on_restart.call(), true, 30)
+		again.custom_minimum_size = Vector2(0, 74)
+		left.add_child(again)
+	else:
+		var wait := UIStyle.label("The host starts the next race", 22, UIStyle.FOG, "semibold")
+		wait.custom_minimum_size = Vector2(0, 74)
+		wait.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		left.add_child(wait)
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 12)
 	left.add_child(gap)

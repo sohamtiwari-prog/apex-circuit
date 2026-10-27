@@ -16,3 +16,4 @@ Thumbs.db
 *.tmp
 .vscode/
 .idea/
+server/node_modules/

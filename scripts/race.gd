@@ -35,6 +35,9 @@ class Entrant:
 	var ghost := 0.0            # seconds left as a non-colliding ghost after a reset
 	var is_player := false
 	var sector := 0             # sector being driven (0..2)
+	var slot := -1              # grid slot (multiplayer: the car's id on every phone)
+	var net_id := 0             # multiplayer: the peer driving it (0 = bot)
+	var remote := false         # driven by another phone
 	var drs_armed := false      # passed a detection line within 1 s of the car ahead
 	var sector_start := 0.0
 
@@ -82,14 +85,30 @@ var recoveries := 0               # automatic car recoveries (stats/tests)
 const STEER_ASSIST_BLEND := 0.35
 var autopilot: AIDriver = null     # when set, the AI drives the player's car (tests/demo)
 var save: Node                     # the Save autoload, looked up at runtime
+var net: NetRace = null            # multiplayer session, if any
+var Net: Node                      # the Net autoload, looked up at runtime
+var _tod := ""
 
 
 func _ready() -> void:
 	save = get_node("/root/Save")
+	Net = get_node("/root/Net")
 	car_id = String(save.get_setting("car"))
 	track_id = String(save.get_setting("track"))
 	mode = String(save.get_setting("mode"))
 	total_laps = int(save.get_setting("laps"))
+	_tod = String(save.get_setting("time_of_day"))
+	var net_info: Dictionary = {}
+	if Net.is_online() and not Net.start_info.is_empty():
+		net_info = Net.start_info
+		var st: Dictionary = net_info["settings"]
+		track_id = String(st["track"])
+		total_laps = int(st["laps"])
+		_tod = String(st.get("tod", "day"))
+		mode = "race"
+		for g in net_info["grid"]:
+			if g["kind"] == "player" and int(g["id"]) == Net.my_id:
+				car_id = String(g["car"])
 	lap_key = save.lap_key(track_id, car_id)
 	DisplayServer.screen_set_keep_on(true)
 
@@ -100,20 +119,22 @@ func _ready() -> void:
 	offtrack_limit = track.road_half + Track.KERB_W + 0.6     # all four wheels off
 	invalid_limit = track.road_half + Track.KERB_W + 2.5
 
-	var team := int(save.get_setting("team"))
-	car = RaceCar.new()
-	car.setup(CarSpecs.get_spec(car_id, team if car_id == "gp26" else 0))
-	add_child(car)
+	if not net_info.is_empty():
+		_spawn_net_grid(net_info)
+	else:
+		var team := int(save.get_setting("team"))
+		car = RaceCar.new()
+		car.setup(CarSpecs.get_spec(car_id, team if car_id == "gp26" else 0))
+		add_child(car)
+		player = Entrant.new()
+		player.car = car
+		player.is_player = true
+		player.name = "You"
+		player.team = String(car.spec.get("team_name", car.spec["name"]))
+		entrants.append(player)
+		if mode == "race":
+			_spawn_opponents(team)
 	_apply_assists()
-	player = Entrant.new()
-	player.car = car
-	player.is_player = true
-	player.name = "You"
-	player.team = String(car.spec.get("team_name", car.spec["name"]))
-	entrants.append(player)
-
-	if mode == "race":
-		_spawn_opponents(team)
 
 	audio = CarAudio.new()
 	car.add_child(audio)
@@ -148,6 +169,11 @@ func _ready() -> void:
 	hud.set_camera_name(cam.mode_name())
 	hud.set_race_mode(mode == "race", total_laps)
 	hud.set_track(track.points)
+	if not net_info.is_empty():
+		hud.net_mode = true
+		net = NetRace.new()
+		add_child(net)
+		net.setup(self)
 
 	_restart()
 
@@ -189,7 +215,53 @@ func _spawn_opponents(player_team: int) -> void:
 
 
 func _build_environment() -> void:
-	Look.build(self, track.style, String(save.get_setting("time_of_day")))
+	Look.build(self, track.style, _tod)
+
+
+## Multiplayer grid from the host's start message: your car, your friends'
+## cars (driven by their phones) and bots (driven by the host's phone).
+func _spawn_net_grid(info: Dictionary) -> void:
+	for g in info["grid"]:
+		var e := Entrant.new()
+		e.slot = int(g["slot"])
+		e.name = String(g["name"])
+		var c := RaceCar.new()
+		c.setup(CarSpecs.get_spec(String(g["car"]), int(g["team"])))
+		add_child(c)
+		e.car = c
+		e.team = String(c.spec.get("team_name", c.spec["name"]))
+		if g["kind"] == "player":
+			e.net_id = int(g["id"])
+		if g["kind"] == "player" and e.net_id == Net.my_id:
+			e.is_player = true
+			player = e
+			car = c
+		else:
+			if g["kind"] == "bot" and Net.is_host():
+				e.ai = AIDriver.new()
+				e.ai.skill = float(g["skill"])
+			else:
+				e.remote = true
+				NetRace.make_remote(c)
+			var a := CarAudio.new()
+			c.add_child(a)
+			a.attach(c, false)
+			if e.net_id > 0:
+				# Friends get a name tag above their car.
+				var tag := Label3D.new()
+				tag.text = e.name
+				tag.font = UIStyle.font("bold", true)
+				tag.font_size = 64
+				tag.pixel_size = 0.012
+				tag.outline_size = 14
+				tag.modulate = UIStyle.PAPER
+				tag.outline_modulate = Color(0, 0, 0, 0.7)
+				tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+				tag.no_depth_test = true
+				tag.position = Vector3(0, 1.9, 0)
+				tag.visibility_range_end = 160.0
+				c.add_child(tag)
+		entrants.append(e)
 
 
 func _apply_assists() -> void:
@@ -238,6 +310,8 @@ func _restart() -> void:
 		var slot := player_slot if e.is_player else (k if k < player_slot else k + 1)
 		if not e.is_player:
 			k += 1
+		if net != null:
+			slot = e.slot
 		_place(e, _grid_pose(slot))
 		e.car.controls_enabled = false
 		e.lap = 0
@@ -265,6 +339,8 @@ func _restart() -> void:
 	race_time = 0.0
 	lights_time = 0.0
 	lights_out_at = 5.0 + randf_range(0.2, 1.4)
+	if net != null and not Net.is_host():
+		lights_out_at = 1e9              # the host decides when the lights go out
 	lap_valid = true
 	var title := "%d-lap race" % total_laps if mode == "race" else "Time trial"
 	hud.show_banner("%s, %s" % [track.track_name, title], UIStyle.PAPER, 3.0)
@@ -297,7 +373,20 @@ func _cycle_camera() -> void:
 	save.set_setting("camera", m)
 
 
+func leave_to_menu() -> void:
+	_quit_to_menu()
+
+
+func go_to_lobby() -> void:
+	save.save()
+	get_tree().paused = false
+	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
+
+
 func _quit_to_menu() -> void:
+	if net != null:
+		net.ended = true
+		Net.leave()
 	save.save()
 	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
@@ -435,9 +524,11 @@ func _physics_process(delta: float) -> void:
 				if e.finished:
 					e.ai.speed_cap = 25.0      # cool-down lap
 
+	if net != null:
+		net.physics_tick(delta)
 	for e in entrants:
 		_update_entrant(e, delta)
-	if _tick % 6 == 0 or state == State.FINISHED:
+	if (_tick % 6 == 0 or state == State.FINISHED) and (net == null or Net.is_host()):
 		_update_positions()
 
 	# Grass and gravel: less grip and more rolling drag per wheel that's on
@@ -471,7 +562,14 @@ func _physics_process(delta: float) -> void:
 
 
 func _update_lights(delta: float) -> void:
-	lights_time += delta
+	if net != null:
+		if Net.is_host():
+			if not net.all_ready(delta):
+				return                    # wait for everyone's phone to load
+			lights_time += delta
+		# Clients: lights_time comes from the host.
+	else:
+		lights_time += delta
 	var lit := clampi(int(lights_time), 0, 5)
 	if lights_time < lights_out_at:
 		hud.show_lights(lit, false)
@@ -687,7 +785,12 @@ func _show_results() -> void:
 		rows.append({"pos": e.position, "name": e.name, "team": e.team, "gap": gap,
 			"best": Hud.fmt_time(e.best_lap) if e.best_lap > 0.0 else "-", "player": e.is_player,
 			"color": e.car.spec["color"], "fastest": e == fastest})
-	hud.show_results(rows, func(): _restart(), func(): _quit_to_menu())
+	if net == null:
+		hud.show_results(rows, func(): _restart(), func(): _quit_to_menu())
+	elif Net.is_host():
+		hud.show_results(rows, func(): net.back_to_lobby(), func(): _quit_to_menu(), "Back to lobby")
+	else:
+		hud.show_results(rows, Callable(), func(): _quit_to_menu())
 
 
 # ------------------------------------------------------------ race order
