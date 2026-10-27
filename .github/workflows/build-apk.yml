@@ -157,6 +157,29 @@ jobs:
             Automatic build from ${{ github.sha }}.
 
             **Install:** download `ApexCircuit-v0.1.${{ github.run_number }}.apk` below on your Android phone and open it.
+            If the download is slow or fails, use the mirror: https://sohamtiwari-prog.github.io/apex-circuit/
             Updates install over the previous version and keep your progress.
           files: build/ApexCircuit-v0.1.${{ github.run_number }}.apk
           make_latest: true
+
+      # Second download route: GitHub Pages (different servers from release
+      # assets, which some networks struggle to reach). Only the newest build.
+      - name: Build download page
+        run: |
+          V="0.1.${{ github.run_number }}"
+          mkdir -p site
+          cp "build/ApexCircuit-v${V}.apk" "site/ApexCircuit-v${V}.apk"
+          cp "build/ApexCircuit-v${V}.apk" site/ApexCircuit.apk
+          SIZE=$(python3 -c "import os;print('%.1f' % (os.path.getsize('site/ApexCircuit.apk')/1e6))")
+          sed -e "s/__VERSION__/${V}/g" -e "s/__SIZE__/${SIZE}/g" -e "s/__DATE__/$(date -u +'%d %b %Y')/g" .github/pages/index.html > site/index.html
+          touch site/.nojekyll
+
+      - name: Publish download page
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          publish_branch: gh-pages
+          force_orphan: true
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com

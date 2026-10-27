@@ -35,7 +35,9 @@ yet modelled (the source data has none).
 
 ## Install on your phone
 
-1. Open the [latest release](../../releases/latest) on your Android phone.
+1. Open the [latest release](../../releases/latest) on your Android phone
+   (or the mirror, <https://sohamtiwari-prog.github.io/apex-circuit/>, if that
+   download is slow or fails: same file, different servers).
 2. Download the `ApexCircuit-v….apk` file and open it.
 3. Allow installs from your browser/file manager when Android asks, then tap **Install**.
 
