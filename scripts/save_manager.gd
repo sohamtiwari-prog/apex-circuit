@@ -64,6 +64,7 @@ const _DEFAULTS := {
 	},
 	"best_laps": {},                  # "track|car" -> milliseconds
 	"best_sectors": {},               # "track|car" -> [ms, ms, ms], best of each sector
+	"best_minis": {},                 # "track|car" -> [ms x 24], best of each minisector
 	"stats": {
 		"laps": 0,
 		"distance_m": 0.0,
@@ -210,6 +211,41 @@ func submit_sector(key: String, k: int, seconds: float) -> bool:
 		arr[k] = ms
 		return true
 	return false
+
+
+## Personal best time (s) for minisector m, or -1.
+func get_best_mini(key: String, m: int) -> float:
+	var arr: Array = data["best_minis"].get(key, [])
+	if m >= arr.size():
+		return -1.0
+	return float(arr[m]) / 1000.0 if int(arr[m]) > 0 else -1.0
+
+
+## Records a minisector time; returns true if it's a new personal best.
+func submit_mini(key: String, m: int, seconds: float) -> bool:
+	if not data["best_minis"].has(key):
+		data["best_minis"][key] = []
+	var arr: Array = data["best_minis"][key]
+	while arr.size() <= m:
+		arr.append(-1)
+	var ms := int(round(seconds * 1000.0))
+	if int(arr[m]) <= 0 or ms < int(arr[m]):
+		arr[m] = ms
+		return true
+	return false
+
+
+## Ideal lap: the sum of your best minisectors (-1 until every one is set).
+func ideal_lap(key: String, count: int) -> float:
+	var arr: Array = data["best_minis"].get(key, [])
+	if arr.size() < count:
+		return -1.0
+	var total := 0
+	for i in count:
+		if int(arr[i]) <= 0:
+			return -1.0
+		total += int(arr[i])
+	return total / 1000.0
 
 
 ## Strength of an assist setting: 0 off, 0.5 moderate, 1 full.

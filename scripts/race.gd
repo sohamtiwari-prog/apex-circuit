@@ -40,6 +40,8 @@ class Entrant:
 	var remote := false         # driven by another phone
 	var drs_armed := false      # passed a detection line within 1 s of the car ahead
 	var sector_start := 0.0
+	var mini := 0               # minisector being driven (0..MINIS-1)
+	var mini_start := 0.0
 
 
 var track: Track
@@ -68,6 +70,12 @@ var _ghost_play := PackedFloat32Array()
 var ghost_car: RaceCar
 var session_sectors := [INF, INF, INF]   # fastest of anyone this session
 var _my_session_sectors := [INF, INF, INF]
+## Minisectors: each sector is split into 8 equal parts (24 a lap), coloured
+## purple / green / yellow like the sectors as you cross each one.
+const MINIS_PER_SECTOR := 8
+const MINIS := MINIS_PER_SECTOR * 3
+var session_minis: Array = []
+var _my_session_minis: Array = []
 var offtrack_limit := 8.0
 var invalid_limit := 10.0
 var _save_timer := 0.0
@@ -169,6 +177,8 @@ func _ready() -> void:
 	hud.set_camera_name(cam.mode_name())
 	hud.set_race_mode(mode == "race", total_laps)
 	hud.set_track(track.points)
+	if mode == "time_trial":
+		hud.set_ideal(save.ideal_lap(lap_key, MINIS))
 	if not net_info.is_empty():
 		hud.net_mode = true
 		net = NetRace.new()
@@ -326,10 +336,16 @@ func _restart() -> void:
 		e.car.set_ghost(false)
 		e.sector = 0
 		e.sector_start = 0.0
+		e.mini = 0
+		e.mini_start = 0.0
 		e.drs_armed = false
 		e.car.drs_open = false
 	session_sectors = [INF, INF, INF]
 	_my_session_sectors = [INF, INF, INF]
+	session_minis.resize(MINIS)
+	session_minis.fill(INF)
+	_my_session_minis.resize(MINIS)
+	_my_session_minis.fill(INF)
 	_ghost_rec = PackedFloat32Array()
 	if ghost_car != null:
 		ghost_car.visible = false
@@ -612,6 +628,7 @@ func _update_entrant(e: Entrant, delta: float) -> void:
 		var line: int = n * (k + 1) / 3
 		if e.sector == k and e.prev_idx < line and e.idx >= line and e.idx - e.prev_idx < n / 4:
 			_complete_sector(e, k)
+	_update_minis(e)
 	# Crossing the line forwards.
 	if e.prev_idx > n * 0.9 and e.idx < n * 0.1:
 		if e.next_checkpoint >= 4 and not e.finished:
@@ -677,32 +694,88 @@ func _gap_ahead(e: Entrant) -> float:
 	return 99.0
 
 
+## Purple: fastest of anyone this session (time trial: your all-time best).
+## Green: your best this session. Yellow: slower. Grey: lap not valid.
+func _rate(t: float, pb: float, session_best: float, my_best: float) -> Color:
+	if not (mode == "race" or lap_valid):
+		return UIStyle.FOG
+	var fastest: bool = t <= session_best and (pb < 0.0 or t <= pb or mode == "race")
+	if mode == "time_trial":
+		fastest = pb < 0.0 or t <= pb
+	if fastest:
+		return UIStyle.PURPLE
+	if t <= my_best:
+		return UIStyle.GREEN
+	return UIStyle.YELLOW
+
+
+## The first sector/minisector of a race also covers the run from the grid,
+## so it never counts as a best.
+func _standing_start(e: Entrant, first: bool) -> bool:
+	return first and e.lap == 0 and mode == "race"
+
+
 func _complete_sector(e: Entrant, k: int) -> void:
 	var t := race_time - e.sector_start
 	e.sector_start = race_time
 	e.sector = (k + 1) % 3
 	if t < 3.0:
 		return
-	var valid := mode == "race" or lap_valid
+	var counts := not _standing_start(e, k == 0)
 	if not e.is_player:
-		session_sectors[k] = minf(session_sectors[k], t)
+		if counts:
+			session_sectors[k] = minf(session_sectors[k], t)
 		return
 	var pb: float = save.get_best_sector(lap_key, k)
 	var colour := UIStyle.YELLOW
-	if not valid:
-		colour = UIStyle.FOG
-	else:
-		var fastest: bool = t <= session_sectors[k] and (pb < 0.0 or t <= pb or mode == "race")
-		if mode == "time_trial":
-			fastest = pb < 0.0 or t <= pb
-		if fastest:
-			colour = UIStyle.PURPLE
-		elif t <= _my_session_sectors[k]:
-			colour = UIStyle.GREEN
-		_my_session_sectors[k] = minf(_my_session_sectors[k], t)
-		session_sectors[k] = minf(session_sectors[k], t)
-		save.submit_sector(lap_key, k, t)
+	if counts:
+		colour = _rate(t, pb, session_sectors[k], _my_session_sectors[k])
+		if colour != UIStyle.FOG:
+			_my_session_sectors[k] = minf(_my_session_sectors[k], t)
+			session_sectors[k] = minf(session_sectors[k], t)
+			save.submit_sector(lap_key, k, t)
 	hud.show_sector(k, t, (t - pb) if pb > 0.0 else 0.0, colour)
+
+
+## Minisector lines are equal slices of the lap; the last one is the finish
+## line, completed in _complete_lap.
+func _update_minis(e: Entrant) -> void:
+	var n := track.size()
+	if e.mini < MINIS - 1 and _crossed(e, n * (e.mini + 1) / MINIS):
+		_complete_mini(e, e.mini)
+		return
+	# A reset that jumped the car forward: skip the minisectors it missed.
+	var cur: int = clampi(e.idx * MINIS / n, 0, MINIS - 1)
+	var ahead := posmod(cur - e.mini, MINIS)
+	if ahead >= 2 and ahead < MINIS / 2:
+		if e.is_player:
+			for m in range(e.mini, cur):
+				hud.show_mini(m, -1.0, 0.0, UIStyle.FOG)
+		e.mini = cur
+		e.mini_start = race_time
+
+
+func _complete_mini(e: Entrant, m: int) -> void:
+	var t := race_time - e.mini_start
+	e.mini_start = race_time
+	e.mini = (m + 1) % MINIS
+	if t < 0.3:
+		return
+	var counts := not _standing_start(e, m == 0)
+	if not e.is_player:
+		if counts:
+			session_minis[m] = minf(session_minis[m], t)
+		return
+	var pb: float = save.get_best_mini(lap_key, m)
+	var colour := UIStyle.YELLOW
+	if counts:
+		colour = _rate(t, pb, session_minis[m], _my_session_minis[m])
+		if colour != UIStyle.FOG:
+			_my_session_minis[m] = minf(_my_session_minis[m], t)
+			session_minis[m] = minf(session_minis[m], t)
+			if save.submit_mini(lap_key, m, t) and mode == "time_trial":
+				hud.set_ideal(save.ideal_lap(lap_key, MINIS))
+	hud.show_mini(m, t, (t - pb) if pb > 0.0 else 0.0, colour)
 
 
 func _complete_lap(e: Entrant) -> void:
@@ -710,6 +783,10 @@ func _complete_lap(e: Entrant) -> void:
 		_complete_sector(e, 2)
 	e.sector = 0
 	e.sector_start = race_time
+	if e.mini == MINIS - 1:
+		_complete_mini(e, MINIS - 1)
+	e.mini = 0
+	e.mini_start = race_time
 	var lap_time := race_time - e.lap_start
 	e.lap_start = race_time
 	e.lap += 1

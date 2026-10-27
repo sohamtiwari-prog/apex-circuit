@@ -61,8 +61,68 @@ func _pair(kind: String, url := "") -> void:
 	h.queue_free()
 	c.queue_free()
 	await process_frame
+## The address a host shows must be its Wi-Fi one, never mobile data.
+func _addresses() -> void:
+	var NetScript = load("res://scripts/net.gd")
+	var phone := [
+		{"name": "lo", "addresses": ["127.0.0.1", "::1"]},
+		{"name": "rmnet_data0", "addresses": ["10.71.23.5", "2409:4042::1"]},
+		{"name": "v4-rmnet_data0", "addresses": ["192.0.0.4"]},
+		{"name": "wlan0", "addresses": ["fe80::1", "192.168.1.23"]},
+	]
+	var got: Array = NetScript.pick_lan(phone)
+	_check(got == ["192.168.1.23"], "Wi-Fi + mobile data: shows only the Wi-Fi address %s" % str(got))
+	var hotspot := [
+		{"name": "rmnet_data1", "addresses": ["100.72.1.2"]},
+		{"name": "swlan0", "addresses": ["192.168.43.1"]},
+	]
+	got = NetScript.pick_lan(hotspot)
+	_check(got == ["192.168.43.1"], "hotspot host: shows the hotspot address %s" % str(got))
+	var router10 := [
+		{"name": "ccmni1", "addresses": ["10.12.0.9"]},
+		{"name": "wlan0", "addresses": ["10.0.0.14"]},
+	]
+	got = NetScript.pick_lan(router10)
+	_check(got == ["10.0.0.14"], "a 10.x home router still beats mobile data %s" % str(got))
+
+
+## Joiners find a host by asking each address directly (broadcasts are
+## often dropped by phones), and through the normal list.
+func _discovery() -> void:
+	var NetScript = load("res://scripts/net.gd")
+	var h: Node = NetScript.new()
+	root.add_child(h)
+	_check(h.host_lan("Soham"), "discovery: hosting starts")
+	var raw := PacketPeerUDP.new()
+	raw.bind(47099)
+	raw.set_dest_address("127.0.0.1", h.PROBE_PORT)
+	raw.put_packet("apex-circuit-probe".to_utf8_buffer())
+	var answered := await _wait(func(): return raw.get_available_packet_count() > 0, 3.0)
+	var info: Variant = JSON.parse_string(raw.get_packet().get_string_from_utf8()) if answered else null
+	_check(answered and info is Dictionary and info["name"] == "Soham", "discovery: the host answers a direct probe (%s)" % str(info))
+	raw.close()
+	var c: Node = NetScript.new()
+	root.add_child(c)
+	var lists: Array = []
+	c.games_found.connect(func(g): lists.append(g))
+	c.start_discovery()
+	var ok := await _wait(func(): return lists.size() > 0 and lists[-1].size() > 0, 6.0)
+	var ips: Array = []
+	if ok:
+		for g in lists[-1]:
+			ips.append(g["ip"])
+	_check(ok, "discovery: the game shows under Games nearby %s" % str(ips))
+	c.stop_discovery()
+	h.leave()
+	c.queue_free()
+	h.queue_free()
+	await process_frame
+
+
 func _run() -> void:
 	await process_frame
+	_addresses()
+	await _discovery()
 	await _pair("lan")
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0:

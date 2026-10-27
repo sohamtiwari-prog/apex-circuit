@@ -67,6 +67,12 @@ the timing, so the host should have a decent connection and keep the app open.
 3. Friends see the game under **Games nearby** and tap it. If it doesn't
    appear (some routers block this), type the address the host's lobby shows.
 
+If joining fails: each phone shows **This phone: 192.168.x.x** on the Friends
+screen. The first three numbers must match on every phone; if they don't, one
+phone is on a different network (a guest or other-band network). If they do
+match and it still fails, the router is blocking phones from talking to each
+other ("AP isolation"); use the host's hotspot instead.
+
 **Online (anywhere):** uses a small free relay server you deploy once.
 1. Sign in to [render.com](https://render.com) with GitHub, then
    **New → Blueprint** and pick this repository. It reads `render.yaml` and
@@ -118,6 +124,10 @@ now for what's coming at your current speed.
 - **Sector times:** each lap in three sectors, coloured like F1 timing:
   purple fastest (anyone this session / your all-time best in time trial),
   green your best this session, yellow slower. Best sectors are saved.
+- **Minisectors:** every sector is split into 8 (24 a lap). Each one lights
+  up purple, green or yellow as you cross it, on the timing panel and on
+  the track map, with its time and gap to your best. In a time trial the
+  **Ideal** lap (your best minisectors added up) shows what's possible.
 - **DRS (GP car):** zones on the long straights with painted detection and
   activation lines. Within 1 s of the car ahead at detection (from lap 2;
   always in time trial), the flap opens through the zone, cutting drag ~22%,

@@ -178,6 +178,15 @@ func _build_connect_view() -> void:
 	lan.add_child(_found_box)
 	var none := UIStyle.label("Looking for games on this network…", 20, UIStyle.FOG, "medium")
 	_found_box.add_child(none)
+	_my_ip_lbl = UIStyle.label("", 18, UIStyle.FOG, "medium", true)
+	_my_ip_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lan.add_child(_my_ip_lbl)
+	_update_my_ip()
+	var t := Timer.new()
+	t.wait_time = 2.0
+	t.autostart = true
+	t.timeout.connect(_update_my_ip)
+	add_child(t)
 	var iprow := HBoxContainer.new()
 	iprow.add_theme_constant_override("separation", 8)
 	lan.add_child(iprow)
@@ -216,6 +225,22 @@ func _build_connect_view() -> void:
 	_server_edit.custom_minimum_size = Vector2(0, 46)
 	_server_edit.text_changed.connect(func(t: String): save.set_setting("server_url", t.strip_edges()))
 	online.add_child(_server_edit)
+
+
+var _my_ip_lbl: Label
+
+## Shows this phone's Wi-Fi address, so friends can check they're on the
+## same network (the first three numbers must match).
+func _update_my_ip() -> void:
+	if _my_ip_lbl == null:
+		return
+	var ips: Array[String] = Net.lan_addresses()
+	if ips.is_empty():
+		_my_ip_lbl.text = "This phone isn't on Wi-Fi or a hotspot yet."
+		_my_ip_lbl.add_theme_color_override("font_color", UIStyle.YELLOW)
+	else:
+		_my_ip_lbl.text = "This phone: %s" % "  ·  ".join(ips)
+		_my_ip_lbl.add_theme_color_override("font_color", UIStyle.FOG)
 
 
 func _server_url() -> String:
@@ -384,7 +409,9 @@ func _refresh_lobby() -> void:
 		_subtitle.text = "Friends open Race with friends, Online, and enter this code."
 	else:
 		_title.text = "Wi-Fi game"
-		_subtitle.text = ("Friends on this Wi-Fi see your game in their list, or type  %s" % Net.local_ip()) if host else "Connected to the host on this network."
+		var ips: Array[String] = Net.lan_addresses()
+		var addr := "  or  ".join(ips) if not ips.is_empty() else "(turn on Wi-Fi or your hotspot)"
+		_subtitle.text = ("Friends on this Wi-Fi see your game in their list, or type  %s" % addr) if host else "Connected to the host on this network."
 	for c in _players_box.get_children():
 		c.queue_free()
 	var ps := _players()

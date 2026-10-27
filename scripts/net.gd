@@ -18,7 +18,8 @@ signal closed(reason: String)       # session ended (host left, connection lost)
 signal games_found(games: Array)    # LAN discovery: [{name, ip, players}]
 
 const GAME_PORT := 47010
-const BEACON_PORT := 47011
+const BEACON_PORT := 47011          # joiners listen here (host announcements, probe replies)
+const PROBE_PORT := 47012           # hosts listen here for "who's hosting?" probes
 const DEFAULT_SERVER := "wss://apex-circuit-relay.onrender.com"
 
 var role := "offline"               # "offline", "host", "client"
@@ -34,6 +35,8 @@ var _ws_open := false
 var _beacon: PacketPeerUDP
 var _beacon_timer := 0.0
 var _listen: PacketPeerUDP
+var _probe: PacketPeerUDP           # host: answers probes from joiners
+var _probe_timer := 0.0
 var _found := {}                    # ip -> {name, players, seen}
 var _connect_timer := 0.0
 var lobby_players := 0              # for the LAN beacon
@@ -65,7 +68,11 @@ func host_lan(name: String) -> bool:
 	host_name = name
 	_beacon = PacketPeerUDP.new()
 	_beacon.set_broadcast_enabled(true)
-	_beacon.set_dest_address("255.255.255.255", BEACON_PORT)
+	# Many Android phones drop Wi-Fi broadcasts, so joiners also ask every
+	# address on the network directly; this socket answers them.
+	_probe = PacketPeerUDP.new()
+	if _probe.bind(PROBE_PORT) != OK:
+		_probe = null
 	return true
 
 
@@ -74,7 +81,7 @@ func join_lan(ip: String) -> void:
 	_enet = ENetMultiplayerPeer.new()
 	if _enet.create_client(ip.strip_edges(), GAME_PORT) != OK:
 		_enet = null
-		failed.emit("Couldn't reach %s." % ip)
+		failed.emit("That address doesn't look right: %s" % ip)
 		return
 	_enet.peer_disconnected.connect(func(id: int):
 		if id == 1:
@@ -84,24 +91,65 @@ func join_lan(ip: String) -> void:
 	_connect_timer = 8.0
 
 
-## This phone's address on the local network (what joiners can type in).
+## This phone's address on the Wi-Fi / hotspot (what joiners can type in).
 func local_ip() -> String:
-	var best := ""
-	for a in IP.get_local_addresses():
-		if a.contains(":") or a.begins_with("127."):
+	var all := lan_addresses()
+	return all[0] if not all.is_empty() else ""
+
+
+## Every Wi-Fi / hotspot / Ethernet IPv4 address of this device, best first.
+## Mobile-data addresses (often 10.x on Indian carriers) are left out: a
+## friend on the Wi-Fi can never reach them.
+func lan_addresses() -> Array[String]:
+	return pick_lan(IP.get_local_interfaces())
+
+
+const _MOBILE := ["rmnet", "ccmni", "seth", "pdp", "clat", "v4-", "tun", "ppp", "lo", "dummy", "ifb", "ipsec", "wwan", "usb_mbim"]
+const _LOCAL_LINK := ["wlan", "swlan", "ap", "softap", "wifi", "eth", "en", "wl", "rndis", "bt-pan", "p2p"]
+
+static func pick_lan(ifaces: Array) -> Array[String]:
+	var scored: Array = []
+	for i in ifaces:
+		var name := String(i.get("name", "")).to_lower()
+		var skip := false
+		for m in _MOBILE:
+			if name.begins_with(m) or name.contains("rmnet"):
+				skip = true
+		if skip:
 			continue
-		if a.begins_with("192.168.") or a.begins_with("10.") or a.begins_with("172."):
-			return a
-		best = a
-	return best
+		var link := 0
+		for w in _LOCAL_LINK:
+			if name.begins_with(w):
+				link = 1
+		for a in i.get("addresses", []):
+			var ip := String(a)
+			if ip.contains(":") or ip.begins_with("127.") or ip.begins_with("169.254."):
+				continue
+			var priv := 0
+			if ip.begins_with("192.168."):
+				priv = 3
+			elif ip.begins_with("172.") and int(ip.get_slice(".", 1)) >= 16 and int(ip.get_slice(".", 1)) <= 31:
+				priv = 2
+			elif ip.begins_with("10."):
+				priv = 1
+			scored.append([link * 10 + priv, ip])
+	scored.sort_custom(func(x, y): return x[0] > y[0])
+	var out: Array[String] = []
+	for x in scored:
+		if not out.has(x[1]):
+			out.append(x[1])
+	return out
 
 
 ## Start listening for hosts on the same Wi-Fi (games_found is emitted).
 func start_discovery() -> void:
 	stop_discovery()
 	_listen = PacketPeerUDP.new()
-	_listen.bind(BEACON_PORT)
+	_listen.set_broadcast_enabled(true)
+	if _listen.bind(BEACON_PORT) != OK:
+		_listen.bind(0)               # another copy is listening; probe replies still arrive
 	_found.clear()
+	_probe_timer = 0.0
 
 
 func stop_discovery() -> void:
@@ -169,6 +217,9 @@ func leave() -> void:
 	if _beacon != null:
 		_beacon.close()
 		_beacon = null
+	if _probe != null:
+		_probe.close()
+		_probe = null
 	role = "offline"
 	transport = ""
 	my_id = 0
@@ -207,7 +258,7 @@ func _poll_enet(delta: float) -> void:
 			_connect_timer -= delta
 			if _connect_timer <= 0.0:
 				leave()
-				failed.emit("No game found at that address. Check you're on the same Wi-Fi.")
+				failed.emit("No game answered at that address. Both phones must show the same first three numbers under Games nearby (e.g. 192.168.1.x). If they do, your router may block phones talking to each other: use one phone's hotspot instead.")
 				return
 	while _enet != null and _enet.get_available_packet_count() > 0:
 		var from := _enet.get_packet_peer()
@@ -215,12 +266,8 @@ func _poll_enet(delta: float) -> void:
 		var msg: Variant = bytes_to_var(pkt)
 		if msg is Dictionary:
 			message.emit(from, msg)
-	if role == "host" and _beacon != null:
-		_beacon_timer -= delta
-		if _beacon_timer <= 0.0:
-			_beacon_timer = 1.0
-			var info := {"game": "apex-circuit", "name": host_name, "players": lobby_players}
-			_beacon.put_packet(JSON.stringify(info).to_utf8_buffer())
+	if role == "host":
+		_host_announce(delta)
 
 
 func _poll_ws(delta: float) -> void:
@@ -254,6 +301,55 @@ func _poll_ws(delta: float) -> void:
 			failed.emit("The online server didn't answer. Try again in a minute.")
 
 
+func _host_info() -> PackedByteArray:
+	return JSON.stringify({"game": "apex-circuit", "name": host_name, "players": lobby_players}).to_utf8_buffer()
+
+
+## Host: broadcast once a second (to everyone and to each network's own
+## broadcast address) and answer joiners' probes directly.
+func _host_announce(delta: float) -> void:
+	if _probe != null:
+		while _probe.get_available_packet_count() > 0:
+			var pkt := _probe.get_packet()
+			var ip := _probe.get_packet_ip()
+			var port := _probe.get_packet_port()
+			if pkt.get_string_from_utf8().contains("apex-circuit-probe"):
+				_probe.set_dest_address(ip, port)
+				_probe.put_packet(_host_info())
+	if _beacon == null:
+		return
+	_beacon_timer -= delta
+	if _beacon_timer > 0.0:
+		return
+	_beacon_timer = 1.0
+	var targets := ["255.255.255.255"]
+	for a in lan_addresses():
+		targets.append(_subnet(a) + "255")
+	for t in targets:
+		_beacon.set_dest_address(t, BEACON_PORT)
+		_beacon.put_packet(_host_info())
+
+
+static func _subnet(ip: String) -> String:
+	var p := ip.split(".")
+	return "%s.%s.%s." % [p[0], p[1], p[2]] if p.size() == 4 else ""
+
+
+## Joiner: ask every address on this phone's networks "are you hosting?".
+## Direct (unicast) packets get through where broadcasts are filtered.
+func _send_probes() -> void:
+	var msg := "apex-circuit-probe".to_utf8_buffer()
+	var targets := ["255.255.255.255"]
+	for a in lan_addresses():
+		var net := _subnet(a)
+		targets.append(net + "255")
+		for h in range(1, 255):
+			targets.append(net + str(h))
+	for t in targets:
+		_listen.set_dest_address(t, PROBE_PORT)
+		_listen.put_packet(msg)
+
+
 ## Relay control messages (text frames).
 func _control(c: Variant) -> void:
 	if not (c is Dictionary):
@@ -278,6 +374,10 @@ func _control(c: Variant) -> void:
 func _poll_discovery(delta: float) -> void:
 	if _listen == null:
 		return
+	_probe_timer -= delta
+	if _probe_timer <= 0.0:
+		_probe_timer = 2.0
+		_send_probes()
 	var changed := false
 	while _listen.get_available_packet_count() > 0:
 		var pkt := _listen.get_packet()

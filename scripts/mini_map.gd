@@ -15,6 +15,8 @@ var _points := PackedVector3Array()
 var show_panel := true
 var line_color := UIStyle.PAPER
 var line_width := 3.5
+var _minis := {}                # minisector index -> colour, painted over the outline
+var _mini_count := 24
 
 
 func _ready() -> void:
@@ -55,6 +57,30 @@ func to_map(p: Vector3) -> Vector2:
 	return _offset + (Vector2(p.x, p.z) - _lo) * _scale
 
 
+## Paints minisector m (of count) in colour on the outline.
+func set_mini(m: int, count: int, colour: Color) -> void:
+	_mini_count = count
+	_minis[m] = colour
+	queue_redraw()
+
+
+func clear_minis() -> void:
+	_minis.clear()
+	queue_redraw()
+
+
+func _mini_line(m: int) -> PackedVector2Array:
+	var n := _points.size()
+	var a := n * m / _mini_count
+	var b := mini(n * (m + 1) / _mini_count, n)
+	var out := PackedVector2Array()
+	var step := maxi(1, n / 400)
+	for i in range(a, b, step):
+		out.append(to_map(_points[i]))
+	out.append(to_map(_points[b % n]))
+	return out
+
+
 ## cars: Array of [Vector3 world position, Color, bool is_player]
 func set_cars(cars: Array) -> void:
 	_cars = cars
@@ -68,6 +94,10 @@ func _draw() -> void:
 		return
 	draw_polyline(_line, Color(0, 0, 0, 0.55), line_width + 3.0, true)
 	draw_polyline(_line, line_color, line_width, true)
+	for m in _minis:
+		var c: Color = _minis[m]
+		if c.a > 0.2:
+			draw_polyline(_mini_line(m), c, line_width + 1.0, true)
 	var n := Vector2(-_start_dir.y, _start_dir.x) * 6.0
 	draw_line(_start - n, _start + n, UIStyle.APEX, 3.0, true)
 	var me: Array = []

@@ -38,6 +38,15 @@ var _last_val: Label
 var _best_val: Label
 var _delta_lbl: Label
 var _sector_bars: Array[ColorRect] = []
+var _mini_rects: Array[ColorRect] = []
+var _mini_cols: Array[Color] = []
+var _mini_cur := 0
+var _mini_lbl: Label
+var _mini_time := 0.0
+var _ideal_val: Label
+var _pulse := 0.0
+var _timing_panel: PanelContainer
+const MINI_IDLE := Color(0.945, 0.953, 0.965, 0.13)
 var _drs: PanelContainer
 var _drs_lbl: Label
 var _drs_state := -1
@@ -150,6 +159,7 @@ func _build_timing(root: Control) -> void:
 	panel.custom_minimum_size = Vector2(236, 0)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(panel)
+	_timing_panel = panel
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", -4)
 	panel.add_child(v)
@@ -158,18 +168,47 @@ func _build_timing(root: Control) -> void:
 	v.add_child(_time_lbl)
 	_last_val = _timing_row(v, "Last")
 	_best_val = _timing_row(v, "Best")
-	# Sector bars: grey until driven, then purple / green / yellow.
+	_ideal_val = _timing_row(v, "Ideal")
+	_ideal_val.get_parent().visible = false
+	# Per sector: a strip of 8 minisectors over the sector bar. Grey until
+	# driven, then purple / green / yellow; the one being driven pulses.
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, 6)
+	v.add_child(gap)
 	var sec := HBoxContainer.new()
 	sec.add_theme_constant_override("separation", 6)
 	v.add_child(sec)
 	for k in range(3):
+		var col_box := VBoxContainer.new()
+		col_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col_box.add_theme_constant_override("separation", 3)
+		sec.add_child(col_box)
+		var strip := HBoxContainer.new()
+		strip.add_theme_constant_override("separation", 2)
+		col_box.add_child(strip)
+		for m in range(8):
+			var r := ColorRect.new()
+			r.color = MINI_IDLE
+			r.custom_minimum_size = Vector2(0, 10)
+			r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			strip.add_child(r)
+			_mini_rects.append(r)
+			_mini_cols.append(MINI_IDLE)
 		var b := ColorRect.new()
 		b.color = Color(UIStyle.PAPER, 0.15)
-		b.custom_minimum_size = Vector2(0, 7)
+		b.custom_minimum_size = Vector2(0, 5)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		sec.add_child(b)
+		col_box.add_child(b)
 		_sector_bars.append(b)
+	var gap2 := Control.new()
+	gap2.custom_minimum_size = Vector2(0, 4)
+	v.add_child(gap2)
+	_mini_lbl = UIStyle.label("Mini 1  0.000", 19, UIStyle.PAPER, "semibold", true)
+	_mini_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_mini_lbl.modulate.a = 0.0
+	v.add_child(_mini_lbl)
 	_delta_lbl = UIStyle.label("", 22, UIStyle.GREEN, "bold", true)
 	_delta_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_delta_lbl.visible = false
@@ -237,11 +276,10 @@ func set_drs(st: int) -> void:
 
 func _build_minimap(root: Control) -> void:
 	minimap = MiniMap.new()
-	minimap.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
-	minimap.offset_right = -16
-	minimap.offset_left = -196
-	minimap.offset_top = -110
-	minimap.offset_bottom = 70
+	# Beside the timing panel (placed each frame in _place_minimap), so the
+	# panel can grow without covering it.
+	minimap.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	minimap.size = Vector2(180, 180)
 	root.add_child(minimap)
 
 
@@ -489,7 +527,8 @@ func update_timing(lap: int, lap_time: float, last: float, best: float, valid: b
 
 func show_sector(k: int, t: float, delta: float, colour: Color) -> void:
 	if k == 0:
-		reset_sectors()
+		for b in _sector_bars:
+			b.color = Color(UIStyle.PAPER, 0.15)
 	_sector_bars[k].color = colour
 	_delta_lbl.visible = true
 	var d := ("  %+.3f" % delta) if absf(delta) > 0.0005 else ""
@@ -501,6 +540,40 @@ func show_sector(k: int, t: float, delta: float, colour: Color) -> void:
 func reset_sectors() -> void:
 	for b in _sector_bars:
 		b.color = Color(UIStyle.PAPER, 0.15)
+	for m in _mini_rects.size():
+		_mini_cols[m] = MINI_IDLE
+		_mini_rects[m].color = MINI_IDLE
+	_mini_cur = 0
+	_mini_lbl.modulate.a = 0.0
+	minimap.clear_minis()
+
+
+## Minisector m done in t seconds (t < 0: skipped). delta is vs your best.
+func show_mini(m: int, t: float, delta: float, colour: Color) -> void:
+	var count := _mini_rects.size()
+	if m == 0:
+		# A new lap: clear the old one except this first minisector.
+		for i in count:
+			_mini_cols[i] = MINI_IDLE
+			_mini_rects[i].color = MINI_IDLE
+		minimap.clear_minis()
+	_mini_cols[m] = colour
+	_mini_rects[m].color = colour
+	minimap.set_mini(m, count, colour)
+	_mini_cur = (m + 1) % count
+	if t < 0.0:
+		return
+	var d := ("  %+.3f" % delta) if absf(delta) > 0.0005 else ""
+	_mini_lbl.text = "Mini %d  %.3f%s" % [m + 1, t, d]
+	_mini_lbl.add_theme_color_override("font_color", colour if colour != UIStyle.FOG else UIStyle.PAPER)
+	_mini_lbl.modulate.a = 1.0
+	_mini_time = 3.0
+
+
+## Ideal lap (sum of your best minisectors), time trial only; t < 0 hides it.
+func set_ideal(t: float) -> void:
+	_ideal_val.get_parent().visible = t > 0.0
+	_ideal_val.text = fmt_time(t)
 
 
 func update_engine(gear: int, rpm: float, shift_rpm: float, redline: float, idle := 1000.0, kmh := -1.0) -> void:
@@ -524,6 +597,13 @@ func set_race_mode(race: bool, laps: int) -> void:
 
 func set_track(points: PackedVector3Array) -> void:
 	minimap.set_points(points)
+
+
+func _place_minimap() -> void:
+	if _timing_panel == null:
+		return
+	var r := _timing_panel.get_global_rect()
+	minimap.position = Vector2(r.position.x - minimap.size.x - 18.0, r.position.y)
 
 
 func update_map(cars: Array) -> void:
@@ -623,6 +703,14 @@ func _process(delta: float) -> void:
 		_banner_time -= delta
 		if _banner_time <= 0.0:
 			banner.visible = false
+	_pulse += delta
+	_place_minimap()
+	if _mini_cur < _mini_rects.size() and _mini_cols[_mini_cur] == MINI_IDLE:
+		_mini_rects[_mini_cur].color = Color(UIStyle.PAPER, 0.3 + 0.25 * sin(_pulse * 6.0))
+	if _mini_time > 0.0:
+		_mini_time -= delta
+		if _mini_time <= 0.0:
+			_mini_lbl.modulate.a = 0.0
 	if _delta_time > 0.0:
 		_delta_time -= delta
 		if _delta_time <= 0.0:
