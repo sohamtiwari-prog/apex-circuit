@@ -12,6 +12,7 @@ signal reset_requested
 signal camera_requested
 signal settings_changed
 signal menu_requested
+signal chat_requested(index: int)
 
 var touch: TouchControls
 var gauge: RevGauge
@@ -46,6 +47,13 @@ var _mini_time := 0.0
 var _ideal_val: Label
 var _pulse := 0.0
 var _timing_panel: PanelContainer
+# Multiplayer quick chat
+var _chat_btn: Button
+var _chat_row: HBoxContainer
+var _chat_toast: PanelContainer
+var _chat_toast_lbl: Label
+var _chat_time := 0.0
+var _chat_open_time := 0.0
 const MINI_IDLE := Color(0.945, 0.953, 0.965, 0.13)
 var _drs: PanelContainer
 var _drs_lbl: Label
@@ -143,6 +151,10 @@ func _build_timing(root: Control) -> void:
 	bar.alignment = BoxContainer.ALIGNMENT_END
 	bar.add_theme_constant_override("separation", 10)
 	col.add_child(bar)
+	_chat_btn = UIStyle.button("Chat", func(): _toggle_chat(), false, 22)
+	_chat_btn.custom_minimum_size = Vector2(100, 60)
+	_chat_btn.visible = false
+	bar.add_child(_chat_btn)
 	cam_button = UIStyle.button("Chase", func(): camera_requested.emit(), false, 22)
 	cam_button.custom_minimum_size = Vector2(118, 60)
 	bar.add_child(cam_button)
@@ -599,6 +611,51 @@ func set_track(points: PackedVector3Array) -> void:
 	minimap.set_points(points)
 
 
+## Multiplayer: show the Chat button; phrases go out through chat_requested.
+func enable_chat(phrases: Array) -> void:
+	_chat_btn.visible = true
+	_chat_row = HBoxContainer.new()
+	_chat_row.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_chat_row.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_chat_row.offset_top = 84
+	_chat_row.add_theme_constant_override("separation", 8)
+	_chat_row.visible = false
+	add_child(_chat_row)
+	for i in phrases.size():
+		var k: int = i
+		var b := UIStyle.button(String(phrases[i]), func():
+			chat_requested.emit(k)
+			_chat_row.visible = false, false, 22)
+		b.custom_minimum_size = Vector2(0, 58)
+		_chat_row.add_child(b)
+	_chat_toast = PanelContainer.new()
+	_chat_toast.add_theme_stylebox_override("panel", UIStyle.panel(Color(UIStyle.TARMAC, 0.88)))
+	_chat_toast.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_chat_toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_chat_toast.offset_top = 14
+	_chat_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_chat_toast.visible = false
+	add_child(_chat_toast)
+	_chat_toast_lbl = UIStyle.label("", 24, UIStyle.PAPER, "bold", true)
+	_chat_toast.add_child(_chat_toast_lbl)
+
+
+func _toggle_chat() -> void:
+	if _chat_row == null:
+		return
+	_chat_row.visible = not _chat_row.visible
+	_chat_open_time = 5.0
+
+
+func show_chat(who: String, text: String) -> void:
+	if _chat_toast == null:
+		return
+	_chat_toast_lbl.text = "%s:  %s" % [who, text]
+	_chat_toast.visible = true
+	_chat_toast.reset_size()
+	_chat_time = 3.5
+
+
 func _place_minimap() -> void:
 	if _timing_panel == null:
 		return
@@ -705,6 +762,14 @@ func _process(delta: float) -> void:
 			banner.visible = false
 	_pulse += delta
 	_place_minimap()
+	if _chat_time > 0.0:
+		_chat_time -= delta
+		if _chat_time <= 0.0:
+			_chat_toast.visible = false
+	if _chat_row != null and _chat_row.visible:
+		_chat_open_time -= delta
+		if _chat_open_time <= 0.0:
+			_chat_row.visible = false
 	if _mini_cur < _mini_rects.size() and _mini_cols[_mini_cur] == MINI_IDLE:
 		_mini_rects[_mini_cur].color = Color(UIStyle.PAPER, 0.3 + 0.25 * sin(_pulse * 6.0))
 	if _mini_time > 0.0:

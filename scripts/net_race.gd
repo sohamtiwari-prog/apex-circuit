@@ -14,7 +14,7 @@ extends Node
 
 const SEND_HZ := 20.0
 const DELAY_MIN := 0.12        # seconds of interpolation delay (adapts to jitter)
-const DELAY_MAX := 0.35
+const DELAY_MAX := 0.6         # online through a public server can be jumpy
 const START_WAIT := 15.0       # max seconds to wait for everyone to load
 
 var race: Node

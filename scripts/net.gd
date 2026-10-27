@@ -1,11 +1,13 @@
 extends Node
 ## Multiplayer connection (autoload "Net"). One phone hosts; others join.
 ##
-## Two transports, same game protocol:
+## Three transports, same game protocol:
 ##   Wi-Fi / hotspot ("lan"): ENet straight between phones; hosts announce
 ##     themselves with a UDP broadcast so joiners see them in a list.
-##   Online ("online"): every phone opens a WebSocket to a small relay server
-##     (server/relay.js) and joins a room by its 4-letter code.
+##   Online, free public servers ("public"): every phone connects to a public
+##     MQTT broker (no setup); the room code picks the broker and the topics.
+##   Online, own server ("online"): every phone opens a WebSocket to the small
+##     relay server (server/relay.js) and joins a room by its 4-letter code.
 ## Star topology either way: clients talk to the host (id 1), the host talks
 ## to everyone. Messages are Dictionaries (var_to_bytes, no objects).
 
@@ -16,11 +18,24 @@ signal joined                       # client: connected and given an id
 signal failed(reason: String)       # couldn't connect / room not found
 signal closed(reason: String)       # session ended (host left, connection lost)
 signal games_found(games: Array)    # LAN discovery: [{name, ip, players}]
+signal chat_received(from_id: int, text: String)
+
+## Quick-chat phrases (sent as an index, so they're short and clean).
+const CHAT := ["Let's go!", "GG", "Nice move!", "Sorry!", "Rematch?"]
 
 const GAME_PORT := 47010
 const BEACON_PORT := 47011          # joiners listen here (host announcements, probe replies)
 const PROBE_PORT := 47012           # hosts listen here for "who's hosting?" probes
 const DEFAULT_SERVER := "wss://apex-circuit-relay.onrender.com"
+## Free public MQTT brokers (WebSocket + TLS). The first letter of a room code
+## says which one the game is on, so joiners need nothing but the code.
+const PUBLIC_BROKERS := [
+	"wss://broker.emqx.io:8084/mqtt",
+	"wss://broker.hivemq.com:8884/mqtt",
+	"wss://test.mosquitto.org:8081/mqtt",
+]
+const CODE_CHARS := "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+var public_brokers: Array = PUBLIC_BROKERS.duplicate()   # tests use a local broker
 
 var role := "offline"               # "offline", "host", "client"
 var transport := ""                 # "lan" or "online"
@@ -41,6 +56,22 @@ var _found := {}                    # ip -> {name, players, seen}
 var _connect_timer := 0.0
 var lobby_players := 0              # for the LAN beacon
 var _pending_end := ""              # close after polling, never inside a callback
+# Ping, for every transport: clients ask every 2 s, the host answers.
+var my_ping := -1                   # ms, this phone to the host
+var pings := {}                     # host: peer id -> ms
+var _ping_timer := 0.0
+# Public servers (MQTT).
+const MqttLinkScript := preload("res://scripts/mqtt_link.gd")
+var _mq: RefCounted                 # MqttLink
+var _mq_events: Array = []
+var _mq_try := 0
+var _tok := ""                      # client: our name on the room topics
+var _peer_tok := {}                 # host: id -> token
+var _tok_peer := {}                 # host: token -> id
+var _next_id := 2
+var _last_seen := {}                # host: id -> msec of the last message
+var _last_host := 0                 # client: msec of the last message from the host
+var _join_timer := 0.0
 
 
 func is_online() -> bool:
@@ -190,6 +221,240 @@ func _open_ws(url: String, hello: Dictionary) -> void:
 	_connect_timer = 70.0
 
 
+# ------------------------------------------------------------ online (free public servers)
+
+## Which public server a room code lives on.
+static func broker_for(code: String, count: int) -> int:
+	return maxi(CODE_CHARS.find(code.substr(0, 1).to_upper()), 0) % maxi(count, 1)
+
+
+func host_public(name: String) -> void:
+	leave()
+	role = "host"
+	transport = "public"
+	host_name = name
+	_mq_try = 0
+	_public_host_attempt()
+
+
+func _public_host_attempt() -> void:
+	if _mq_try >= public_brokers.size():
+		leave()
+		failed.emit("Couldn't reach the free online servers. Check your internet and try again.")
+		return
+	var code := ""
+	while code == "" or broker_for(code, public_brokers.size()) != _mq_try:
+		code = _rand(4, CODE_CHARS)
+	room_code = code
+	_mq_open(public_brokers[_mq_try], "apex-h-" + _rand(10), _base() + "c", _ctl({"op": "host_left"}))
+	_connect_timer = 12.0
+
+
+func join_public(code: String) -> void:
+	leave()
+	role = "client"
+	transport = "public"
+	room_code = code.strip_edges().to_upper()
+	_tok = _rand(10)
+	var url: String = public_brokers[broker_for(room_code, public_brokers.size())]
+	_mq_open(url, "apex-c-" + _tok, _base() + "h", _ctl({"op": "bye", "tok": _tok}))
+	_connect_timer = 15.0
+
+
+func _base() -> String:
+	return "apexcircuit/v1/%s/" % room_code
+
+
+static func _ctl(d: Dictionary) -> PackedByteArray:
+	var out := PackedByteArray([0])
+	out.append_array(JSON.stringify(d).to_utf8_buffer())
+	return out
+
+
+static func _rand(n: int, chars := "abcdefghijkmnpqrstuvwxyz23456789") -> String:
+	var s := ""
+	for i in n:
+		s += chars[randi() % chars.length()]
+	return s
+
+
+func _mq_open(url: String, cid: String, will_topic: String, will: PackedByteArray) -> void:
+	if _mq != null:
+		_mq.close()
+	_mq = MqttLinkScript.new()
+	_mq_events.clear()
+	_mq.ready.connect(func(): _mq_events.append(["ready"]))
+	_mq.message.connect(func(t: String, p: PackedByteArray): _mq_events.append(["msg", t, p]))
+	_mq.closed.connect(func(r: String): _mq_events.append(["closed", r]))
+	if not _mq.open(url, cid, will_topic, will):
+		_mq_events.append(["closed", "bad address"])
+
+
+func _poll_mq(delta: float) -> void:
+	_mq.poll(delta)
+	var evs := _mq_events
+	_mq_events = []
+	for ev in evs:
+		if _mq == null:
+			return
+		match ev[0]:
+			"ready":
+				_mq_ready()
+			"msg":
+				_mq_message(ev[1], ev[2])
+			"closed":
+				_mq_closed()
+	if _mq == null:
+		return
+	var now := Time.get_ticks_msec()
+	if my_id == 0:
+		_connect_timer -= delta
+		if role == "client" and _mq.is_ready():
+			_join_timer -= delta
+			if _join_timer <= 0.0:
+				_join_timer = 1.5
+				_mq.publish(_base() + "h", _ctl({"op": "join", "tok": _tok}))
+		if _connect_timer <= 0.0:
+			if role == "host":
+				_mq_try += 1
+				_public_host_attempt()
+			else:
+				var reachable: bool = _mq.is_ready()
+				var code := room_code
+				leave()
+				failed.emit(("No game with code %s. Check the code with the host." % code) if reachable else "Couldn't reach the free online servers. Check your internet and try again.")
+		return
+	# Nobody can tell us a phone vanished except silence: 12 s and it's gone.
+	if role == "host":
+		for id in _last_seen.keys():
+			if now - int(_last_seen[id]) > 12000:
+				_drop_peer(id)
+	elif now - _last_host > 12000:
+		_end("Lost connection to the host.")
+
+
+func _mq_ready() -> void:
+	if role == "host":
+		_mq.subscribe(_base() + "h")
+		my_id = 1
+		joined.emit()
+	else:
+		_mq.subscribe(_base() + "c")
+		_mq.subscribe(_base() + "p/" + _tok)
+		_join_timer = 0.3
+		_connect_timer = 7.0              # server reached: the host answers fast or there's no game
+
+
+func _mq_closed() -> void:
+	if role == "host" and my_id == 0:
+		_mq_try += 1
+		_public_host_attempt()
+	elif my_id == 0:
+		leave()
+		failed.emit("Couldn't reach the free online servers. Check your internet and try again.")
+	else:
+		_end("Lost connection to the online server.")
+
+
+func _mq_message(topic: String, payload: PackedByteArray) -> void:
+	if payload.is_empty():
+		return
+	var kind := payload[0]
+	var rest := payload.slice(1)
+	if kind == 0:
+		var c: Variant = JSON.parse_string(rest.get_string_from_utf8())
+		if c is Dictionary:
+			_mq_control(c)
+		return
+	var msg: Variant = bytes_to_var(rest)
+	if not (msg is Dictionary):
+		return
+	if role == "host":
+		if not _peer_tok.has(int(kind)):
+			return
+		_last_seen[int(kind)] = Time.get_ticks_msec()
+		_deliver(int(kind), msg)
+	else:
+		_last_host = Time.get_ticks_msec()
+		_deliver(1, msg)
+
+
+func _mq_control(c: Dictionary) -> void:
+	var op := String(c.get("op", ""))
+	if role == "host":
+		var tok := String(c.get("tok", ""))
+		if op == "join" and tok != "":
+			var fresh := not _tok_peer.has(tok)
+			if fresh and _peer_tok.size() >= 19:
+				_mq.publish(_base() + "p/" + tok, _ctl({"op": "error", "msg": "That game is full (20 players)."}))
+				return
+			if fresh:
+				_tok_peer[tok] = _next_id
+				_peer_tok[_next_id] = tok
+				_next_id = _next_id + 1 if _next_id < 250 else 2
+			var id := int(_tok_peer[tok])
+			_last_seen[id] = Time.get_ticks_msec()
+			_mq.publish(_base() + "p/" + tok, _ctl({"op": "welcome", "id": id, "room": room_code}))
+			if fresh:
+				peer_joined.emit(id)
+		elif op == "bye" and _tok_peer.has(tok):
+			_drop_peer(int(_tok_peer[tok]))
+	else:
+		match op:
+			"welcome":
+				if my_id == 0:
+					my_id = int(c["id"])
+					_last_host = Time.get_ticks_msec()
+					joined.emit()
+			"error":
+				var why := String(c.get("msg", "Couldn't join."))
+				leave()
+				failed.emit(why)
+			"host_left":
+				if my_id != 0:
+					_end("The host left the game.")
+
+
+func _drop_peer(id: int) -> void:
+	var tok := String(_peer_tok.get(id, ""))
+	_peer_tok.erase(id)
+	_tok_peer.erase(tok)
+	_last_seen.erase(id)
+	pings.erase(id)
+	peer_left.emit(id)
+
+
+## Quick chat: the host passes every phrase on to everyone.
+func chat(index: int) -> void:
+	if role == "host":
+		send(0, {"t": "_chat", "from": 1, "m": index})
+		chat_received.emit(1, CHAT[clampi(index, 0, CHAT.size() - 1)])
+	elif my_id != 0:
+		send(1, {"t": "_chat", "m": index})
+
+
+## Every received game message passes through here; ping and chat stay inside.
+func _deliver(from: int, msg: Dictionary) -> void:
+	match String(msg.get("t", "")):
+		"_chat":
+			var i := clampi(int(msg.get("m", 0)), 0, CHAT.size() - 1)
+			if role == "host":
+				send(0, {"t": "_chat", "from": from, "m": i})
+				chat_received.emit(from, CHAT[i])
+			else:
+				chat_received.emit(int(msg.get("from", 1)), CHAT[i])
+			return
+		"_ping":
+			if role == "host":
+				pings[from] = int(msg.get("rtt", -1))
+				send(from, {"t": "_pong", "ts": msg.get("ts", 0)}, false)
+			return
+		"_pong":
+			my_ping = Time.get_ticks_msec() - int(msg.get("ts", 0))
+			return
+	message.emit(from, msg)
+
+
 # ------------------------------------------------------------ sending
 
 ## to_id: 1 = host, 0 = everyone else (host only), or a peer id (host only).
@@ -204,6 +469,18 @@ func send(to_id: int, msg: Dictionary, reliable := true) -> void:
 		var framed := PackedByteArray([to_id & 0xff])
 		framed.append_array(bytes)
 		_ws.send(framed, WebSocketPeer.WRITE_MODE_BINARY)
+	elif _mq != null and _mq.is_ready() and my_id != 0:
+		if role == "host":
+			var framed := PackedByteArray([1])
+			framed.append_array(bytes)
+			if to_id == 0:
+				_mq.publish(_base() + "c", framed)
+			elif _peer_tok.has(to_id):
+				_mq.publish(_base() + "p/" + String(_peer_tok[to_id]), framed)
+		else:
+			var framed := PackedByteArray([my_id & 0xff])
+			framed.append_array(bytes)
+			_mq.publish(_base() + "h", framed)
 
 
 func leave() -> void:
@@ -214,6 +491,22 @@ func leave() -> void:
 		_ws.close()
 		_ws = null
 	_ws_open = false
+	if _mq != null:
+		# A clean goodbye skips the broker's "last will", so say it ourselves.
+		if _mq.is_ready() and my_id != 0:
+			if role == "host":
+				_mq.publish(_base() + "c", _ctl({"op": "host_left"}))
+			else:
+				_mq.publish(_base() + "h", _ctl({"op": "bye", "tok": _tok}))
+		_mq.close()
+		_mq = null
+	_mq_events.clear()
+	_peer_tok.clear()
+	_tok_peer.clear()
+	_last_seen.clear()
+	_next_id = 2
+	pings.clear()
+	my_ping = -1
 	if _beacon != null:
 		_beacon.close()
 		_beacon = null
@@ -241,6 +534,13 @@ func _process(delta: float) -> void:
 		_poll_enet(delta)
 	elif _ws != null:
 		_poll_ws(delta)
+	elif _mq != null:
+		_poll_mq(delta)
+	if role == "client" and my_id != 0:
+		_ping_timer -= delta
+		if _ping_timer <= 0.0:
+			_ping_timer = 2.0
+			send(1, {"t": "_ping", "ts": Time.get_ticks_msec(), "rtt": my_ping}, false)
 
 
 func _poll_enet(delta: float) -> void:
@@ -265,7 +565,7 @@ func _poll_enet(delta: float) -> void:
 		var pkt := _enet.get_packet()
 		var msg: Variant = bytes_to_var(pkt)
 		if msg is Dictionary:
-			message.emit(from, msg)
+			_deliver(from, msg)
 	if role == "host":
 		_host_announce(delta)
 
@@ -285,7 +585,7 @@ func _poll_ws(delta: float) -> void:
 				var from := int(pkt[0])
 				var msg: Variant = bytes_to_var(pkt.slice(1))
 				if msg is Dictionary:
-					message.emit(from, msg)
+					_deliver(from, msg)
 	elif st == WebSocketPeer.STATE_CLOSED:
 		var was_in := my_id != 0
 		var reason := "Lost connection to the online server." if was_in else "Couldn't reach the online server."

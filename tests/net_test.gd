@@ -10,12 +10,11 @@ func _check(ok: bool, msg: String) -> void:
 	if not ok:
 		failures.append(msg)
 func _wait(cond: Callable, secs: float) -> bool:
-	var t := 0.0
-	while t < secs:
+	var end := Time.get_ticks_msec() + int(secs * 1000.0)
+	while Time.get_ticks_msec() < end:
 		if cond.call():
 			return true
 		await process_frame
-		t += 1.0 / 60.0
 	return cond.call()
 func _pair(kind: String, url := "") -> void:
 	var NetScript = load("res://scripts/net.gd")
@@ -34,6 +33,12 @@ func _pair(kind: String, url := "") -> void:
 	if kind == "lan":
 		_check(h.host_lan("Soham"), "lan: hosting starts")
 		c.join_lan("127.0.0.1")
+	elif kind == "public":
+		h.public_brokers = [url, url, url]
+		c.public_brokers = [url, url, url]
+		h.host_public("Soham")
+		_check(await _wait(func(): return h.my_id == 1 and h.room_code.length() == 4, 10.0), "public: room created (code %s)" % h.room_code)
+		c.join_public(h.room_code.to_lower())
 	else:
 		h.host_online(url, "Soham")
 		_check(await _wait(func(): return h.my_id == 1 and h.room_code.length() == 4, 10.0), "online: room created (code %s)" % h.room_code)
@@ -47,6 +52,47 @@ func _pair(kind: String, url := "") -> void:
 	for k in range(30):
 		h.send(0, {"t": "snap", "k": k}, false)
 	_check(await _wait(func(): return got_c.size() >= 25, 5.0), "%s: host broadcast reaches the client (%d/30 unreliable)" % [kind, got_c.size()])
+	if kind == "public":
+		_check(await _wait(func(): return c.my_ping >= 0 and h.pings.has(c.my_id), 6.0), "public: ping measured both ways (%d ms)" % c.my_ping)
+		# A phone that vanishes without saying goodbye (the broker's last will).
+		var c2: Node = NetScript.new()
+		root.add_child(c2)
+		c2.public_brokers = [url, url, url]
+		c2.join_public(h.room_code)
+		_check(await _wait(func(): return c2.my_id > 1, 10.0), "public: a second friend joins (id %d)" % c2.my_id)
+		var gone: Array = []
+		h.peer_left.connect(func(id): gone.append(id))
+		var vanished_id: int = c2.my_id
+		c2._mq._ws.close()              # no MQTT goodbye: like the app being killed
+		c2.set_process(false)
+		_check(await _wait(func(): return gone.has(vanished_id), 8.0), "public: the host notices a friend's phone vanishing")
+		c2.queue_free()
+		var bad: Node = NetScript.new()
+		root.add_child(bad)
+		bad.public_brokers = [url, url, url]
+		var why: Array = []
+		bad.failed.connect(func(r): why.append(r))
+		var wrong := "ZZZZ" if h.room_code != "ZZZZ" else "YYYY"
+		bad.join_public(wrong)
+		_check(await _wait(func(): return why.size() > 0, 20.0), "public: a wrong code is refused (%s)" % (why[0] if why.size() > 0 else "-"))
+		bad.queue_free()
+		# First server down: the host moves to the next, and the code tells
+		# joiners which one.
+		var h2: Node = NetScript.new()
+		var c3: Node = NetScript.new()
+		root.add_child(h2)
+		root.add_child(c3)
+		var dead := "ws://127.0.0.1:9/mqtt"
+		h2.public_brokers = [dead, url, url]
+		c3.public_brokers = [dead, url, url]
+		h2.host_public("Cousin")
+		_check(await _wait(func(): return h2.my_id == 1, 20.0), "public: first server down, hosting moves to the next (code %s, server %d)" % [h2.room_code, h2._mq_try])
+		c3.join_public(h2.room_code)
+		_check(await _wait(func(): return c3.my_id > 1, 10.0), "public: and a friend still finds the game from the code")
+		h2.leave()
+		c3.leave()
+		h2.queue_free()
+		c3.queue_free()
 	# Wrong room code.
 	if kind == "online":
 		var bad: Node = NetScript.new()
@@ -124,8 +170,11 @@ func _run() -> void:
 	_addresses()
 	await _discovery()
 	await _pair("lan")
+	# Args: [relay ws url] [mqtt broker ws url]
 	var args := OS.get_cmdline_user_args()
-	if args.size() > 0:
+	if args.size() > 0 and args[0] != "-":
 		await _pair("online", args[0])
+	if args.size() > 1:
+		await _pair("public", args[1])
 	print("ALL CHECKS PASSED" if failures.is_empty() else "%d CHECK(S) FAILED" % failures.size())
 	quit(0 if failures.is_empty() else 1)

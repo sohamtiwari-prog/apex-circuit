@@ -73,18 +73,28 @@ phone is on a different network (a guest or other-band network). If they do
 match and it still fails, the router is blocking phones from talking to each
 other ("AP isolation"); use the host's hotspot instead.
 
-**Online (anywhere):** uses a small free relay server you deploy once.
-1. Sign in to [render.com](https://render.com) with GitHub, then
-   **New → Blueprint** and pick this repository. It reads `render.yaml` and
-   creates the `apex-circuit-relay` service (free plan).
-2. If Render gives it a different address than
-   `apex-circuit-relay.onrender.com`, paste `wss://<your address>` into
-   **Server address** in the Friends screen (it's remembered).
-3. Host taps **Create an online game** and shares the 4-letter code; friends
-   type it and tap **Join**.
+**Online (anywhere, nothing to set up):** friends in another city, on
+mobile data or any Wi-Fi.
+1. Host taps **Create an online game**. A 4-letter code appears.
+2. Tap **Invite on WhatsApp** (or **Copy code**) to send it. The message
+   includes a link to download the game.
+3. Friends open **Friends**, type the code under **Online** and tap **Join**.
 
-The free server sleeps when unused, so the first connection of the day can
-take up to a minute.
+This uses free public message servers (EMQX, HiveMQ, Mosquitto test
+brokers); the code's first letter says which one, and the host moves to the
+next if one is down. They're shared, best-effort services: anyone who knows a
+code could listen in on that game's car positions, and they can be slow at
+busy times.
+
+**Your own server (optional, faster and private):** deploy `server/relay.js`
+once on Render's free plan ([render.com](https://render.com) → sign in with
+GitHub → **New → Blueprint** → this repo; it reads `render.yaml`, Singapore
+region). Then everyone pastes `wss://<your service>.onrender.com` into **Own
+server** on the Friends screen. A sleeping free server takes up to a minute
+to wake.
+
+**In the lobby and the race:** quick chat (Let's go! / GG / Nice move! /
+Sorry! / Rematch?) and each friend's ping in the lobby (green under 150 ms).
 
 ## Controls
 
@@ -209,7 +219,8 @@ scripts/
   hud.gd             timing tower, lap timing, pause menu, classification
   touch_controls.gd  multi-touch pedals and steering buttons
   save_manager.gd    crash-safe profile saving (autoload "Save")
-  net.gd             multiplayer connection: Wi-Fi (ENet + discovery) or online relay (autoload "Net")
+  net.gd             multiplayer connection: Wi-Fi (ENet + discovery), free public servers (MQTT) or own relay (autoload "Net")
+  mqtt_link.gd       minimal MQTT 3.1.1 client over WebSocket
   net_race.gd        multiplayer race sync: car states, interpolation, standings
   lobby.gd           Friends screen: host/join, players, race settings
 tracks/              imported circuit centrelines (JSON)

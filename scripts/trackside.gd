@@ -237,12 +237,9 @@ func _barriers() -> void:
 		var run := 0
 		for i in range(0, n, step):
 			var j := (i + step) % n
-			var a: Vector3 = track.points[i] + track.rights[i] * off * side
-			var b: Vector3 = track.points[j] + track.rights[j] * off * side
+			var a: Vector3 = track.points[i] + track.rights[i] * track.wall_at(i, side) * side
+			var b: Vector3 = track.points[j] + track.rights[j] * track.wall_at(j, side) * side
 			var mid := (a + b) * 0.5
-			if track.dist_to_centerline(mid, off + 2.0) < off - 2.5:
-				run = 0
-				continue
 			var y0 := Track.GROUND_Y
 			var inward: Vector3 = -track.rights[i] * side        # towards the track
 			var kind := _barrier_kind(i, side_i)

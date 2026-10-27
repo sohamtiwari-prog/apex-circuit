@@ -1,5 +1,5 @@
 extends SceneTree
-## Lobby screenshots: the connect screen, then a hosted Wi-Fi lobby.
+## Lobby screenshots: the connect screen, a hosted Wi-Fi lobby, an online lobby.
 func _initialize() -> void:
 	_run()
 func _shot(path: String) -> void:
@@ -24,4 +24,17 @@ func _run() -> void:
 	lobby._refresh_lobby()
 	await _shot(out + "/lobby2_host.png")
 	net.leave()
+	# An online lobby as the host sees it: code, invite, pings, chat.
+	net.role = "host"
+	net.transport = "public"
+	net.my_id = 1
+	net.room_code = "K7QD"
+	lobby._enter_as_host()
+	lobby._players()[2] = {"name": "Cousin", "car": "gp26", "team": 3, "ping": 96}
+	lobby._players()[3] = {"name": "Kabir", "car": "vanta_gt", "team": 0, "ping": 212}
+	lobby._refresh_lobby()
+	lobby._on_chat(2, "Let's go!")
+	lobby._on_chat(1, "GG")
+	await _shot(out + "/lobby3_online.png")
+	net.role = "offline"
 	quit(0)

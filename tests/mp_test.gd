@@ -22,7 +22,7 @@ func _run() -> void:
 	var args := OS.get_cmdline_user_args()
 	var role: String = args[0]
 	var kind: String = args[1]
-	var url: String = args[2] if kind == "online" else ""
+	var url: String = args[2] if kind != "lan" else ""
 	Engine.max_fps = 60              # like a phone (and so the two processes share the CPU)
 	await process_frame
 	var save: Node = root.get_node("Save")
@@ -34,15 +34,26 @@ func _run() -> void:
 	current_scene = lobby
 	await process_frame
 	lobby._name_edit.text = "Host" if role == "host" else "Friend"
+	if kind == "public":
+		net.public_brokers = [url, url, url]
+		lobby._server_edit.text = ""         # the free servers (here: a local stand-in)
+	var chats: Array = []
+	net.chat_received.connect(func(f, t): chats.append([f, t]))
 	if role == "host":
 		if kind == "lan":
 			net.host_lan("Host")
 			lobby._enter_as_host()
+		elif kind == "public":
+			lobby._create_online()
+			await _wait(func(): return net.my_id == 1, 20.0)
+			FileAccess.open("user://mp_code.txt", FileAccess.WRITE).store_string(net.room_code)
 		else:
 			net.host_online(url, "Host")
 			await _wait(func(): return net.room_code != "", 20.0)
 			FileAccess.open("user://mp_code.txt", FileAccess.WRITE).store_string(net.room_code)
 		_check(await _wait(func(): return lobby._players().size() == 2, 40.0), "host: the friend appears in the lobby")
+		_check(await _wait(func(): return chats.size() > 0, 10.0), "host: receives the friend's quick chat (%s)" % str(chats))
+		await _wait(func(): return false, 3.0)
 		lobby._settings()["laps"] = 1
 		lobby._settings()["track"] = "styria"
 		lobby._settings()["grid"] = 20
@@ -58,9 +69,15 @@ func _run() -> void:
 				if FileAccess.file_exists("user://mp_code.txt"):
 					code[0] = FileAccess.get_file_as_string("user://mp_code.txt")
 				return String(code[0]).length() == 4, 30.0)
-			net.join_online(url, code[0])
+			if kind == "public":
+				lobby._join_code(code[0])
+			else:
+				net.join_online(url, code[0])
 		_check(await _wait(func(): return net.my_id > 1, 30.0), "client: joined the host")
 		_check(await _wait(func(): return lobby._players().size() == 2, 10.0), "client: sees both players in the lobby")
+		net.chat(1)
+		_check(await _wait(func(): return chats.size() > 0, 5.0), "client: quick chat comes back from the host (%s)" % str(chats))
+		_check(await _wait(func(): return int(lobby._players().get(net.my_id, {}).get("ping", -1)) >= 0, 8.0), "client: its ping shows in the lobby (%d ms)" % int(lobby._players().get(net.my_id, {}).get("ping", -1)))
 	_check(await _wait(func(): return current_scene != null and current_scene.name == "Race", 30.0), "%s: the race loads" % role)
 	var race: Node = current_scene
 	await process_frame
@@ -114,6 +131,9 @@ func _run() -> void:
 		max_jump = maxf(max_jump, err)
 		path += step
 		last_pos = p
+		var secs := (Time.get_ticks_msec() - go_time) / 1000.0
+		if frames % 300 == 0:
+			print("    t=%4.1fs me P%d %.0f m %.0f km/h | other P%d" % [secs, race.player.position, race.player.progress, race.player.car.speed_kmh(), other.position])
 	_check(path > 2000.0, "%s: the other player's car drives on this phone (%.0f m driven)" % [role, path])
 	print("    big jumps by time (s: frames): ", big_when, "   other car stuck/reset events seen: ", other.stuck)
 	_check(big <= ticks / 100, "%s: and moves smoothly (%d of %d frames off by > 0.5 m; worst %.2f m)" % [role, big, ticks, max_jump])
@@ -122,7 +142,7 @@ func _run() -> void:
 	for e in race.entrants:
 		seen[e.position] = true
 	_check(seen.size() == 20, "%s: positions 1..20 all distinct" % role)
-	print("  %s: finished P%d, other player P%d" % [role, race.player.position, other.position])
+	print("  %s: finished P%d, other player P%d (automatic recoveries on this phone: %d)" % [role, race.player.position, other.position, race.recoveries]); print("  %s: interpolation delay %.2f s, jitter %.3f s" % [role, race.net.delay, race.net._jitter])
 	# Host: back to the lobby together.
 	if role == "host":
 		_check(await _wait(func(): return other.finished, 120.0), "host: the friend finishes too")

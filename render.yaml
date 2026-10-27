@@ -1,9 +1,11 @@
-# One-click deploy of the online relay to Render (free plan).
+# Optional: your own online relay on Render (free plan). The game works online
+# without it (free public servers); your own is faster and private.
 services:
   - type: web
     name: apex-circuit-relay
     runtime: node
     plan: free
+    region: singapore         # closest Render region to India
     rootDir: server
     buildCommand: npm install
     startCommand: npm start

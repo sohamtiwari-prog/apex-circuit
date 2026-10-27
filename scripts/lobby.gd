@@ -25,6 +25,9 @@ var _chips := {}
 var _car_label: Label
 var _start_btn: Button
 var _wait_label: Label
+var _invite_row: HBoxContainer
+var _chat_lines: Array[String] = []
+var _chat_lbl: Label
 
 # Shared lobby state lives on Net (it survives going to a race and back):
 #   Net.players: {peer id: {name, car, team}}, Net.settings: {...}
@@ -52,6 +55,12 @@ func _ready() -> void:
 	Net.peer_left.connect(_on_peer_left)
 	Net.message.connect(_on_message)
 	Net.games_found.connect(_on_games_found)
+	Net.chat_received.connect(_on_chat)
+	var pt := Timer.new()
+	pt.wait_time = 2.0
+	pt.autostart = true
+	pt.timeout.connect(_share_pings)
+	add_child(pt)
 	if not Net.has_meta("players"):
 		Net.set_meta("players", {})
 		Net.set_meta("settings", _default_settings())
@@ -197,10 +206,8 @@ func _build_connect_view() -> void:
 	iprow.add_child(join_ip)
 
 	# Online.
-	var online := _section(cols, "Online", "Friends anywhere, over mobile data or any Wi-Fi. Create a game and share its code.")
-	var host_online := UIStyle.button("Create an online game", func():
-		_show_status("Connecting to the online server… (up to a minute if it was asleep)", UIStyle.FOG)
-		Net.host_online(_server_url(), _my_name()), true, 26)
+	var online := _section(cols, "Online", "Friends anywhere, over mobile data or any Wi-Fi. Create a game and send them its 4-letter code. Uses free public servers: nothing to set up.")
+	var host_online := UIStyle.button("Create an online game", func(): _create_online(), true, 26)
 	host_online.custom_minimum_size = Vector2(0, 66)
 	online.add_child(host_online)
 	var coderow := HBoxContainer.new()
@@ -210,17 +217,14 @@ func _build_connect_view() -> void:
 	_code_edit.max_length = 4
 	_code_edit.add_theme_font_size_override("font_size", 30)
 	coderow.add_child(_code_edit)
-	var join_code := UIStyle.button("Join", func():
-		var code := _code_edit.text.strip_edges().to_upper()
-		if code.length() != 4:
-			_show_status("Game codes are 4 letters or numbers.", UIStyle.YELLOW)
-			return
-		_show_status("Connecting to the online server… (up to a minute if it was asleep)", UIStyle.FOG)
-		Net.join_online(_server_url(), code), false, 24)
+	var join_code := UIStyle.button("Join", func(): _join_code(_code_edit.text), false, 24)
 	join_code.custom_minimum_size = Vector2(110, 56)
 	coderow.add_child(join_code)
-	online.add_child(UIStyle.label("Server address", 18, UIStyle.FOG, "semibold"))
-	_server_edit = _field("wss://…", String(save.get_setting("server_url")) if String(save.get_setting("server_url")) != "" else Net.DEFAULT_SERVER)
+	online.add_child(UIStyle.label("Own server (optional: everyone must use the same one)", 18, UIStyle.FOG, "semibold"))
+	var saved := String(save.get_setting("server_url"))
+	if saved == Net.DEFAULT_SERVER:
+		saved = ""                   # old default: back to the free servers
+	_server_edit = _field("Leave empty for the free servers", saved)
 	_server_edit.add_theme_font_size_override("font_size", 18)
 	_server_edit.custom_minimum_size = Vector2(0, 46)
 	_server_edit.text_changed.connect(func(t: String): save.set_setting("server_url", t.strip_edges()))
@@ -243,9 +247,31 @@ func _update_my_ip() -> void:
 		_my_ip_lbl.add_theme_color_override("font_color", UIStyle.FOG)
 
 
+## Own relay server address, or "" for the free public servers.
 func _server_url() -> String:
-	var u := _server_edit.text.strip_edges()
-	return u if u != "" else Net.DEFAULT_SERVER
+	return _server_edit.text.strip_edges()
+
+
+func _create_online() -> void:
+	if _server_url() == "":
+		_show_status("Connecting to the free online servers…", UIStyle.FOG)
+		Net.host_public(_my_name())
+	else:
+		_show_status("Connecting to your server… (up to a minute if it was asleep)", UIStyle.FOG)
+		Net.host_online(_server_url(), _my_name())
+
+
+func _join_code(text: String) -> void:
+	var code := text.strip_edges().to_upper()
+	if code.length() != 4:
+		_show_status("Game codes are 4 letters or numbers.", UIStyle.YELLOW)
+		return
+	if _server_url() == "":
+		_show_status("Looking for game %s…" % code, UIStyle.FOG)
+		Net.join_public(code)
+	else:
+		_show_status("Connecting to your server… (up to a minute if it was asleep)", UIStyle.FOG)
+		Net.join_online(_server_url(), code)
 
 
 func _join_ip(ip: String) -> void:
@@ -305,6 +331,17 @@ func _build_lobby_view() -> void:
 	_subtitle = UIStyle.label("", 22, UIStyle.FOG, "semibold")
 	_subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	left.add_child(_subtitle)
+	_invite_row = HBoxContainer.new()
+	_invite_row.add_theme_constant_override("separation", 10)
+	left.add_child(_invite_row)
+	var wa := UIStyle.button("Invite on WhatsApp", func(): _invite_whatsapp(), true, 22)
+	wa.custom_minimum_size = Vector2(250, 54)
+	_invite_row.add_child(wa)
+	var cp := UIStyle.button("Copy code", func():
+		DisplayServer.clipboard_set(Net.room_code)
+		_toast("Code %s copied" % Net.room_code), false, 22)
+	cp.custom_minimum_size = Vector2(160, 54)
+	_invite_row.add_child(cp)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -313,6 +350,9 @@ func _build_lobby_view() -> void:
 	_players_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_players_box.add_theme_constant_override("separation", 6)
 	scroll.add_child(_players_box)
+	_chat_lbl = UIStyle.label("", 20, UIStyle.PAPER, "semibold")
+	_chat_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	left.add_child(_chat_lbl)
 	var mine := HBoxContainer.new()
 	mine.add_theme_constant_override("separation", 10)
 	left.add_child(mine)
@@ -327,6 +367,16 @@ func _build_lobby_view() -> void:
 	var next := UIStyle.button("›", func(): _step_car(1), false, 40)
 	next.custom_minimum_size = Vector2(70, 56)
 	mine.add_child(next)
+	# Quick chat: tap a phrase, everyone sees it.
+	var chat := HBoxContainer.new()
+	chat.add_theme_constant_override("separation", 6)
+	left.add_child(chat)
+	for i in Net.CHAT.size():
+		var k: int = i
+		var b := UIStyle.button(Net.CHAT[i], func(): Net.chat(k), false, 18)
+		b.custom_minimum_size = Vector2(0, 46)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		chat.add_child(b)
 
 	var right := PanelContainer.new()
 	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.95), false, UIStyle.APEX, 6)
@@ -404,9 +454,10 @@ func _show_lobby() -> void:
 
 func _refresh_lobby() -> void:
 	var host: bool = Net.is_host()
-	if Net.transport == "online":
+	_invite_row.visible = Net.transport == "online" or Net.transport == "public"
+	if _invite_row.visible:
 		_title.text = "Game code  %s" % Net.room_code
-		_subtitle.text = "Friends open Race with friends, Online, and enter this code."
+		_subtitle.text = "Friends anywhere open Friends, type this code under Online and tap Join."
 	else:
 		_title.text = "Wi-Fi game"
 		var ips: Array[String] = Net.lan_addresses()
@@ -428,6 +479,12 @@ func _refresh_lobby() -> void:
 		var n := UIStyle.label(String(p["name"]) + ("  (host)" if int(id) == 1 else ""), 24, ink, "bold")
 		n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(n)
+		var ping := int(p.get("ping", -1))
+		if int(id) != 1 and ping >= 0:
+			var pc := UIStyle.GREEN if ping < 150 else (UIStyle.YELLOW if ping < 300 else UIStyle.RED)
+			if int(id) == Net.my_id:
+				pc = UIStyle.INK
+			h.add_child(UIStyle.label("%d ms" % ping, 20, pc, "bold", true))
 		h.add_child(UIStyle.label(CarSpecs.display_name(String(p["car"])), 22, Color(ink, 0.8), "semibold"))
 		_players_box.add_child(row)
 	var st := _settings()
@@ -571,6 +628,45 @@ func _start_race() -> void:
 	Net.start_info = info
 	Net.send(0, {"t": "start", "info": info})
 	get_tree().change_scene_to_file("res://scenes/race.tscn")
+
+
+## Host: put everyone's ping in the lobby (when it changes noticeably).
+func _share_pings() -> void:
+	if not Net.is_host() or not _lobby_view.visible:
+		return
+	var changed := false
+	for id in _players():
+		if int(id) == 1:
+			continue
+		var now := int(Net.pings.get(int(id), -1))
+		var was := int(_players()[id].get("ping", -1))
+		if absi(now - was) > 15 or (now >= 0) != (was >= 0):
+			_players()[id]["ping"] = now
+			changed = true
+	if changed:
+		_broadcast_lobby()
+
+
+func _invite_whatsapp() -> void:
+	var text := "Race me in Apex Circuit! Open Friends, type code %s under Online and tap Join.\nNo game yet? Get it here: https://github.com/sohamtiwari-prog/apex-circuit/releases/latest" % Net.room_code
+	OS.shell_open("https://wa.me/?text=" + text.uri_encode())
+
+
+func _on_chat(from: int, text: String) -> void:
+	var who := "Someone"
+	if _players().has(from):
+		who = String(_players()[from]["name"])
+	_chat_lines.append("%s: %s" % [who, text])
+	while _chat_lines.size() > 3:
+		_chat_lines.pop_front()
+	_chat_lbl.text = "\n".join(_chat_lines)
+
+
+func _toast(text: String) -> void:
+	_chat_lines.append(text)
+	while _chat_lines.size() > 3:
+		_chat_lines.pop_front()
+	_chat_lbl.text = "\n".join(_chat_lines)
 
 
 func _to_menu() -> void:

@@ -50,6 +50,11 @@ var cum := PackedFloat32Array()
 var curv := PackedFloat32Array()     # signed, 1/radius; negative = right-hander
 var total_length := 0.0
 var _grid := {}
+# Barrier distance from the centreline per sample, left and right. Usually
+# wall_offset, pulled in where the barrier would fold over itself (inside
+# tight corners) or cross the barrier of a neighbouring stretch of track.
+var wall_left := PackedFloat32Array()
+var wall_right := PackedFloat32Array()
 
 # Racing line (see tools/racing_line.py): lateral offset per sample.
 var line_offset := PackedFloat32Array()
@@ -94,6 +99,7 @@ func build(id: String = "kestrel_park") -> void:
 	_derive_runoff()
 	_derive_drs()
 	_build_grid()
+	_derive_walls()
 	_build_ground()
 	_build_road()
 	_build_walls()
@@ -618,6 +624,54 @@ func _build_road() -> void:
 
 # ------------------------------------------------------------ walls
 
+## Barrier offset at sample i on a side (-1 left, +1 right).
+func wall_at(i: int, side: float) -> float:
+	var n := points.size()
+	if wall_left.size() != n:
+		return wall_offset
+	i = (i % n + n) % n
+	return wall_right[i] if side > 0.0 else wall_left[i]
+
+
+func _derive_walls() -> void:
+	var n := points.size()
+	var min_off := road_half + KERB_W + 3.0
+	var step := 3
+	for side in [-1.0, 1.0]:
+		var coarse := PackedFloat32Array()
+		for i in range(0, n, step):
+			var o := wall_offset
+			# A barrier point belongs to this stretch only if no centreline is
+			# closer to it than its own; otherwise pull it in.
+			while o > min_off:
+				var p: Vector3 = points[i] + rights[i] * o * side
+				if dist_to_centerline(p, o + 2.0) >= o - 0.75:
+					break
+				o -= 0.5
+			coarse.append(maxf(o, min_off))
+		# Spread each pull-in to its neighbours, then smooth, so the barrier
+		# eases in and out instead of stepping.
+		var m := coarse.size()
+		var lo := PackedFloat32Array()
+		lo.resize(m)
+		for k in m:
+			var v := coarse[k]
+			for d in range(-3, 4):
+				v = minf(v, coarse[(k + d + m) % m])
+			lo[k] = v
+		var out := PackedFloat32Array()
+		out.resize(n)
+		for i in n:
+			var k := i / step
+			var acc := 0.0
+			for d in range(-2, 3):
+				acc += lo[(k + d + m) % m]
+			out[i] = minf(acc / 5.0, lo[k] + 1.5)
+		if side > 0.0:
+			wall_right = out
+		else:
+			wall_left = out
+
 ## Invisible collision boxes along both barrier lines (the visible
 ## barriers are drawn by Trackside).
 func _build_walls() -> void:
@@ -628,24 +682,32 @@ func _build_walls() -> void:
 	for side in [-1.0, 1.0]:
 		for i in range(0, n, step):
 			var j := (i + step) % n
-			var a: Vector3 = points[i] + rights[i] * wall_offset * side
-			var b: Vector3 = points[j] + rights[j] * wall_offset * side
+			var oi := wall_at(i, side)
+			var oj := wall_at(j, side)
+			var a: Vector3 = points[i] + rights[i] * oi * side
+			var b: Vector3 = points[j] + rights[j] * oj * side
 			var mid := (a + b) * 0.5
-			# Skip segments that fold into the track on tight inside corners.
-			if dist_to_centerline(mid, wall_offset + 2.0) < wall_offset - 2.5:
-				continue
 			var dir := b - a
 			dir.y = 0
 			var length := dir.length()
 			if length < 0.1:
 				continue
 			var basis := Basis.looking_at(-dir / length, Vector3.UP)
-			var height := 1.1
+			# Thick and tall, so a car at 300 km/h can't step through or hop
+			# over it. The face towards the track is where it always was; the
+			# extra thickness goes outwards, unless another stretch of track
+			# is there.
+			var outward: Vector3 = rights[i] * side
+			var thick := 2.6
+			if dist_to_centerline(mid + outward * 3.2, oi + 4.0) < oi + 2.0:
+				thick = 0.8
+			var height := 3.6
 			var cs := CollisionShape3D.new()
 			var shape := BoxShape3D.new()
-			shape.size = Vector3(0.7, height + 0.6, length + 0.35)
+			shape.size = Vector3(thick, height, length + 0.6)
 			cs.shape = shape
-			cs.transform = Transform3D(basis, mid + Vector3.UP * (GROUND_Y + height * 0.5 + 0.3))
+			var centre := mid + outward * (thick * 0.5 - 0.35)
+			cs.transform = Transform3D(basis, centre + Vector3.UP * (GROUND_Y + height * 0.5 - 0.3))
 			body.add_child(cs)
 
 

@@ -41,6 +41,7 @@ class Entrant:
 	var drs_armed := false      # passed a detection line within 1 s of the car ahead
 	var sector_start := 0.0
 	var mini := 0               # minisector being driven (0..MINIS-1)
+	var outside := 0.0          # seconds spent beyond the barriers
 	var mini_start := 0.0
 
 
@@ -89,6 +90,7 @@ var _tilt := 0.0
 var tyre_fx: TyreFX
 var _graphics_high := true
 var line_guide: LineGuide
+var _still := 0.0                 # player: seconds stuck with the throttle on
 var recoveries := 0               # automatic car recoveries (stats/tests)
 const STEER_ASSIST_BLEND := 0.35
 var autopilot: AIDriver = null     # when set, the AI drives the player's car (tests/demo)
@@ -184,6 +186,9 @@ func _ready() -> void:
 		net = NetRace.new()
 		add_child(net)
 		net.setup(self)
+		hud.enable_chat(Net.CHAT)
+		hud.chat_requested.connect(func(i: int): Net.chat(i))
+		Net.chat_received.connect(_on_chat)
 
 	_restart()
 
@@ -387,6 +392,14 @@ func _cycle_camera() -> void:
 	var m := cam.cycle()
 	hud.set_camera_name(cam.mode_name())
 	save.set_setting("camera", m)
+
+
+func _on_chat(from: int, text: String) -> void:
+	var players: Dictionary = Net.get_meta("players", {})
+	var who := "Host" if from == 1 else "Friend"
+	if players.has(from):
+		who = String(players[from].get("name", who))
+	hud.show_chat(who, text)
 
 
 func leave_to_menu() -> void:
@@ -638,6 +651,23 @@ func _update_entrant(e: Entrant, delta: float) -> void:
 	if e.idx > n * 0.9 and e.lap == 0 and e.next_checkpoint == 1:
 		e.progress -= track.total_length        # still behind the line at the start
 
+	# Beyond the barriers (or under the track): back on after a second.
+	if not e.remote and state == State.RACING and not e.finished:
+		var pos := e.car.global_position
+		var lat := track.lateral(pos, e.idx)
+		var beyond := absf(lat) > track.wall_at(e.idx, signf(lat)) + 1.2
+		if beyond or pos.y < track.points[e.idx].y - 3.0:
+			e.outside += delta
+			if e.outside > 1.0:
+				e.outside = 0.0
+				_reset_to_track(e, false)
+				if e.is_player:
+					hud.show_banner("Back on track", UIStyle.YELLOW, 2.0)
+					if mode == "time_trial":
+						lap_valid = false
+				return
+		else:
+			e.outside = 0.0
 	# AI recovery: flipped or stuck for a while -> back on the racing line.
 	var ai_driven := e.ai != null or (e.is_player and autopilot != null)
 	if ai_driven and not e.finished:
@@ -649,6 +679,14 @@ func _update_entrant(e: Entrant, delta: float) -> void:
 			e.stuck = 0.0
 			_reset_to_track(e, false)
 	elif e.is_player:
+		# Sitting still against something with the throttle on: point at Reset.
+		if state == State.RACING and not e.finished and e.car.linear_velocity.length() < 1.5 and e.car.throttle > 0.3:
+			_still += delta
+			if _still > 4.0:
+				_still = -6.0
+				hud.show_banner("Stuck? Tap Reset", UIStyle.YELLOW, 3.0)
+		else:
+			_still = 0.0
 		if e.car.global_basis.y.y < 0.35 and e.car.linear_velocity.length() < 4.0:
 			e.stuck += delta
 			if e.stuck > 2.0:

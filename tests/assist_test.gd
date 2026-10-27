@@ -86,7 +86,10 @@ func _run() -> void:
 			"done in %.0fs" % with_assist[2] if with_assist[0] else "NOT finished", with_assist[1],
 			"done in %.0fs" % moderate[2] if moderate[0] else "NOT finished", moderate[1],
 			"done" if without[0] else "NOT finished", without[1]])
-		_check(moderate[1] < with_assist[1] + 60.0 and moderate[1] <= without[1] + 0.5, "%s/%s: moderate sits between full and off" % [spec[0], spec[1]])
+		# (A run that stopped against a barrier has a meaningless off-road %:
+		# finishing beats it.)
+		var below_off: bool = moderate[1] <= without[1] + 0.5 or (moderate[0] and not without[0])
+		_check(moderate[1] < with_assist[1] + 60.0 and below_off, "%s/%s: moderate sits between full and off" % [spec[0], spec[1]])
 		_check(with_assist[0], "%s/%s: beginner completes the lap with assists" % [spec[0], spec[1]])
 		_check(with_assist[1] < 8.0, "%s/%s: beginner stays on the road with assists" % [spec[0], spec[1]])
 	print("")

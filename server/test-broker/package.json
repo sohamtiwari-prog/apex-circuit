@@ -1,0 +1,10 @@
+{
+  "name": "apex-circuit-test-broker",
+  "private": true,
+  "description": "Local MQTT-over-WebSocket broker for testing the public-server online mode",
+  "main": "broker.js",
+  "dependencies": {
+    "aedes": "0.51.3",
+    "aedes-server-factory": "0.2.1"
+  }
+}

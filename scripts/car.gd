@@ -164,6 +164,7 @@ func _ready() -> void:
 	var yaw_i := mass * a * b * float(spec.get("yaw_inertia", 0.85))
 	inertia = Vector3(mass * a * b * 0.8, yaw_i, mass * (half_track * half_track) * 0.55)
 	can_sleep = false
+	continuous_cd = true          # no tunnelling through barriers at 300+ km/h
 	# Layer 1: the track and barriers. Layer 2: cars.
 	collision_layer = 2
 	collision_mask = 1 | 2
