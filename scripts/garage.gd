@@ -24,7 +24,7 @@ static func price(car_id: String) -> int:
 	return int(PRICES.get(car_id, 50000))
 
 
-## Performance Rating, roughly 40 (Marauder) to 95 (fully upgraded GP car).
+## Performance Rating, roughly 43 (Marauder) to 90 (GP car).
 static func pr(spec: Dictionary) -> float:
 	var pw := float(spec["power"]) / float(spec["mass"])
 	var v := 55.6
