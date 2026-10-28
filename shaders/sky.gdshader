@@ -10,6 +10,7 @@ uniform vec3 cloud_shade : source_color = vec3(0.62, 0.68, 0.78);
 uniform float cloud_cover : hint_range(0.0, 1.0) = 0.45;
 uniform float sun_size = 0.9994;
 uniform float haze = 1.0;
+uniform float night = 0.0;       // stars, no sun disc (the light is the floodlights)
 
 float hash(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -54,8 +55,19 @@ void sky() {
 	} else {
 		col = mix(horizon_color, ground_color, smoothstep(0.0, 0.25, -h));
 	}
-	// Sun.
-	float sd = dot(d, LIGHT0_DIRECTION);
-	col += LIGHT0_COLOR * (smoothstep(sun_size, sun_size + 0.0003, sd) * 6.0 + pow(max(sd, 0.0), 220.0) * 0.6 + pow(max(sd, 0.0), 12.0) * 0.12);
-	COLOR = col;
+	if (night > 0.5) {
+		// Stars, fading into the light glow near the horizon.
+		if (h > 0.0) {
+			vec2 sp = d.xz / (h + 0.25) * 140.0;
+			float s = hash(floor(sp));
+			float tw = step(0.9965, s) * (0.5 + 0.5 * hash(floor(sp) + 3.1));
+			col += vec3(tw) * smoothstep(0.08, 0.4, h) * 0.9;
+		}
+		COLOR = col;
+	} else {
+		// Sun.
+		float sd = dot(d, LIGHT0_DIRECTION);
+		col += LIGHT0_COLOR * (smoothstep(sun_size, sun_size + 0.0003, sd) * 6.0 + pow(max(sd, 0.0), 220.0) * 0.6 + pow(max(sd, 0.0), 12.0) * 0.12);
+		COLOR = col;
+	}
 }

@@ -305,7 +305,7 @@ func _build_track_side(cols: Control) -> void:
 	var chips2 := HBoxContainer.new()
 	chips2.add_theme_constant_override("separation", 8)
 	v.add_child(chips2)
-	_chip(chips2, "time_of_day", [["day", "Daytime"], ["sunset", "Sunset"]])
+	_chip(chips2, "time_of_day", [["auto", "Track's own time"], ["day", "Daytime"], ["sunset", "Sunset"], ["night", "Night"]])
 	_chip(chips2, "weather", [["dry", "Dry"], ["wet", "Rain"], ["changing", "Rain later"]])
 	var chips3 := HBoxContainer.new()
 	chips3.add_theme_constant_override("separation", 8)

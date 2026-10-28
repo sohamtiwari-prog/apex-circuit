@@ -26,6 +26,10 @@ const CATALOG := [
 	{"id": "styria", "name": "Styria Ring", "desc": "Austria · 4.29 km · short, fast, heavy braking", "style": "park"},
 	{"id": "entrelagos", "name": "Autodromo Entrelagos", "desc": "Brazil · 4.28 km · anticlockwise classic", "style": "park"},
 	{"id": "desert", "name": "Desert Sun International Circuit", "desc": "Bahrain · 5.39 km · stop-and-go in the sand", "style": "desert"},
+	{"id": "ile_royale", "name": "Circuit Île-Royale", "desc": "Canada · 4.35 km · walls close, big stops", "style": "park"},
+	{"id": "pannonia", "name": "Pannonia Ring", "desc": "Hungary · 4.37 km · twisty, hilly, hard to pass", "style": "park"},
+	{"id": "marina", "name": "Marina Lights Street Circuit", "desc": "Singapore · 4.93 km · night race in the city", "style": "city", "night": true},
+	{"id": "gulf", "name": "Gulf Lights Circuit", "desc": "Abu Dhabi · 5.28 km · under the lights", "style": "desert", "night": true},
 	{"id": "kestrel_park", "name": "Kestrel Park", "desc": "Original club circuit · 2.06 km", "style": "park"},
 ]
 
@@ -89,6 +93,7 @@ var _ground_mat: ShaderMaterial
 var road_mat: ShaderMaterial               # (rain sets its wetness)
 var pit_side := 1.0                        # which side of the main straight the pits are
 var detail := 1.0                          # scenery density (0.55 in battery saver)
+var night := false                         # floodlit night race (set before build)
 ## Tree tops by 6 m cell (for replay cameras: is the view blocked?).
 const TREE_CELL := 6.0
 var tree_tops := {}
@@ -1468,6 +1473,7 @@ func _build_city() -> void:
 	box.size = Vector3.ONE
 	var facade := ShaderMaterial.new()
 	facade.shader = load("res://shaders/building.gdshader")
+	facade.set_shader_parameter("night", 1.0 if night else 0.0)
 	_multimesh(box, xforms, cols, Color.WHITE, facade)
 
 

@@ -5,6 +5,7 @@ shader_type spatial;
 
 uniform float storey = 3.3;
 uniform float bay = 3.1;
+uniform float night = 0.0;       // lit windows
 
 varying vec3 wpos;
 varying vec3 wnormal;
@@ -43,5 +44,13 @@ void fragment() {
 		ALBEDO = c;
 		ROUGHNESS = mix(0.9, 0.12, win * step(id, 0.8));
 		METALLIC = win * step(id, 0.8) * 0.4;
+		if (night > 0.5) {
+			// About half the rooms lit, warm or cool; shopfronts all lit.
+			float lit = step(0.45, fract(id * 7.31)) * step(id, 0.8);
+			if (floor_i < 1.0) { lit = 1.0; }
+			vec3 lamp = mix(vec3(1.0, 0.72, 0.4), vec3(0.75, 0.85, 1.0), step(0.7, fract(id * 3.7)));
+			EMISSION = lamp * win * lit * 1.6;
+			ALBEDO *= 0.6;
+		}
 	}
 }

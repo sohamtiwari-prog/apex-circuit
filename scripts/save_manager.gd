@@ -52,7 +52,7 @@ const _DEFAULTS := {
 		"steer_assist": "full",
 		"racing_line": false,
 		"ghost": true,
-		"time_of_day": "day",       # "day" or "sunset"
+		"time_of_day": "auto",      # "auto" (the track's own), "day", "sunset" or "night"
 		"player_name": "",          # multiplayer
 		"last_ip": "",
 		"server_url": "",
@@ -235,6 +235,8 @@ func _migrate(profile: Dictionary) -> void:
 				refund += Garage.old_upgrade_cost(String(j["car"]), int(j["level"]))
 		profile["credits"] = int(profile.get("credits", 0)) + refund
 		profile["upgrade_refund"] = refund
+	if int(profile.get("schema", 1)) < 5 and String(profile["settings"].get("time_of_day", "")) == "day":
+		profile["settings"]["time_of_day"] = "auto"      # so the night races are at night
 	profile.erase("upgrades")
 	profile.erase("upgrade_jobs")
 	# v3: tracks got real elevation and start on the real timing line, so

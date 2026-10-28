@@ -155,8 +155,10 @@ func _ready() -> void:
 		_difficulty = "easy" if sk < 0.89 else ("medium" if sk < 0.93 else "hard")
 	lap_key = save.lap_key(track_id, car_id)
 	DisplayServer.screen_set_keep_on(true)
+	_tod = Look.resolve_time(_tod, track_id)
 
 	track = Track.new()
+	track.night = _tod == "night"
 	add_child(track)
 	track.build(track_id)
 	_build_environment()

@@ -23,7 +23,7 @@ func _run() -> void:
 	await process_frame
 	var save: Node = root.get_node("Save")
 	var only := OS.get_cmdline_user_args()
-	var tracks := ["silvermoor", "styria", "brianza", "ardennes", "riviera", "entrelagos", "desert", "kestrel_park"]
+	var tracks := ["silvermoor", "styria", "brianza", "ardennes", "riviera", "entrelagos", "desert", "kestrel_park", "ile_royale", "pannonia", "marina", "gulf"]
 	if not only.is_empty():
 		tracks = only
 	for tid in tracks:

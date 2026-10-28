@@ -29,7 +29,8 @@ from scipy.spatial import cKDTree
 HERE = os.path.dirname(os.path.abspath(__file__))
 TRACKS = os.path.join(HERE, "..", "tracks")
 STYLE = {"silvermoor": "park", "brianza": "park", "ardennes": "forest", "riviera": "city",
-         "styria": "park", "entrelagos": "park", "desert": "desert", "kestrel_park": "park"}
+         "styria": "park", "entrelagos": "park", "desert": "desert", "kestrel_park": "park",
+         "ile_royale": "park", "marina": "city", "pannonia": "park", "gulf": "desert"}
 # Rolling-hill height far from the track, and how far out it builds up.
 HILLS = {"park": 7.0, "forest": 16.0, "desert": 3.0, "city": 3.0}
 # Water (our coordinates): Monaco's harbour and the open sea beyond the tunnel.

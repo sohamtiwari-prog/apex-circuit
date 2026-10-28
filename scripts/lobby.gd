@@ -416,7 +416,7 @@ func _build_lobby_view() -> void:
 	chips2.add_theme_constant_override("separation", 8)
 	_settings_box.add_child(chips2)
 	_chip(chips2, "difficulty", [["medium", "Medium bots"], ["hard", "Hard bots"], ["easy", "Easy bots"]])
-	_chip(chips2, "tod", [["day", "Daytime"], ["sunset", "Sunset"]])
+	_chip(chips2, "tod", [["auto", "Track's own time"], ["day", "Daytime"], ["sunset", "Sunset"], ["night", "Night"]])
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	rv.add_child(sp)

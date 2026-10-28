@@ -73,6 +73,8 @@ def main():
     ap.add_argument("--half-width", type=float, default=7.0)
     ap.add_argument("--wall-offset", type=float, default=24.0)
     ap.add_argument("--smooth-passes", type=int, default=40)
+    ap.add_argument("--reverse", action="store_true",
+                    help="the source runs against the race direction")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
@@ -81,6 +83,8 @@ def main():
     coords = feat["geometry"]["coordinates"]
     if coords[0] == coords[-1]:
         coords = coords[:-1]
+    if a.reverse:
+        coords = coords[::-1]
     coords = coords[a.start_index:] + coords[:a.start_index]
     pts = to_metres(coords)
     pts = resample(pts, 1.0)

@@ -11,11 +11,11 @@ extends RefCounted
 const POINTS := [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
 const CLASSES := [
 	{"id": "gp", "name": "Grand Prix World Championship", "cars": ["gp26"], "prize": 60000,
-		"rounds": ["styria", "silvermoor", "riviera", "brianza", "ardennes", "desert", "entrelagos"]},
+		"rounds": ["desert", "ile_royale", "riviera", "silvermoor", "pannonia", "ardennes", "brianza", "marina", "entrelagos", "gulf"]},
 	{"id": "hyper", "name": "Hypercar Masters", "cars": ["veloce", "toro_furia"], "prize": 35000,
-		"rounds": ["brianza", "ardennes", "silvermoor", "desert", "entrelagos", "styria"]},
+		"rounds": ["brianza", "ardennes", "silvermoor", "marina", "entrelagos", "gulf"]},
 	{"id": "super", "name": "Supercar Championship", "cars": ["vanta_gt", "toro_furia"], "prize": 22000,
-		"rounds": ["silvermoor", "styria", "entrelagos", "riviera", "desert", "brianza"]},
+		"rounds": ["silvermoor", "ile_royale", "styria", "pannonia", "desert", "gulf"]},
 	{"id": "sports", "name": "Sports Car Cup", "cars": ["stuttgart9"], "prize": 14000,
 		"rounds": ["styria", "kestrel_park", "entrelagos", "riviera", "silvermoor", "desert"]},
 	{"id": "muscle", "name": "Muscle Car Series", "cars": ["marauder"], "prize": 8000,

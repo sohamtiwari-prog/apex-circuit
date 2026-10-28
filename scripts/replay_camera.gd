@@ -146,6 +146,9 @@ func _tower_spot(i: int, side: float, h: float, extra: float, roof: bool) -> Vec
 	if track.is_water(p.x, p.z):
 		return Vector3.INF               # (moored yachts would fill the view)
 	p.y = track.ground_height(p.x, p.z) + h
+	# Always well above the catch fence (about 4.2 m over the road), so it
+	# films over it rather than through it.
+	p.y = maxf(p.y, track.points[i].y + maxf(h, 6.5))
 	# On a building or grandstand: up on its roof.
 	for box in track.scenery_boxes:
 		var xf: Transform3D = box["xf"]
@@ -174,7 +177,7 @@ func _clear(from: Vector3, to: Vector3) -> bool:
 				return false
 			if tun > 0:
 				continue                # down the tunnel bore: nothing in the way
-		if p.y < track.ground_height(p.x, p.z) + 0.4:
+		if p.y < track.ground_height(p.x, p.z) + 1.2:
 			return false
 		var top: float = track.tree_tops.get(Vector2i(floori(p.x / Track.TREE_CELL), floori(p.z / Track.TREE_CELL)), -INF)
 		if p.y < top:

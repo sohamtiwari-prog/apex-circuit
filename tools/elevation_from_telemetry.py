@@ -29,6 +29,10 @@ EVENTS = {
     "riviera": "Monaco Grand Prix",
     "silvermoor": "British Grand Prix",
     "styria": "Austrian Grand Prix",
+    "ile_royale": "Canadian Grand Prix",
+    "marina": "Singapore Grand Prix",
+    "pannonia": "Hungarian Grand Prix",
+    "gulf": "Abu Dhabi Grand Prix",
 }
 HERE = os.path.dirname(os.path.abspath(__file__))
 TRACKS = os.path.join(HERE, "..", "tracks")

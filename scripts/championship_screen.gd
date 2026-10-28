@@ -138,7 +138,7 @@ func _build_setup() -> void:
 	chips.add_theme_constant_override("separation", 8)
 	right.add_child(chips)
 	var rb := UIStyle.button("%d rounds" % _rounds, func():
-		var opts := [6, 4, 3]
+		var opts := [6, 4, 3, 10] if String(Championship.class_info(_pick_class)["id"]) == "gp" else [6, 4, 3]
 		_rounds = opts[(opts.find(_rounds) + 1) % opts.size()]
 		_refresh(), false, 22)
 	rb.size_flags_horizontal = Control.SIZE_EXPAND_FILL

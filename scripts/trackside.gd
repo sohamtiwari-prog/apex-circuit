@@ -43,7 +43,45 @@ func build(t: Track) -> void:
 	_marshal_posts()
 	_tv_towers()
 	_flagpoles()
+	if track.night:
+		_floodlights()
 	_commit()
+
+
+## Night races: lighting towers all the way round, both sides, with banks
+## of bright lamps angled down at the track.
+func _floodlights() -> void:
+	var n := track.size()
+	var step := int(48.0 / Track.SPACING)
+	var k := 0
+	for i in range(0, n, step):
+		var side := 1.0 if k % 2 == 0 else -1.0
+		k += 1
+		var out: Vector3 = track.rights[i] * side
+		var lat := track.wall_at(i, side) + 2.2
+		var p: Vector3 = track.points[i] + out * lat
+		if track.has_method("ground_height") and not track.terrain_h.is_empty():
+			p.y = track.ground_height(p.x, p.z)
+		var basis := Basis.looking_at(out, Vector3.UP)
+		var h := 13.0 if track.style != "city" else 9.0
+		if _reserved_near(p):
+			continue
+		_box("metal", Transform3D(basis, p + Vector3(0, h * 0.5, 0)), Vector3(0.3, h, 0.3), Color(0.3, 0.31, 0.34))
+		# Arm reaching over the barrier, and the lamp bank facing the road.
+		_box("metal", Transform3D(basis, p + Vector3(0, h, 0) - out * 1.2), Vector3(0.2, 0.2, 2.6), Color(0.3, 0.31, 0.34))
+		var head := Transform3D(basis.rotated(basis.x, 0.6), p + Vector3(0, h - 0.3, 0) - out * 2.3)
+		_box("metal", head, Vector3(2.2, 0.9, 0.35), Color(0.12, 0.12, 0.13))
+		_box("flood", head.translated_local(Vector3(0, 0, 0.19)), Vector3(2.0, 0.75, 0.04), Color(1.0, 0.97, 0.9))
+
+
+func _reserved_near(p: Vector3) -> bool:
+	for box in track.scenery_boxes:
+		var xf: Transform3D = box["xf"]
+		var size: Vector3 = box["size"]
+		var local := xf.affine_inverse() * p
+		if absf(local.x) < size.x * 0.5 + 0.5 and absf(local.z) < size.z * 0.5 + 0.5:
+			return true
+	return false
 
 
 ## Start lights on the gantry: `lit` columns red (0..5).
@@ -125,6 +163,11 @@ func _material(key: String) -> Material:
 			m.roughness = 1.0
 		"lamp":
 			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		"flood":
+			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			m.emission_enabled = true
+			m.emission = Color(1.0, 0.97, 0.9)
+			m.emission_energy_multiplier = 5.0
 		"tunnel":
 			m.roughness = 0.95
 	return m

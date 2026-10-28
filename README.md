@@ -28,10 +28,19 @@ airfoil wings, lathed tyres). Names and teams are fictional.
 | **Styria Ring** | the Austrian GP venue | 4.29 km |
 | **Autodromo Entrelagos** | the Brazilian GP venue | 4.28 km |
 | **Desert Sun International Circuit** | the Bahrain GP venue | 5.39 km |
+| **Circuit Île-Royale** | the Canadian GP venue | 4.35 km |
+| **Pannonia Ring** | the Hungarian GP venue | 4.37 km |
+| **Marina Lights Street Circuit** | the Singapore night race | 4.93 km |
+| **Gulf Lights Circuit** | the Abu Dhabi GP venue (under lights) | 5.28 km |
 | **Kestrel Park** | original club circuit | 2.06 km |
 
-Layouts are accurate to within ~1% of the official lengths. Elevation is not
-yet modelled (the source data has none).
+Layouts are accurate to within ~1% of the official lengths, with real
+elevation (see below).
+
+**Night races:** Marina Lights and Gulf Lights race at night by default
+(lighting towers all the way round, lit city windows, stars and a glow of
+light on the horizon); any track can be raced by day, at sunset or at night
+("Track's own time" picks the venue's usual one).
 
 ## Install on your phone
 
@@ -234,8 +243,8 @@ Every real circuit has its true height profile, measured from F1 car-position
 telemetry (about 25-30 qualifying laps per track, aligned to our centreline,
 pooled and smoothed): Ardennes 102 m from top to bottom (down to the
 compression, up the hill and the long straight to the highest corner), Styria
-63 m, Entrelagos 43 m, Riviera 42 m, Desert 16 m, Brianza 12 m, Silvermoor
-11 m. The same data put each lap's start on the real timing line.
+63 m, Entrelagos 43 m, Riviera 42 m, Pannonia 35 m, Desert 16 m, Brianza
+12 m, Silvermoor 11 m, Gulf 11 m, Île-Royale 5 m, Marina 5 m. The same data put each lap's start on the real timing line.
 `tools/elevation_from_telemetry.py` does this; `tools/terrain.py` then builds
 each venue's landscape (`tracks/<id>.terrain`): level shelves by the track for
 verges, pits and stands, smooth hillsides between stretches at different
