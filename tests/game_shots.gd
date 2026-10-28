@@ -23,8 +23,6 @@ func _run() -> void:
 	save.data["rank_points"] = 640
 	(save.data["owned_cars"] as Array).append("stuttgart9")
 	save.data["career"] = {"club_1": 3, "club_2": 2, "club_3": 3, "club_4": 1, "club_5": 2}
-	save.data["upgrades"] = {"marauder": {"engine": 2, "tyres": 1}}
-	save.start_upgrade("marauder", "aero")
 	await _open("res://scenes/hub.tscn")
 	await _shot(out + "/g1_hub.png")
 	await _open("res://scenes/career.tscn")
@@ -42,4 +40,8 @@ func _run() -> void:
 	await _shot(out + "/g6_champ_season.png")
 	await _open("res://scenes/menu.tscn")
 	await _shot(out + "/g7_quick.png")
+	save.data["trophies"] = [{"series": "Sports Car Cup", "position": 1, "date": "2026-10-28"}, {"series": "Muscle Car Series", "position": 3, "date": "2026-10-20"}]
+	save.data["best_laps"] = {"silvermoor|gp26": 102345, "marina|vanta_gt": 131020, "styria|marauder": 111640}
+	await _open("res://scenes/profile.tscn")
+	await _shot(out + "/g8_profile.png")
 	quit(0)

@@ -87,6 +87,10 @@ func _build_ui() -> void:
 	mark.add_child(chev)
 	mark.add_child(UIStyle.outlined(UIStyle.label("Apex Circuit", 50, UIStyle.PAPER, "extrabold", true), 5))
 	RankCard.build(left, ui, save)
+	var prof := UIStyle.button("Profile & trophies", func(): get_tree().change_scene_to_file("res://scenes/profile.tscn"), false, 22)
+	prof.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	prof.custom_minimum_size = Vector2(400, 56)
+	left.add_child(prof)
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -99,7 +103,7 @@ func _build_ui() -> void:
 	# Right: credits and the ways to play.
 	var right := VBoxContainer.new()
 	right.custom_minimum_size = Vector2(470, 0)
-	right.add_theme_constant_override("separation", 10)
+	right.add_theme_constant_override("separation", 8)
 	cols.add_child(right)
 	var head: Array = UIStyle.header("", Callable(), save.credits())
 	right.add_child(head[0])
@@ -109,6 +113,15 @@ func _build_ui() -> void:
 		if Career.unlocked(save, si):
 			tier = si
 	_tile(right, "career", "Career", "%s  ·  %d of %d stars" % [Career.SERIES[tier]["name"], stars, Career.SERIES.size() * 18], "res://scenes/career.tscn", true)
+	var daily := Daily.event()
+	var dstars: int = save.career_stars(String(daily["id"]))
+	var db := UIStyle.tile("Daily challenge", Daily.describe(daily) + ("  ·  %d/3 stars" % dstars if dstars > 0 else "  ·  up to %s" % UIStyle.money(5700)), func():
+		save.pending_event = daily
+		get_tree().change_scene_to_file("res://scenes/race.tscn"), false, 30)
+	db.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	db.custom_minimum_size = Vector2(0, 76)
+	right.add_child(db)
+	_tiles["daily"] = db
 	_tile(right, "championship", "Championship", Championship.summary(save), "res://scenes/championship.tscn")
 	_tile(right, "quick", "Quick race", "Any car, any track, any rules", "res://scenes/menu.tscn")
 	_tile(right, "friends", "Friends", "Race together on Wi-Fi or online", "res://scenes/lobby.tscn")
@@ -117,7 +130,8 @@ func _build_ui() -> void:
 
 
 func _tile(parent: Control, key: String, title: String, sub: String, scene: String, primary := false) -> void:
-	var b := UIStyle.tile(title, sub, func(): get_tree().change_scene_to_file(scene), primary, 44 if primary else 34)
+	var b := UIStyle.tile(title, sub, func(): get_tree().change_scene_to_file(scene), primary, 40 if primary else 30)
+	b.custom_minimum_size = Vector2(0, 76)
 	b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	parent.add_child(b)
 	_tiles[key] = b

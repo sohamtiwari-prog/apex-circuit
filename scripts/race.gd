@@ -152,6 +152,8 @@ func _ready() -> void:
 		car_id = String(event["car"])
 		total_laps = int(event["laps"])
 		mode = "time_trial" if ev_type == "time_trial" else "race"
+		if event.has("tod"):
+			_tod = String(event["tod"])
 		var sk := float(event.get("skill", 0.92))
 		_difficulty = "easy" if sk < 0.89 else ("medium" if sk < 0.93 else "hard")
 	lap_key = save.lap_key(track_id, car_id)

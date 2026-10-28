@@ -170,6 +170,13 @@ now for what's coming at your current speed.
   speed, grip, braking and its Performance Rating), where it races, and
   lets you pick the car on your home screen. (Credits spent on upgrades in
   the version that had them were refunded.)
+- **Daily challenge:** a new event every day (picked from the date, the
+  same for everyone) in a car loaned for the day, with a twist: a night
+  race, rain, a charge from the back, a duel or a hot lap. Up to 3 stars
+  and up to 5,700 CR.
+- **Profile & trophies:** your rank, totals (races, wins, podiums, laps,
+  distance, stars, cars), your best lap at every track and the trophy
+  cabinet from championships.
 - **Championship:** pick a class you own a car for, 3 to 6 rounds, 2 to 5
   laps; the same 20 drivers all season, points 25-18-15-12-10-8-6-4-2-1
   (+1 fastest lap), driver and team standings, a trophy and prize money.
@@ -183,6 +190,16 @@ now for what's coming at your current speed.
   qualifying, rain and a tyre choice too.
 
 ## Racing features
+
+- **Race engineer:** radio messages under the timing tower: each lap's
+  time with the gaps to the cars ahead and behind, fastest laps, places
+  gained or lost, a car right behind you, tyres going off, rain coming,
+  the last lap and your result.
+- **Flags:** yellow when a car has stopped on the track ahead (green once
+  it's clear), blue when the leaders come up to lap you.
+- **Vibration:** the phone buzzes for contact with other cars and the
+  barriers (harder hits buzz longer), and rumbles over kerbs and grass.
+  Both can be switched off in the pause menu.
 
 - **Sector times:** each lap in three sectors, coloured like F1 timing:
   purple fastest (anyone this session / your all-time best in time trial),
@@ -345,6 +362,9 @@ scripts/
   garage.gd / garage_screen.gd          prices, Performance Rating, buying cars
   championship.gd / championship_screen.gd  seasons, points, standings
   weekend.gd         qualifying, tyre wear, pit stops, weather
+  race_engineer.gd   radio messages, flags, vibration
+  daily.gd           the daily challenge
+  profile_screen.gd  driver profile and trophy cabinet
   tyres.gd           compounds, wear and wet grip
   showroom.gd        the turntable behind the menus
   hud.gd             timing tower, lap timing, pause menu, classification
@@ -369,6 +389,7 @@ tests/
   replay_test.gd     recording, smooth playback, every replay camera, restore after
   career_test.gd     garage, career events, a championship season
   weekend_test.gd    qualifying, tyre wear, pit stops, changing weather
+  engineer_test.gd   radio lap reports, yellow/blue flags, vibration
   perf_test.gd       simulation cost per grid size
   edge_test.gd       no invisible walls: leaving and rejoining the track
   handling_diag.gd   step-steer response, the numbers behind the handling

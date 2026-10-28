@@ -114,6 +114,29 @@ func _run() -> void:
 	race.queue_free()
 	await process_frame
 
+	# --- Daily challenge
+	var daily = load("res://scripts/daily.gd")
+	var a: Dictionary = daily.event("20261028")
+	var kinds := {}
+	for d in 30:
+		var ev2: Dictionary = daily.event("202611%02d" % (d + 1))
+		kinds[String(ev2["track"]) + String(ev2["type"])] = true
+	_check(a == daily.event("20261028") and kinds.size() >= 15, "daily challenge: the same all day, different every day (%d kinds in 30 days)" % kinds.size())
+	var dev: Dictionary = {}
+	for d in 60:
+		var ev3: Dictionary = daily.event("2026%04d" % (1101 + d))
+		if ev3["type"] == "race" and ev3.has("tod"):
+			dev = ev3
+			break
+	save.pending_event = dev
+	cr0 = save.credits()
+	race = await _race()
+	print("    daily: %s -> P%d, %d stars, +%d CR" % [daily.describe(dev), race.player.position, int(race.last_reward.get("stars", -1)), save.credits() - cr0])
+	_check(String(race._tod) == "night" and String(race.car.spec["id"]) == String(dev["car"]), "the daily's twist and loaned car are used (night, %s)" % dev["car"])
+	_check(save.career_stars(String(dev["id"])) == int(race.last_reward.get("stars", -9)) and save.credits() > cr0, "daily stars saved and credits paid")
+	race.queue_free()
+	await process_frame
+
 	# --- Championship
 	champ.start(save, "muscle", "marauder", "", 2, 1)
 	var s: Dictionary = champ.active(save)
