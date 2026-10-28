@@ -176,6 +176,10 @@ func physics(delta: float) -> void:
 			_pit(e, delta, v)
 	if _tick % 30 == 0:
 		_apply_weather()
+		for e in race.entrants:
+			if e.car.body != null and e.car.get_meta("tyre", "") != e.compound:
+				e.car.set_meta("tyre", e.compound)
+				e.car.body.set_compound_color(Tyres.COLOR.get(e.compound, Color.WHITE))
 	if _tick % 6 == 0 and wetness > 0.2:
 		_update_spray()
 	if in_quali:

@@ -23,12 +23,15 @@ var locked := false
 var spin_angle := 0.0
 var spin_rate := 0.0              # rad/s, visual
 var steer_angle := 0.0            # rad, + = left (car space yaw)
+var caliper: Node3D               # brake caliper: steers with the wheel, doesn't spin
 
 
 func update_visual(delta: float) -> void:
 	spin_angle = fmod(spin_angle + spin_rate * delta, TAU)
 	position = mount - Vector3(0, maxf(0.0, _rest() - compression), 0)
 	transform.basis = Basis(Vector3.UP, steer_angle) * Basis(Vector3.RIGHT, spin_angle)
+	if caliper != null:
+		caliper.transform.basis = Basis(Vector3.RIGHT, -spin_angle)
 
 
 var rest_length := 0.2

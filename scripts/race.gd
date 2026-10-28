@@ -281,6 +281,8 @@ func _spawn_opponents(player_team: int) -> void:
 			t = int(drv["team"])
 		c.setup(CarSpecs.get_spec(model, t))
 		add_child(c)
+		if c.body != null:
+			c.body.set_number(_race_number(i, t))
 		var a := CarAudio.new()
 		c.add_child(a)
 		a.attach(c, false)
@@ -297,6 +299,11 @@ func _spawn_opponents(player_team: int) -> void:
 			e.driver = i + 1
 		e.team = String(c.spec.get("team_name", c.spec["name"]))
 		entrants.append(e)
+
+
+## A car's race number: team-mates get neighbouring numbers.
+static func _race_number(i: int, team: int) -> int:
+	return [4, 7, 11, 16, 22, 27, 31, 44, 55, 63, 77, 81, 3, 10, 14, 18, 23, 38, 50, 88][(team * 2 + i % 2) % 20]
 
 
 func _build_environment() -> void:

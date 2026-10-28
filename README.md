@@ -258,6 +258,22 @@ crack, the overrun crackles. Road cars keep their synthesized engines.
 
 ## Look
 
+**Cars:** road cars have real wheel arches (the sides rise over each tyre,
+with the fenders standing proud), a shoulder line, a glass greenhouse with
+a painted roof and pillars, door mirrors, splitter, side skirts, number
+plates, headlights set into the nose, multi-spoke rims with brake discs
+and painted calipers (which don't spin with the wheel). GP cars carry
+fictional sponsors and race numbers, a T-cam, carbon-fibre weave on the
+bare carbon parts, wheel covers, and tyre sidewall bands in the colour of
+the compound they're on. Every car has a soft contact shadow, so it sits
+on the track at any distance.
+
+**Tracks:** kerbs stand proud of the road (drawn raised, driven flat),
+rubber streaks are laid down in every braking zone along the racing line,
+the asphalt has a fine aggregate bump that catches the light, grass is a
+more natural green, trees have lumpy multi-clump crowns with a leafy
+texture, and braking boards have plain backs.
+
 Procedural sky with clouds, filmic tonemapping and glow; rubbered-in racing
 line, mown grass, gravel traps and painted run-off; concrete walls with
 advertising boards, armco, tyre barriers and catch fencing; a start gantry

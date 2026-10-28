@@ -823,6 +823,9 @@ func _board_set(corner: int) -> void:
 		var u1 := float(k + 1) / 3.0
 		_quad("boards", l0, r0, r0 + Vector3(0, h, 0), l0 + Vector3(0, h, 0), Color.WHITE,
 			[Vector2(u0, 1), Vector2(u1, 1), Vector2(u1, 0), Vector2(u0, 0)])
+		# Plain back, so the number isn't seen mirrored from behind.
+		var back := fwd * 0.03
+		_quad("concrete", r0 + back, l0 + back, l0 + back + Vector3(0, h, 0), r0 + back + Vector3(0, h, 0), Color(0.55, 0.56, 0.58))
 		_box("metal", Transform3D(Basis(), base + Vector3(0, 0.5, 0) + fwd * 0.06), Vector3(0.12, 1.0, 0.12), Color(0.5, 0.52, 0.55))
 
 

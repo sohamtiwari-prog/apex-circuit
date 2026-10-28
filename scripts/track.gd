@@ -10,6 +10,7 @@ extends Node3D
 ## mesh, walls, lap timing, AI) works off those samples.
 
 const KERB_W := 1.3
+const KERB_RISE := 0.035
 const LINE_W := 0.3
 const SPACING := 2.0
 const ROAD_Y := 0.0
@@ -174,6 +175,7 @@ func build(id: String = "kestrel_park") -> void:
 	_derive_walls()
 	_build_ground()
 	_build_road()
+	_build_rubber()
 	_build_walls()
 	trackside = Trackside.new()
 	add_child(trackside)
@@ -410,8 +412,8 @@ func _ground_color() -> Color:
 		"city":
 			return Color(0.36, 0.36, 0.38)
 		"forest":
-			return Color(0.13, 0.28, 0.09)
-	return Color(0.16, 0.33, 0.1)
+			return Color(0.15, 0.26, 0.1)
+	return Color(0.19, 0.31, 0.12)
 
 
 func _build_ground() -> void:
@@ -699,6 +701,57 @@ func _kerb_mask() -> Array[bool]:
 	return out
 
 
+## Rubber laid down in the braking zones: dark streaks along the racing
+## line where cars brake hardest, fading in and out.
+func _build_rubber() -> void:
+	var n := points.size()
+	if line_offset.size() != n:
+		return
+	var prof := speed_profile(CarSpecs.get_spec("gp26"))
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = n
+	var lanes := []
+	for k in 4:
+		lanes.append([[-0.78, 0.78][k % 2] + rng.randf_range(-0.35, 0.35), rng.randf_range(0.22, 0.34)])
+	var count := 0
+	for i in n:
+		var j := (i + 1) % n
+		# Braking here: the planned speed falls over the next few metres.
+		var drop := prof[i] - prof[(i + 4) % n]
+		var a := clampf(drop / 3.0, 0.0, 1.0)
+		var a2 := clampf((prof[j] - prof[(j + 4) % n]) / 3.0, 0.0, 1.0)
+		if a < 0.05 and a2 < 0.05:
+			continue
+		for lane in lanes:
+			var off: float = lane[0]
+			var w: float = lane[1]
+			var p0: Vector3 = points[i] + rights[i] * (line_offset[i] + off) + ups[i] * 0.008
+			var p1: Vector3 = points[j] + rights[j] * (line_offset[j] + off) + ups[j] * 0.008
+			var r0: Vector3 = rights[i] * w * 0.5
+			var r1: Vector3 = rights[j] * w * 0.5
+			var c0 := Color(0.02, 0.02, 0.02, 0.32 * a)
+			var c1 := Color(0.02, 0.02, 0.02, 0.32 * a2)
+			for v in [[p0 - r0, c0], [p1 - r1, c1], [p1 + r1, c1], [p0 - r0, c0], [p1 + r1, c1], [p0 + r0, c0]]:
+				st.set_color(v[1])
+				st.set_normal(ups[i])
+				st.add_vertex(v[0])
+			count += 1
+	if count == 0:
+		return
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.roughness = 0.55
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+
+
 func _pt(i: int, j: int, t: float, off: float, dy := 0.0) -> Vector3:
 	var a: Vector3 = points[i] + rights[i] * off
 	var b: Vector3 = points[j] + rights[j] * off
@@ -886,10 +939,24 @@ func _build_road() -> void:
 		var kc: Color = verge
 		if kerb[i]:
 			kc = red if int(cum[i] / 3.0) % 2 == 0 else white
-		_band(st, faces, i, j, -outer, -h, kc)
+		if kerb[i]:
+			# Kerbs stand proud of the road: a rounded 3.5 cm hump you feel.
+			# (Drawn raised; the collision surface stays flat so a kerb
+			# never throws a car.)
+			var k1 := h + KERB_W * 0.45
+			var no_col := PackedVector3Array()
+			_band(st, no_col, i, j, -k1, -h, kc, 0.0, 1.0, KERB_RISE, 0.0)
+			_band(st, no_col, i, j, -outer, -k1, kc, 0.0, 1.0, 0.0, KERB_RISE)
+			_band(st, no_col, i, j, h, k1, kc, 0.0, 1.0, 0.0, KERB_RISE)
+			_band(st, no_col, i, j, k1, outer, kc, 0.0, 1.0, KERB_RISE, 0.0)
+			for v in [_pt(i, j, 0.0, -outer), _pt(i, j, 1.0, -outer), _pt(i, j, 0.0, -h), _pt(i, j, 0.0, -h), _pt(i, j, 1.0, -outer), _pt(i, j, 1.0, -h),
+					_pt(i, j, 0.0, h), _pt(i, j, 1.0, h), _pt(i, j, 0.0, outer), _pt(i, j, 0.0, outer), _pt(i, j, 1.0, h), _pt(i, j, 1.0, outer)]:
+				faces.append(v)
+		else:
+			_band(st, faces, i, j, -outer, -h, kc)
+			_band(st, faces, i, j, h, outer, kc)
 		_band(st, faces, i, j, -h, -h + LINE_W, white)
 		_band(st, faces, i, j, h - LINE_W, h, white)
-		_band(st, faces, i, j, h, outer, kc)
 		for side in [-1.0, 1.0]:
 			var kind := RUNOFF_NONE
 			if runoff_type[0].size() == n:
@@ -1181,18 +1248,25 @@ static func _tree_mesh(kind: String) -> ArrayMesh:
 	match kind:
 		"broad":
 			MeshKit.lathe(st, [Vector2(0.0, 0.32), Vector2(2.6, 0.22), Vector2(3.4, 0.12)], 6, bark, up)
-			var leaf := Color(0.2, 0.42, 0.14)
-			MeshKit.ellipsoid(st, Vector3(0, 4.6, 0), Vector3(2.6, 2.2, 2.6), 8, leaf)
-			MeshKit.ellipsoid(st, Vector3(1.2, 3.8, 0.6), Vector3(1.8, 1.6, 1.8), 7, leaf.darkened(0.12))
-			MeshKit.ellipsoid(st, Vector3(-1.0, 4.0, -0.9), Vector3(1.9, 1.7, 1.9), 7, leaf.lightened(0.06))
-			MeshKit.ellipsoid(st, Vector3(-0.2, 6.0, 0.3), Vector3(1.6, 1.4, 1.6), 7, leaf.lightened(0.12))
+			var leaf := Color(0.19, 0.34, 0.12)
+			# Branches into a lumpy crown of several clumps, darker underneath.
+			for b in [Vector3(1.1, 3.6, 0.5), Vector3(-0.9, 3.8, -0.7), Vector3(0.2, 4.4, 1.0)]:
+				MeshKit.tube(st, [Vector3(0, 2.4, 0), b], 0.1, 4, bark)
+			_canopy(st, Vector3(0, 4.7, 0), Vector3(2.5, 2.1, 2.5), leaf, 1)
+			_canopy(st, Vector3(1.3, 3.9, 0.6), Vector3(1.8, 1.5, 1.8), leaf.darkened(0.08), 2)
+			_canopy(st, Vector3(-1.1, 4.1, -0.9), Vector3(1.9, 1.6, 1.9), leaf.lightened(0.04), 3)
+			_canopy(st, Vector3(-0.2, 6.1, 0.3), Vector3(1.6, 1.3, 1.6), leaf.lightened(0.1), 4)
+			_canopy(st, Vector3(0.6, 5.3, -1.3), Vector3(1.4, 1.2, 1.4), leaf, 5)
 		"conifer":
 			MeshKit.lathe(st, [Vector2(0.0, 0.25), Vector2(1.6, 0.18)], 6, bark, up)
-			var needle := Color(0.1, 0.26, 0.12)
-			for tier in range(4):
-				var y0 := 1.2 + tier * 2.0
-				var r := 2.6 - tier * 0.55
-				MeshKit.lathe(st, [Vector2(y0, r), Vector2(y0 + 0.3, r * 0.92), Vector2(y0 + 3.0, 0.05)], 8, needle.lightened(tier * 0.05), up)
+			var needle := Color(0.09, 0.2, 0.1)
+			# Drooping tiers with ragged edges (a lathe per tier, 11 sides).
+			for tier in range(5):
+				var y0 := 1.0 + tier * 1.65
+				var r := 2.7 - tier * 0.48
+				var col := needle.lightened(tier * 0.05)
+				MeshKit.lathe(st, [Vector2(y0 - 0.25, r * 1.04), Vector2(y0, r), Vector2(y0 + 0.4, r * 0.86), Vector2(y0 + 2.6, 0.05)], 11, col, up)
+				MeshKit.lathe(st, [Vector2(y0 - 0.25, 0.1), Vector2(y0 - 0.25, r * 1.04)], 11, col.darkened(0.35), up)
 		"palm":
 			var path := []
 			for k in range(8):
@@ -1222,13 +1296,71 @@ static func _tree_mesh(kind: String) -> ArrayMesh:
 			MeshKit.lathe(st, [Vector2(0.0, 0.22), Vector2(7.3, 0.18)], 3, Color(0.45, 0.36, 0.24), up)
 			MeshKit.lathe(st, [Vector2(6.0, 3.4), Vector2(7.8, 0.3)], 5, Color(0.25, 0.42, 0.14), up)
 	var mesh := MeshKit.finish(st)
+	mesh.surface_set_material(0, _foliage_material())
+	_tree_cache[kind] = mesh
+	return mesh
+
+
+static var _foliage_mat: StandardMaterial3D
+static var _foliage_imgs: Array = []
+
+## Leaves: a speckled clump texture with bumps, mapped without UVs, so the
+## low-poly crowns read as foliage rather than smooth balls.
+static func _foliage_material() -> StandardMaterial3D:
+	if _foliage_mat != null:
+		return _foliage_mat
 	var mat := StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true
 	mat.vertex_color_is_srgb = true
-	mat.roughness = 0.95
-	mesh.surface_set_material(0, mat)
-	_tree_cache[kind] = mesh
-	return mesh
+	mat.roughness = 0.92
+	# Built here, synchronously (a NoiseTexture2D would build on a thread).
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_CELLULAR
+	noise.frequency = 0.09
+	noise.cellular_return_type = FastNoiseLite.RETURN_DISTANCE
+	var img: Image = noise.get_seamless_image(128, 128)
+	img.convert(Image.FORMAT_RGB8)
+	var bump := img.duplicate() as Image
+	for y in 128:
+		for x in 128:
+			var v := img.get_pixel(x, y).r
+			var g := lerpf(1.25, 0.55, v)
+			img.set_pixel(x, y, Color(g, g * 1.04, g * 0.88).clamp())
+	img.generate_mipmaps()
+	mat.albedo_texture = ImageTexture.create_from_image(img)
+	bump.bump_map_to_normal_map(6.0)
+	bump.generate_mipmaps()
+	mat.normal_enabled = true
+	mat.normal_texture = ImageTexture.create_from_image(bump)
+	mat.uv1_triplanar = true
+	mat.uv1_scale = Vector3(0.7, 0.7, 0.7)
+	_foliage_mat = mat
+	return mat
+
+
+## A lumpy clump of leaves: an ellipsoid pushed in and out by noise, shaded
+## darker underneath and inside.
+static func _canopy(st: SurfaceTool, centre: Vector3, radii: Vector3, col: Color, seed: int) -> void:
+	var seg := 10
+	var rows := 6
+	var pts := []
+	for i in rows + 1:
+		var v := PI * i / rows - PI / 2
+		var ring := []
+		for k in seg:
+			var u := TAU * k / seg
+			var dir := Vector3(cos(v) * cos(u), sin(v), cos(v) * sin(u))
+			var bump := 1.0 + 0.16 * sin(u * 3.0 + seed * 1.7) * cos(v * 2.0 + seed) + 0.1 * sin(u * 5.0 - seed + v * 3.0)
+			ring.append(centre + dir * radii * bump)
+		pts.append(ring)
+	for i in rows:
+		for k in seg:
+			var a: Vector3 = pts[i][k]
+			var b: Vector3 = pts[i][(k + 1) % seg]
+			var c: Vector3 = pts[i + 1][(k + 1) % seg]
+			var d: Vector3 = pts[i + 1][k]
+			var shade := 0.55 + 0.45 * float(i) / rows
+			MeshKit._quad(st, a, b, c, d, Color(col.r * shade, col.g * shade, col.b * shade))
 
 
 ## MultiMeshes grouped by 150 m cells, so distant groups can be culled; with
