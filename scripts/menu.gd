@@ -1,7 +1,7 @@
 extends Node3D
 ## Quick race. Left: the car on a turntable, its name and how it performs,
 ## with arrows to change car (and team, for the GP car). Any car can be
-## raced here (cars you own come with your upgrades). Right: the circuit
+## raced here. Right: the circuit
 ## map, race options and the Race button. Everything you choose is saved.
 
 var save: Node

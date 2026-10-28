@@ -209,7 +209,6 @@ func _build_detail() -> void:
 	var series_id := String(Career.SERIES[si]["id"])
 	var last := String((save.get_setting("career_car") as Dictionary).get(series_id, ""))
 	_car_pick = last if mine.has(last) else (mine[0] if not mine.is_empty() else "")
-	var need_pr := Garage.pr(CarSpecs.get_spec(String(allowed[0]))) + ei * 0.8
 	if mine.is_empty():
 		var names: Array = []
 		for c in allowed:
@@ -239,11 +238,10 @@ func _build_detail() -> void:
 			save.set_setting("career_car", d)
 			_refresh(), false, 20)
 		row.add_child(sw)
-	var hint := UIStyle.label(("Recommended PR %.0f+" % need_pr) + ("  ·  upgrade in the Garage" if pr < need_pr else ""), 18, UIStyle.GREEN if pr >= need_pr else UIStyle.YELLOW, "semibold")
-	_detail.add_child(hint)
-	var job: Dictionary = save.upgrade_job(_car_pick)
-	if not job.is_empty():
-		_detail.add_child(UIStyle.label("Installing %s %d: ready in %ds" % [Garage.PART_NAMES[job["part"]], int(job["level"]), int(ceil(save.upgrade_seconds_left(_car_pick)))], 18, UIStyle.YELLOW, "semibold"))
+	if ev["type"] != "time_trial":
+		var sk := float(ev["skill"])
+		var lvl := "Easy" if sk < 0.89 else ("Medium" if sk < 0.93 else ("Hard" if sk < 0.955 else "Very hard"))
+		_detail.add_child(UIStyle.label("Opponents: %s" % lvl, 18, UIStyle.FOG, "semibold"))
 	var go := UIStyle.button("Start" if ev["type"] != "season" else "Start the season", _start, true, 38)
 	go.custom_minimum_size = Vector2(0, 84)
 	_detail.add_child(go)

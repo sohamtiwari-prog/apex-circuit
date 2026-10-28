@@ -1,8 +1,8 @@
 extends Node3D
 ## Garage: every car (yours with their PR, the rest with prices) on the
-## left, the selected car on the turntable, and on the right either Buy or
-## its five upgrades. An upgrade takes 30 s to 2 min (or finish it now for
-## a small fee) and you can race other cars meanwhile.
+## left, the selected car on the turntable, and on the right how it
+## performs, where it races, and Buy (or make it the car on your home
+## screen, or take it for a drive).
 
 var save: Node
 var room: Showroom
@@ -11,7 +11,6 @@ var car_id := ""
 var _credits: Label
 var _list: VBoxContainer
 var _panel: VBoxContainer
-var _timers: Array = []               # [part, label, bar, rush button]
 var _tick := 0.0
 
 
@@ -81,15 +80,14 @@ func _refresh() -> void:
 		c.queue_free()
 	for c in _panel.get_children():
 		c.queue_free()
-	_timers.clear()
 	var ids: Array = Array(CarSpecs.CATALOG).duplicate()
 	ids.sort_custom(func(x, y): return Garage.price(x) < Garage.price(y))
 	for id in ids:
 		var spec: Dictionary = save.car_spec(id)
 		var owned: bool = save.owns(id)
 		var sub := ("PR %.1f" % Garage.pr(spec)) if owned else UIStyle.money(Garage.price(id))
-		if owned and not save.upgrade_job(id).is_empty():
-			sub += "  ·  upgrading"
+		if owned and String(save.get_setting("garage_car")) == id:
+			sub += "  ·  home car"
 		var b := UIStyle.tile(String(spec["name"]), sub, func(): _select(id), id == car_id, 24)
 		b.custom_minimum_size = Vector2(0, 66)
 		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -116,20 +114,30 @@ func _build_panel() -> void:
 	top.add_child(prbox)
 	prbox.add_child(UIStyle.label("PR", 18, UIStyle.FOG, "bold", true))
 	prbox.add_child(UIStyle.label("%.1f" % Garage.pr(spec), 44, UIStyle.APEX, "extrabold", true))
-	_panel.add_child(UIStyle.label("%d hp  ·  %d kg  ·  %d km/h" % [int(round(float(spec["power"]) / 745.7)), int(float(spec["mass"])), int(Garage.top_speed_kmh(spec))], 20, UIStyle.PAPER, "semibold"))
+
+	# How it performs.
+	var v := 55.6
+	var grip: float = float(spec["mu_front"]) * (1.0 + float(spec["downforce"]) * v * v / float(spec["mass"]) / 9.81)
+	var brake: float = float(spec["brake_base"]) + float(spec["brake_aero"]) * v * v
+	var top_kmh := Garage.top_speed_kmh(spec)
+	_stat("Power", "%d hp" % (int(round(float(spec["power"]) / 745.7 / 10.0)) * 10), float(spec["power"]) / 1.1e6)
+	_stat("Weight", "%d kg" % int(float(spec["mass"])), 1.0 - (float(spec["mass"]) - 700.0) / 1500.0)
+	_stat("Top speed", "%d km/h" % int(top_kmh), (top_kmh - 200.0) / 220.0)
+	_stat("Grip at 200", "%.1f g" % grip, grip / 4.5)
+	_stat("Braking", "%.1f g" % (minf(brake, float(spec["brake_max"])) / 9.81), minf(brake, float(spec["brake_max"])) / 30.0)
+	var series: Array = []
+	for se in Career.SERIES:
+		if (se["cars"] as Array).has(car_id):
+			series.append(String(se["name"]))
+	if not series.is_empty():
+		var l := UIStyle.label("Races in: " + ", ".join(series), 19, UIStyle.FOG, "semibold")
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_panel.add_child(l)
+	var sp := Control.new()
+	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_panel.add_child(sp)
 
 	if not owned:
-		var sp := Control.new()
-		sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		_panel.add_child(sp)
-		var series: Array = []
-		for s in Career.SERIES:
-			if (s["cars"] as Array).has(car_id):
-				series.append(String(s["name"]))
-		if not series.is_empty():
-			var l := UIStyle.label("Races in: " + ", ".join(series), 19, UIStyle.FOG, "semibold")
-			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			_panel.add_child(l)
 		var price := Garage.price(car_id)
 		var can: bool = save.credits() >= price
 		var b := UIStyle.button(("Buy  ·  " + UIStyle.money(price)) if can else ("Need %s more" % UIStyle.money(price - save.credits())), func():
@@ -140,102 +148,43 @@ func _build_panel() -> void:
 		_panel.add_child(b)
 		_panel.add_child(UIStyle.label("You can still test-drive it in Quick race.", 18, UIStyle.FOG, "medium"))
 		return
-
-	_panel.add_child(UIStyle.label("Upgrades", 24, UIStyle.FOG, "bold", true))
-	var levels: Dictionary = save.upgrade_levels(car_id)
-	for p in Garage.PARTS:
-		_part_row(p, int(levels.get(p, 0)), save.part_job(car_id, p))
-
-
-func _part_row(part: String, level: int, job: Dictionary) -> void:
-	var row := PanelContainer.new()
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC_2, 0.9), false)
-	sb.content_margin_top = 4
-	sb.content_margin_bottom = 4
-	row.add_theme_stylebox_override("panel", sb)
-	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
 	_panel.add_child(row)
+	var home: bool = String(save.get_setting("garage_car")) == car_id
+	var hb := UIStyle.button("Your home car" if home else "Show at home", func():
+		save.set_setting("garage_car", car_id)
+		_refresh(), false, 24)
+	hb.disabled = home
+	hb.custom_minimum_size = Vector2(0, 76)
+	hb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(hb)
+	var drive := UIStyle.button("Drive it", func():
+		save.set_setting("car", car_id)
+		get_tree().change_scene_to_file("res://scenes/menu.tscn"), true, 30)
+	drive.custom_minimum_size = Vector2(0, 76)
+	drive.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(drive)
+
+
+func _stat(name: String, value: String, frac: float) -> void:
 	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 10)
-	row.add_child(h)
-	var names := VBoxContainer.new()
-	names.add_theme_constant_override("separation", -4)
-	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	names.alignment = BoxContainer.ALIGNMENT_CENTER
-	h.add_child(names)
-	var title := HBoxContainer.new()
-	title.add_theme_constant_override("separation", 10)
-	names.add_child(title)
-	title.add_child(UIStyle.label(Garage.PART_NAMES[part], 24, UIStyle.PAPER, "extrabold", true))
-	var pips := HBoxContainer.new()
-	pips.add_theme_constant_override("separation", 4)
-	pips.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	title.add_child(pips)
-	for k in Garage.MAX_LEVEL:
-		var pip := ColorRect.new()
-		pip.custom_minimum_size = Vector2(22, 9)
-		pip.color = UIStyle.APEX if k < level else Color(UIStyle.PAPER, 0.18)
-		pips.add_child(pip)
-	if not job.is_empty():
-		var lbl := UIStyle.label("", 18, UIStyle.YELLOW, "bold", true)
-		names.add_child(lbl)
-		var back := ColorRect.new()
-		back.color = Color(UIStyle.PAPER, 0.15)
-		back.custom_minimum_size = Vector2(0, 6)
-		names.add_child(back)
-		var bar := ColorRect.new()
-		bar.color = UIStyle.YELLOW
-		bar.size = Vector2(0, 6)
-		back.add_child(bar)
-		var rush := UIStyle.button("", func():
-			if save.rush_upgrade(car_id, part):
-				_select(car_id), true, 20)
-		rush.custom_minimum_size = Vector2(170, 56)
-		h.add_child(rush)
-		_timers.append([part, lbl, bar, rush])
-		_update_timer()
-		return
-	names.add_child(UIStyle.label(Garage.PART_EFFECT[part] + " per level", 17, UIStyle.FOG, "semibold"))
-	if level >= Garage.MAX_LEVEL:
-		h.add_child(UIStyle.label("Maxed", 22, UIStyle.GREEN, "extrabold", true))
-		return
-	var cost := Garage.upgrade_cost(car_id, level + 1)
-	var secs := Garage.upgrade_seconds(level + 1)
-	var b := UIStyle.button("%s  ·  %s" % [UIStyle.money(cost), _dur(secs)], func():
-		if save.start_upgrade(car_id, part):
-			_select(car_id), save.credits() >= cost, 20)
-	b.custom_minimum_size = Vector2(190, 56)
-	b.disabled = save.credits() < cost
-	h.add_child(b)
-
-
-static func _dur(s: int) -> String:
-	return "%d s" % s if s < 60 else "%d min" % (s / 60)
-
-
-func _update_timer() -> void:
-	for t in _timers:
-		var part: String = t[0]
-		var lbl: Label = t[1]
-		if not is_instance_valid(lbl):
-			continue
-		var job: Dictionary = save.part_job(car_id, part)
-		if job.is_empty():
-			_select(car_id)             # done: show the new level and PR
-			return
-		var left: float = save.part_seconds_left(car_id, part)
-		var full := float(Garage.upgrade_seconds(int(job["level"])))
-		lbl.text = "Level %d installing  ·  %d:%02d" % [int(job["level"]), int(ceil(left)) / 60, int(ceil(left)) % 60]
-		var bar: ColorRect = t[2]
-		bar.size.x = (bar.get_parent() as Control).size.x * clampf(1.0 - left / full, 0.0, 1.0)
-		var fee := Garage.rush_cost(car_id, int(job["level"]), left)
-		var rush: Button = t[3]
-		rush.text = "Finish now  ·  %s" % UIStyle.money(fee)
-		rush.disabled = save.credits() < fee
-
-
-func _process(delta: float) -> void:
-	_tick += delta
-	if _tick > 0.25:
-		_tick = 0.0
-		_update_timer()
+	h.add_theme_constant_override("separation", 12)
+	_panel.add_child(h)
+	var n := UIStyle.label(name, 20, UIStyle.FOG, "semibold")
+	n.custom_minimum_size = Vector2(118, 0)
+	h.add_child(n)
+	var back := ColorRect.new()
+	back.color = Color(UIStyle.PAPER, 0.12)
+	back.custom_minimum_size = Vector2(0, 8)
+	back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	back.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(back)
+	var fill := ColorRect.new()
+	fill.color = UIStyle.APEX
+	back.add_child(fill)
+	back.resized.connect(func(): fill.size = Vector2(back.size.x * clampf(frac, 0.04, 1.0), 8))
+	var val := UIStyle.label(value, 21, UIStyle.PAPER, "bold", true)
+	val.custom_minimum_size = Vector2(104, 0)
+	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	h.add_child(val)

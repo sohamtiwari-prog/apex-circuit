@@ -1,6 +1,5 @@
 extends SceneTree
-## The game around the racing: garage (buying, upgrades that install in
-## real time or at once for a fee, several at a time, and change the car),
+## The game around the racing: garage (buying cars; old upgrades refunded),
 ## career events (race, eliminator, time trial: stars and credits), and a
 ## championship season (qualifying, points, standings, trophy, prize).
 ##   godot --headless --fixed-fps 120 --script res://tests/career_test.gd
@@ -51,24 +50,18 @@ func _run() -> void:
 	_check(not save.buy_car("stuttgart9") and save.credits() == 10000, "can't buy a car you can't afford")
 	save.add_credits(20000)
 	_check(save.buy_car("stuttgart9") and save.owns("stuttgart9") and save.credits() == 12000, "buying the Stuttgart 9 Turbo (18,000 CR)")
-	var base: Dictionary = save.car_spec("stuttgart9")
-	var pr0: float = gar.pr(base)
-	var cost: int = gar.upgrade_cost("stuttgart9", 1)
-	_check(save.start_upgrade("stuttgart9", "engine") and save.credits() == 12000 - cost, "engine upgrade started for %d CR" % cost)
-	var left: float = save.part_seconds_left("stuttgart9", "engine")
-	_check(left > 25.0 and left <= 30.0 and int(save.upgrade_levels("stuttgart9").get("engine", 0)) == 0, "level 1 takes 30 s (%.0f s left)" % left)
-	_check(save.start_upgrade("stuttgart9", "aero") and save.start_upgrade("stuttgart9", "tyres"), "other parts can install at the same time")
-	_check(not save.start_upgrade("stuttgart9", "engine"), "but not the same part twice")
-	var c0: int = save.credits()
-	_check(save.rush_upgrade("stuttgart9", "engine") and save.credits() < c0 and c0 - save.credits() <= 60, "finish now costs a small fee (%d CR)" % (c0 - save.credits()))
-	_check(int(save.upgrade_levels("stuttgart9")["engine"]) == 1, "engine level 1 installed")
-	for key in save.data["upgrade_jobs"]:
-		save.data["upgrade_jobs"][key]["done"] = 0.0          # time passes
-	var lv: Dictionary = save.upgrade_levels("stuttgart9")
-	_check(int(lv.get("aero", 0)) == 1 and int(lv.get("tyres", 0)) == 1 and save.upgrade_jobs("stuttgart9").is_empty(), "the others finish on their own when their time is up")
-	var up: Dictionary = save.car_spec("stuttgart9")
-	_check(is_equal_approx(float(up["power"]), float(base["power"]) * 1.04) and float(up["mu_front"]) > float(base["mu_front"]) and gar.pr(up) > pr0 + 1.0, "upgrades change the car: +4%% power, more grip, PR %.1f -> %.1f" % [pr0, gar.pr(up)])
-	_check(gar.upgrade_seconds(3) <= 120 and gar.upgrade_cost("gp26", 3) < 6000, "max install time 2 minutes; even GP upgrades cost under 6,000 CR")
+	var spec: Dictionary = save.car_spec("stuttgart9")
+	_check(spec == load("res://scripts/car_specs.gd").get_spec("stuttgart9") and not save.data.has("upgrades"), "every car races as it comes (no upgrades)")
+
+	# Old saves: credits spent on upgrades come back.
+	var old: Dictionary = save.default_profile()
+	old["schema"] = 4
+	old["credits"] = 1000
+	old["upgrades"] = {"marauder": {"engine": 2}}
+	old["upgrade_jobs"] = {"marauder|aero": {"car": "marauder", "part": "aero", "level": 1, "done": 0}}
+	save._migrate(old)
+	var want: int = gar.old_upgrade_cost("marauder", 1) * 2 + gar.old_upgrade_cost("marauder", 2)
+	_check(int(old["credits"]) == 1000 + want and not old.has("upgrades") and not old.has("upgrade_jobs"), "old upgrades refunded (+%d CR)" % want)
 
 	# --- Career: a race
 	var ev: Dictionary = car_mod.event(0, 0)

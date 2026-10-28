@@ -179,7 +179,6 @@ func _ready() -> void:
 		if mode == "race":
 			_spawn_opponents(team)
 		if ev_type == "time_trial":
-			# Targets from the standard car, so upgrades help you beat them.
 			tt_targets = Career.lap_targets(track, CarSpecs.get_spec(car_id))
 	_apply_assists()
 
