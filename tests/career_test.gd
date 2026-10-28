@@ -1,7 +1,7 @@
 extends SceneTree
-## The game around the racing: garage (buying cars; old upgrades refunded),
-## career events (race, eliminator, time trial: stars and credits), and a
-## championship season (qualifying, points, standings, trophy, prize).
+## The game around the racing: the garage (every car open, no money), career
+## events (race, eliminator, time trial: stars), the daily challenge, and a
+## championship season (qualifying, points, standings, trophy).
 ##   godot --headless --fixed-fps 120 --script res://tests/career_test.gd
 # (No game class names here: this file compiles before the Save autoload exists.)
 
@@ -41,40 +41,42 @@ func _run() -> void:
 	await process_frame
 	save = root.get_node("Save")
 	save.data = save.default_profile()
-	var gar = load("res://scripts/garage.gd")
 	var car_mod = load("res://scripts/career.gd")
 	var champ = load("res://scripts/championship.gd")
 
 	# --- Garage
-	_check(save.credits() == 10000 and save.owns("marauder") and not save.owns("stuttgart9"), "new profile: 10,000 CR and the Marauder")
-	_check(not save.buy_car("stuttgart9") and save.credits() == 10000, "can't buy a car you can't afford")
-	save.add_credits(20000)
-	_check(save.buy_car("stuttgart9") and save.owns("stuttgart9") and save.credits() == 12000, "buying the Stuttgart 9 Turbo (18,000 CR)")
+	_check(not save.data.has("credits") and not save.data.has("owned_cars") and not save.has_method("buy_car"), "new profile: no money, no buying")
 	var spec: Dictionary = save.car_spec("stuttgart9")
 	_check(spec == load("res://scripts/car_specs.gd").get_spec("stuttgart9") and not save.data.has("upgrades"), "every car races as it comes (no upgrades)")
 
-	# Old saves: credits spent on upgrades come back.
+	var all_open := true
+	for si in car_mod.SERIES.size():
+		var e0: Dictionary = car_mod.event(si, 0)
+		all_open = all_open and not e0.has("reward") and (e0["cars"] as Array).size() > 0
+	_check(all_open, "career events carry no prize money")
+
+	# Old saves: money, owned cars and upgrades are cleared; stars stay.
 	var old: Dictionary = save.default_profile()
-	old["schema"] = 4
+	old["schema"] = 5
 	old["credits"] = 1000
+	old["owned_cars"] = ["marauder", "veloce"]
+	old["upgrade_refund"] = 300
 	old["upgrades"] = {"marauder": {"engine": 2}}
-	old["upgrade_jobs"] = {"marauder|aero": {"car": "marauder", "part": "aero", "level": 1, "done": 0}}
+	old["career"] = {"club_1": 3}
 	save._migrate(old)
-	var want: int = gar.old_upgrade_cost("marauder", 1) * 2 + gar.old_upgrade_cost("marauder", 2)
-	_check(int(old["credits"]) == 1000 + want and not old.has("upgrades") and not old.has("upgrade_jobs"), "old upgrades refunded (+%d CR)" % want)
+	_check(not old.has("credits") and not old.has("owned_cars") and not old.has("upgrade_refund") and not old.has("upgrades") and int(old["career"]["club_1"]) == 3, "old saves: money and owned cars removed, stars kept")
 
 	# --- Career: a race
 	var ev: Dictionary = car_mod.event(0, 0)
 	ev["car"] = "marauder"
 	ev["return_to"] = "res://scenes/career.tscn"
 	save.pending_event = ev
-	var cr0: int = save.credits()
 	var race := await _race()
 	var rw: Dictionary = race.last_reward
-	print("    club race: P%d of %d, %d stars, +%d CR" % [race.player.position, race.entrants.size(), int(rw.get("stars", -1)), int(rw.get("credits", 0))])
+	print("    club race: P%d of %d, %d stars" % [race.player.position, race.entrants.size(), int(rw.get("stars", -1))])
 	_check(race.entrants.size() == 8 and race._results_shown, "career race: 8 cars, finished")
 	_check(int(rw.get("stars", -1)) == car_mod.stars_for_position("race", race.player.position) and save.career_stars("club_1") == int(rw["stars"]), "stars by finishing place, saved")
-	_check(save.credits() == cr0 + int(rw["credits"]) and int(rw["credits"]) > 0, "credits paid")
+	_check(not rw.has("credits") and not save.data.has("credits"), "no money paid out")
 	race.queue_free()
 	await process_frame
 
@@ -129,11 +131,10 @@ func _run() -> void:
 			dev = ev3
 			break
 	save.pending_event = dev
-	cr0 = save.credits()
 	race = await _race()
-	print("    daily: %s -> P%d, %d stars, +%d CR" % [daily.describe(dev), race.player.position, int(race.last_reward.get("stars", -1)), save.credits() - cr0])
+	print("    daily: %s -> P%d, %d stars" % [daily.describe(dev), race.player.position, int(race.last_reward.get("stars", -1))])
 	_check(String(race._tod) == "night" and String(race.car.spec["id"]) == String(dev["car"]), "the daily's twist and loaned car are used (night, %s)" % dev["car"])
-	_check(save.career_stars(String(dev["id"])) == int(race.last_reward.get("stars", -9)) and save.credits() > cr0, "daily stars saved and credits paid")
+	_check(save.career_stars(String(dev["id"])) == int(race.last_reward.get("stars", -9)) , "daily stars saved")
 	race.queue_free()
 	await process_frame
 

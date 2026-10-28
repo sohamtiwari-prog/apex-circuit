@@ -2,7 +2,7 @@ class_name Daily
 extends RefCounted
 ## The daily challenge: one event a day, the same for everyone (picked from
 ## the date), in a car lent to you for the day, with a twist (night, rain,
-## a short sprint, a rival). Up to 3 stars; credits for each new star.
+## a short sprint, a rival). Up to 3 stars.
 
 const TWISTS := [
 	["race", "Sprint race", {}],
@@ -45,7 +45,7 @@ static func event(day := "") -> Dictionary:
 			opponents = 0
 	var ev := {
 		"id": "daily_" + day, "type": type, "track": track, "laps": laps, "opponents": opponents,
-		"skill": 0.93, "reward": 3000, "cars": [car], "car": car, "series": 2,
+		"skill": 0.93, "cars": [car], "car": car, "series": 2,
 		"series_name": "Daily challenge", "title": String(tw[1]),
 		"return_to": "res://scenes/hub.tscn",
 	}

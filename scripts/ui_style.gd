@@ -104,19 +104,9 @@ static func button(text: String, cb: Callable, primary := false, size := 26) -> 
 	return b
 
 
-## "12,450 CR"
-static func money(n: int) -> String:
-	var s := str(absi(n))
-	var out := ""
-	while s.length() > 3:
-		out = "," + s.substr(s.length() - 3) + out
-		s = s.substr(0, s.length() - 3)
-	return ("-" if n < 0 else "") + s + out + " CR"
-
-
-## Top bar for the menu screens: back arrow, title, and your credits.
-## Returns [bar, credits label].
-static func header(title: String, on_back: Callable, credits: int) -> Array:
+## Top bar for the menu screens: back arrow, title, and a pill on the right
+## (your career stars). Returns [bar, pill label].
+static func header(title: String, on_back: Callable, pill_text := "") -> Array:
 	var bar := HBoxContainer.new()
 	bar.add_theme_constant_override("separation", 16)
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -135,7 +125,8 @@ static func header(title: String, on_back: Callable, credits: int) -> Array:
 	pill.add_theme_stylebox_override("panel", sb)
 	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	bar.add_child(pill)
-	var c := label(money(credits), 30, PAPER, "extrabold", true)
+	var c := label(pill_text, 30, PAPER, "extrabold", true)
+	pill.visible = pill_text != ""
 	pill.add_child(c)
 	return [bar, c]
 

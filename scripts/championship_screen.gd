@@ -1,8 +1,8 @@
 extends Node3D
-## Championship. No season running: pick a class (you need a car for it),
-## how many rounds and how long the races are, and start. During a season:
-## the rounds (done ones with your result), the standings, and the next
-## race weekend. At the end: your final position, trophy and prize.
+## Championship. No season running: pick a class (and a car for it), how
+## many rounds and how long the races are, and start. During a season: the
+## rounds (done ones with your result), the standings, and the next race
+## weekend. At the end: your final position and trophy.
 
 var save: Node
 var room: Showroom
@@ -11,6 +11,7 @@ var _body: Control
 var _pick_class := "gp"
 var _rounds := 6
 var _laps := 3
+var _car := ""
 
 
 func _ready() -> void:
@@ -20,19 +21,14 @@ func _ready() -> void:
 	add_child(room)
 	room.build(Vector3(5.0, 1.8, 6.2), Vector3(-1.2, 0.0, 1.8), 40.0)
 	room.spin = 0.12
-	for c in Championship.CLASSES:
-		if _owned_in(c) != "":
-			_pick_class = String(c["id"])
-			break
 	_build_ui()
 	_refresh()
 
 
-func _owned_in(c: Dictionary) -> String:
-	for car in c["cars"]:
-		if save.owns(String(car)):
-			return String(car)
-	return ""
+## The car you'll race in a class: the one you picked, else its first.
+func _car_in(c: Dictionary) -> String:
+	var cars: Array = c["cars"]
+	return _car if cars.has(_car) else String(cars[0])
 
 
 func _build_ui() -> void:
@@ -48,7 +44,7 @@ func _build_ui() -> void:
 	v.add_theme_constant_override("separation", 12)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(v)
-	var head: Array = UIStyle.header("Championship", func(): get_tree().change_scene_to_file("res://scenes/hub.tscn"), save.credits())
+	var head: Array = UIStyle.header("Championship", func(): get_tree().change_scene_to_file("res://scenes/hub.tscn"), "%d stars" % Career.total_stars(save))
 	v.add_child(head[0])
 	_body = HBoxContainer.new()
 	_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -89,19 +85,15 @@ func _build_setup() -> void:
 	var left := _panel(520)
 	left.add_child(UIStyle.label("Choose a championship", 30, UIStyle.PAPER, "extrabold", true))
 	for c in Championship.CLASSES:
-		var mine := _owned_in(c)
 		var cars: Array = []
 		for car in c["cars"]:
 			cars.append(CarSpecs.display_name(String(car)))
-		var sub := (" or ".join(cars) + "  ·  prize " + UIStyle.money(int(c["prize"]))) if mine != "" else ("Needs a " + " or ".join(cars))
 		var id := String(c["id"])
-		var b := UIStyle.tile(String(c["name"]), sub, func():
-			if _owned_in(Championship.class_info(id)) != "":
-				_pick_class = id
-				_refresh(), id == _pick_class, 24)
+		var b := UIStyle.tile(String(c["name"]), " or ".join(cars), func():
+			_pick_class = id
+			_refresh(), id == _pick_class, 24)
 		b.custom_minimum_size = Vector2(0, 70)
 		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		b.modulate.a = 1.0 if mine != "" else 0.45
 		left.add_child(b)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -109,19 +101,21 @@ func _build_setup() -> void:
 	_body.add_child(sp)
 	var right := _panel(400)
 	var info := Championship.class_info(_pick_class)
-	var car := _owned_in(info)
+	var car := _car_in(info)
 	right.add_child(UIStyle.label(String(info["name"]), 28, UIStyle.PAPER, "extrabold", true))
-	if car == "":
-		var l := UIStyle.label("Buy a car for this championship in the Garage.", 21, UIStyle.YELLOW, "bold")
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		right.add_child(l)
-		var g := UIStyle.button("Go to the Garage", func(): get_tree().change_scene_to_file("res://scenes/garage.tscn"), true, 28)
-		g.custom_minimum_size = Vector2(0, 76)
-		right.add_child(g)
-		return
 	room.show_spec(save.car_spec(car, int(save.get_setting("team"))))
 	var spec: Dictionary = save.car_spec(car)
-	right.add_child(UIStyle.label("%s  ·  PR %.1f" % [spec["name"], Garage.pr(spec)], 21, UIStyle.FOG, "bold", true))
+	var crow := HBoxContainer.new()
+	crow.add_theme_constant_override("separation", 8)
+	right.add_child(crow)
+	var cl := UIStyle.label("%s  ·  PR %.1f" % [spec["name"], Garage.pr(spec)], 21, UIStyle.FOG, "bold", true)
+	cl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	crow.add_child(cl)
+	var choices: Array = info["cars"]
+	if choices.size() > 1:
+		crow.add_child(UIStyle.button("Switch", func():
+			_car = String(choices[(choices.find(car) + 1) % choices.size()])
+			_refresh(), false, 20))
 	var tracks: Array = []
 	for t in (info["rounds"] as Array).slice(0, _rounds):
 		tracks.append(String(Track.catalog_entry(String(t))["name"]).replace(" Circuit", "").replace("Circuit ", ""))

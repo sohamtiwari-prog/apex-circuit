@@ -3,25 +3,24 @@ extends RefCounted
 ## Championship seasons: the same 20 drivers over several rounds, points
 ## for the top ten (25-18-15-12-10-8-6-4-2-1, +1 for the fastest lap in the
 ## top ten), driver standings (and team standings for Grand Prix), and a
-## trophy and prize money at the end. Every round is a race weekend:
+## trophy at the end. Every round is a race weekend:
 ## qualifying sets the grid, then the race (tyres, pit stops, weather).
 ##
 ## The season lives in save.data["championship"] so it survives restarts.
 
 const POINTS := [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
 const CLASSES := [
-	{"id": "gp", "name": "Grand Prix World Championship", "cars": ["gp26"], "prize": 60000,
+	{"id": "gp", "name": "Grand Prix World Championship", "cars": ["gp26"],
 		"rounds": ["desert", "ile_royale", "riviera", "silvermoor", "pannonia", "ardennes", "brianza", "marina", "entrelagos", "gulf"]},
-	{"id": "hyper", "name": "Hypercar Masters", "cars": ["veloce", "toro_furia"], "prize": 35000,
+	{"id": "hyper", "name": "Hypercar Masters", "cars": ["veloce", "toro_furia"],
 		"rounds": ["brianza", "ardennes", "silvermoor", "marina", "entrelagos", "gulf"]},
-	{"id": "super", "name": "Supercar Championship", "cars": ["vanta_gt", "toro_furia"], "prize": 22000,
+	{"id": "super", "name": "Supercar Championship", "cars": ["vanta_gt", "toro_furia"],
 		"rounds": ["silvermoor", "ile_royale", "styria", "pannonia", "desert", "gulf"]},
-	{"id": "sports", "name": "Sports Car Cup", "cars": ["stuttgart9"], "prize": 14000,
+	{"id": "sports", "name": "Sports Car Cup", "cars": ["stuttgart9"],
 		"rounds": ["styria", "kestrel_park", "entrelagos", "riviera", "silvermoor", "desert"]},
-	{"id": "muscle", "name": "Muscle Car Series", "cars": ["marauder"], "prize": 8000,
+	{"id": "muscle", "name": "Muscle Car Series", "cars": ["marauder"],
 		"rounds": ["kestrel_park", "styria", "entrelagos", "brianza", "silvermoor", "desert"]},
 ]
-const PRIZE_SHARE := [1.0, 0.6, 0.45, 0.3, 0.25, 0.2, 0.15, 0.12, 0.1, 0.08]
 
 
 static func class_info(id: String) -> Dictionary:
@@ -94,7 +93,7 @@ static func round_event(save: Node) -> Dictionary:
 	return {
 		"id": "", "type": "champ_round", "series": 4, "series_name": String(s["name"]),
 		"track": String(s["rounds"][r]), "laps": int(s["laps"]), "opponents": 19,
-		"skill": 0.93, "reward": 0, "cars": info["cars"], "car": String(s["car"]),
+		"skill": 0.93, "cars": info["cars"], "car": String(s["car"]),
 		"drivers": s["drivers"], "round": r, "rounds": (s["rounds"] as Array).size(),
 		"qualifying": true, "weekend": true,
 		"return_to": "res://scenes/championship.tscn",
@@ -164,15 +163,10 @@ static func team_standings(s: Dictionary) -> Array:
 static func _finish(save: Node, s: Dictionary) -> Dictionary:
 	var pos := standing_of(s, 0)
 	var info := class_info(String(s["class"]))
-	var prize := 0
-	if pos <= PRIZE_SHARE.size():
-		prize = int(round(int(info["prize"]) * float(PRIZE_SHARE[pos - 1]) / 100.0)) * 100
-	save.add_credits(prize)
 	(save.data["trophies"] as Array).append({"series": String(s["name"]), "position": pos,
 		"date": Time.get_date_string_from_system()})
 	var stars := clampi(4 - pos, 0, 3)
 	var fresh := 0
 	if String(s.get("career_event", "")) != "":
 		fresh = save.set_career_stars(String(s["career_event"]), stars)
-		save.add_credits(fresh * int(Career.STAR_BONUS[5]))
-	return {"position": pos, "prize": prize, "stars": stars, "new_stars": fresh}
+	return {"position": pos, "stars": stars, "new_stars": fresh}

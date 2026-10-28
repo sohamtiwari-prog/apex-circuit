@@ -145,7 +145,7 @@ func _build_car_side(cols: Control) -> void:
 	left.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	left.add_theme_constant_override("separation", 2)
 	cols.add_child(left)
-	var head: Array = UIStyle.header("Quick race", func(): get_tree().change_scene_to_file("res://scenes/hub.tscn"), save.credits())
+	var head: Array = UIStyle.header("Quick race", func(): get_tree().change_scene_to_file("res://scenes/hub.tscn"), "%d stars" % Career.total_stars(save))
 	left.add_child(head[0])
 	_owned_lbl = UIStyle.outlined(UIStyle.label("", 22, UIStyle.FOG, "bold", true), 4)
 	left.add_child(_owned_lbl)
@@ -379,12 +379,8 @@ func _select_car(id: String, persist: bool) -> void:
 	_show_car(id)
 	var spec: Dictionary = save.car_spec(id)
 	_car_name.text = spec["name"]
-	if save.owns(id):
-		_owned_lbl.text = "Your car  ·  PR %.1f" % Garage.pr(spec)
-		_owned_lbl.add_theme_color_override("font_color", UIStyle.GREEN)
-	else:
-		_owned_lbl.text = "Test drive  ·  PR %.1f  ·  buy it in the Garage" % Garage.pr(spec)
-		_owned_lbl.add_theme_color_override("font_color", UIStyle.FOG)
+	_owned_lbl.text = "PR %.1f" % Garage.pr(spec)
+	_owned_lbl.add_theme_color_override("font_color", UIStyle.GREEN)
 	var parts: PackedStringArray = String(spec["desc"]).split(" · ")
 	_car_kind.text = parts[0] if parts.size() > 0 else ""
 	_car_count.text = "Car %d of %d" % [car_ids.find(id) + 1, car_ids.size()]

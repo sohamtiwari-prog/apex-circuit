@@ -19,9 +19,7 @@ func _run() -> void:
 	await process_frame
 	var save: Node = root.get_node("Save")
 	save.data = save.default_profile()
-	save.data["credits"] = 42350
 	save.data["rank_points"] = 640
-	(save.data["owned_cars"] as Array).append("stuttgart9")
 	save.data["career"] = {"club_1": 3, "club_2": 2, "club_3": 3, "club_4": 1, "club_5": 2}
 	await _open("res://scenes/hub.tscn")
 	await _shot(out + "/g1_hub.png")
@@ -31,7 +29,7 @@ func _run() -> void:
 	garage._select("marauder")
 	await _shot(out + "/g3_garage.png")
 	garage._select("vanta_gt")
-	await _shot(out + "/g4_garage_buy.png")
+	await _shot(out + "/g4_garage_car.png")
 	await _open("res://scenes/championship.tscn")
 	await _shot(out + "/g5_champ_setup.png")
 	Championship.start(save, "sports", "stuttgart9", "", 6, 3)

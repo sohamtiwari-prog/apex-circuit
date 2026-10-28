@@ -1,14 +1,12 @@
 extends Node3D
-## Garage: every car (yours with their PR, the rest with prices) on the
-## left, the selected car on the turntable, and on the right how it
-## performs, where it races, and Buy (or make it the car on your home
-## screen, or take it for a drive).
+## Garage: every car on the left (all of them are yours to drive), the
+## selected car on the turntable, and on the right how it performs, where
+## it races, and buttons to make it your home car or take it for a drive.
 
 var save: Node
 var room: Showroom
 var ui: CanvasLayer
 var car_id := ""
-var _credits: Label
 var _list: VBoxContainer
 var _panel: VBoxContainer
 var _tick := 0.0
@@ -39,9 +37,8 @@ func _build_ui() -> void:
 	v.add_theme_constant_override("separation", 12)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(v)
-	var head: Array = UIStyle.header("Garage", func(): get_tree().change_scene_to_file("res://scenes/hub.tscn"), save.credits())
+	var head: Array = UIStyle.header("Garage", func(): get_tree().change_scene_to_file("res://scenes/hub.tscn"), "%d stars" % Career.total_stars(save))
 	v.add_child(head[0])
-	_credits = head[1]
 	var body := HBoxContainer.new()
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 16)
@@ -68,38 +65,31 @@ func _build_ui() -> void:
 
 func _select(id: String) -> void:
 	car_id = id
-	if save.owns(id):
-		save.set_setting("garage_car", id)
 	room.show_spec(save.car_spec(id))
 	_refresh()
 
 
 func _refresh() -> void:
-	_credits.text = UIStyle.money(save.credits())
 	for c in _list.get_children():
 		c.queue_free()
 	for c in _panel.get_children():
 		c.queue_free()
 	var ids: Array = Array(CarSpecs.CATALOG).duplicate()
-	ids.sort_custom(func(x, y): return Garage.price(x) < Garage.price(y))
+	ids.sort_custom(func(x, y): return Garage.pr(CarSpecs.get_spec(x)) < Garage.pr(CarSpecs.get_spec(y)))
 	for id in ids:
 		var spec: Dictionary = save.car_spec(id)
-		var owned: bool = save.owns(id)
-		var sub := ("PR %.1f" % Garage.pr(spec)) if owned else UIStyle.money(Garage.price(id))
-		if owned and String(save.get_setting("garage_car")) == id:
+		var sub := "PR %.1f" % Garage.pr(spec)
+		if String(save.get_setting("garage_car")) == id:
 			sub += "  ·  home car"
 		var b := UIStyle.tile(String(spec["name"]), sub, func(): _select(id), id == car_id, 24)
 		b.custom_minimum_size = Vector2(0, 66)
 		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		if not owned and id != car_id:
-			b.modulate.a = 0.75
 		_list.add_child(b)
 	_build_panel()
 
 
 func _build_panel() -> void:
 	var spec: Dictionary = save.car_spec(car_id)
-	var owned: bool = save.owns(car_id)
 	var top := HBoxContainer.new()
 	_panel.add_child(top)
 	var names := VBoxContainer.new()
@@ -137,17 +127,6 @@ func _build_panel() -> void:
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_panel.add_child(sp)
 
-	if not owned:
-		var price := Garage.price(car_id)
-		var can: bool = save.credits() >= price
-		var b := UIStyle.button(("Buy  ·  " + UIStyle.money(price)) if can else ("Need %s more" % UIStyle.money(price - save.credits())), func():
-			if save.buy_car(car_id):
-				_select(car_id), can, 32)
-		b.disabled = not can
-		b.custom_minimum_size = Vector2(0, 80)
-		_panel.add_child(b)
-		_panel.add_child(UIStyle.label("You can still test-drive it in Quick race.", 18, UIStyle.FOG, "medium"))
-		return
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	_panel.add_child(row)

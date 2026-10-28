@@ -156,30 +156,27 @@ now for what's coming at your current speed.
 ## Career, garage and championships
 
 - **Home screen:** Career, Championship, Quick race, Friends and Garage,
-  with your car, rank and credits.
+  with your car, rank and career stars.
 - **Career:** five series (Club Muscle Cup, Sports Car Trophy, Supercar
   Series, Hypercar Challenge, Grand Prix), six events each: races, duels
   against one rival, overtake challenges (start last), eliminators (last
   car out every lap) and time trials (gold / silver / bronze). Up to 3
   stars per event; stars unlock the next series. The Grand Prix series
   ends with a full World Championship season.
-- **Garage:** start with the Marauder V8 and 10,000 credits; buy the rest
-  (18,000 to 120,000 CR) with race winnings (quick races pay too). No
-  upgrades: every car races exactly as it comes, so it's down to the
+- **Garage:** every car is open from the start: no money, no buying, no
+  upgrades. Every car races exactly as it comes, so it's down to the
   driving. The garage shows how each car performs (power, weight, top
   speed, grip, braking and its Performance Rating), where it races, and
-  lets you pick the car on your home screen. (Credits spent on upgrades in
-  the version that had them were refunded.)
+  lets you pick the car on your home screen or take it for a drive.
 - **Daily challenge:** a new event every day (picked from the date, the
   same for everyone) in a car loaned for the day, with a twist: a night
-  race, rain, a charge from the back, a duel or a hot lap. Up to 3 stars
-  and up to 5,700 CR.
+  race, rain, a charge from the back, a duel or a hot lap. Up to 3 stars.
 - **Profile & trophies:** your rank, totals (races, wins, podiums, laps,
-  distance, stars, cars), your best lap at every track and the trophy
+  distance, stars), your best lap at every track and the trophy
   cabinet from championships.
-- **Championship:** pick a class you own a car for, 3 to 6 rounds, 2 to 5
+- **Championship:** pick a class and a car for it, 3 to 10 rounds, 2 to 5
   laps; the same 20 drivers all season, points 25-18-15-12-10-8-6-4-2-1
-  (+1 fastest lap), driver and team standings, a trophy and prize money.
+  (+1 fastest lap), driver and team standings and a trophy.
 - **Race weekends:** qualifying (one flying lap from a rolling out-lap,
   or skip it) sets the grid; choose soft / medium / hard / wet tyres; tyres
   wear (grip fades, then drops off a cliff) and you tap the tyre panel to
@@ -327,7 +324,7 @@ backup. Android's auto-backup is enabled too.
   audio, traction control and ABS, cockpit view, main menu with car and track select
 - [x] **Milestone 2: racing.** 20-car grids, start lights, overtaking AI, positions, results
 - [x] **Multiplayer.** Race friends over Wi-Fi/hotspot or online, bots fill the grid
-- [x] **Milestone 3: career and garage.** Career series, credits, buying cars, championships, race weekends
+- [x] **Milestone 3: career and garage.** Career series, garage, championships, race weekends
 - [ ] **Milestone 4: content and polish.** More GP tracks (Monza, Spa, ...), more cars,
   realistic textures and models, tyre compounds, pit stops, DRS
 
@@ -359,7 +356,7 @@ scripts/
   replay_ui.gd       replay controls and timeline
   hub.gd             home screen
   career.gd / career_screen.gd          career series, events, stars, rewards
-  garage.gd / garage_screen.gd          prices, Performance Rating, buying cars
+  garage.gd / garage_screen.gd          Performance Rating, car stats
   championship.gd / championship_screen.gd  seasons, points, standings
   weekend.gd         qualifying, tyre wear, pit stops, weather
   race_engineer.gd   radio messages, flags, vibration

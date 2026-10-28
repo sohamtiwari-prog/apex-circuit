@@ -2,9 +2,7 @@ class_name Career
 extends RefCounted
 ## Career: five series from club racing to Grand Prix. Each series has six
 ## events of different kinds; each event awards up to 3 stars. Stars unlock
-## the next series (and you'll need a car that's allowed in it: buy one in
-## the garage). Credits come from every finish, plus a bonus for each new
-## star.
+## the next series; each series is raced in its own class of car.
 ##
 ## Event types:
 ##   race        a race; 3 stars for a win, 2 for second, 1 for third
@@ -14,60 +12,59 @@ extends RefCounted
 ##   time_trial  your best lap against gold / silver / bronze times
 ##   season      (Grand Prix finale) a full championship season
 
-const STAR_BONUS := [0, 400, 650, 900, 1300, 2000]     # per new star, by series
 
 ## Each series: id, name, allowed cars, stars needed to unlock, events.
-## Event: [type, track, laps, opponents, AI skill, credits]
+## Event: [type, track, laps, opponents, AI skill]
 const SERIES := [
 	{"id": "club", "name": "Club Muscle Cup", "cars": ["marauder"], "unlock": 0,
 		"blurb": "Big V8s, short races. Learn the tracks.",
 		"events": [
-			["race", "kestrel_park", 3, 7, 0.86, 1500],
-			["time_trial", "styria", 3, 0, 0.0, 1200],
-			["duel", "entrelagos", 2, 1, 0.9, 1800],
-			["overtake", "silvermoor", 2, 7, 0.86, 2000],
-			["eliminator", "kestrel_park", 5, 5, 0.87, 2200],
-			["race", "brianza", 2, 11, 0.89, 2500],
+			["race", "kestrel_park", 3, 7, 0.86],
+			["time_trial", "styria", 3, 0, 0.0],
+			["duel", "entrelagos", 2, 1, 0.9],
+			["overtake", "silvermoor", 2, 7, 0.86],
+			["eliminator", "kestrel_park", 5, 5, 0.87],
+			["race", "brianza", 2, 11, 0.89],
 		]},
 	{"id": "sports", "name": "Sports Car Trophy", "cars": ["stuttgart9"], "unlock": 10,
 		"blurb": "Rear-engined and twitchy. Smooth wins.",
 		"events": [
-			["race", "pannonia", 3, 9, 0.89, 2500],
-			["duel", "riviera", 2, 1, 0.91, 2800],
-			["time_trial", "entrelagos", 3, 0, 0.0, 2200],
-			["eliminator", "styria", 5, 5, 0.9, 3000],
-			["overtake", "desert", 2, 9, 0.9, 3200],
-			["race", "ardennes", 2, 11, 0.91, 3500],
+			["race", "pannonia", 3, 9, 0.89],
+			["duel", "riviera", 2, 1, 0.91],
+			["time_trial", "entrelagos", 3, 0, 0.0],
+			["eliminator", "styria", 5, 5, 0.9],
+			["overtake", "desert", 2, 9, 0.9],
+			["race", "ardennes", 2, 11, 0.91],
 		]},
 	{"id": "super", "name": "Supercar Series", "cars": ["vanta_gt", "toro_furia"], "unlock": 25,
 		"blurb": "Mid-engined missiles on the great circuits.",
 		"events": [
-			["race", "silvermoor", 2, 11, 0.91, 3500],
-			["time_trial", "brianza", 3, 0, 0.0, 3200],
-			["overtake", "styria", 3, 11, 0.91, 4000],
-			["duel", "ardennes", 2, 1, 0.93, 4200],
-			["eliminator", "ile_royale", 6, 6, 0.92, 4500],
-			["race", "gulf", 3, 15, 0.93, 5000],
+			["race", "silvermoor", 2, 11, 0.91],
+			["time_trial", "brianza", 3, 0, 0.0],
+			["overtake", "styria", 3, 11, 0.91],
+			["duel", "ardennes", 2, 1, 0.93],
+			["eliminator", "ile_royale", 6, 6, 0.92],
+			["race", "gulf", 3, 15, 0.93],
 		]},
 	{"id": "hyper", "name": "Hypercar Challenge", "cars": ["veloce", "toro_furia"], "unlock": 42,
 		"blurb": "Over 400 km/h. Brake early.",
 		"events": [
-			["race", "brianza", 2, 11, 0.92, 5000],
-			["duel", "silvermoor", 2, 1, 0.94, 5500],
-			["time_trial", "ardennes", 2, 0, 0.0, 5000],
-			["overtake", "entrelagos", 3, 11, 0.93, 6000],
-			["eliminator", "desert", 6, 6, 0.93, 6500],
-			["race", "marina", 3, 15, 0.94, 7000],
+			["race", "brianza", 2, 11, 0.92],
+			["duel", "silvermoor", 2, 1, 0.94],
+			["time_trial", "ardennes", 2, 0, 0.0],
+			["overtake", "entrelagos", 3, 11, 0.93],
+			["eliminator", "desert", 6, 6, 0.93],
+			["race", "marina", 3, 15, 0.94],
 		]},
 	{"id": "gp", "name": "Grand Prix", "cars": ["gp26"], "unlock": 60,
 		"blurb": "The top of the sport: 1000 hp and 20-car grids.",
 		"events": [
-			["race", "styria", 3, 19, 0.93, 8000],
-			["time_trial", "silvermoor", 3, 0, 0.0, 7000],
-			["duel", "pannonia", 3, 1, 0.96, 9000],
-			["overtake", "brianza", 3, 19, 0.94, 10000],
-			["eliminator", "styria", 8, 8, 0.95, 11000],
-			["season", "", 0, 19, 0.95, 25000],
+			["race", "styria", 3, 19, 0.93],
+			["time_trial", "silvermoor", 3, 0, 0.0],
+			["duel", "pannonia", 3, 1, 0.96],
+			["overtake", "brianza", 3, 19, 0.94],
+			["eliminator", "styria", 8, 8, 0.95],
+			["season", "", 0, 19, 0.95],
 		]},
 ]
 
@@ -104,7 +101,7 @@ static func event(si: int, ei: int) -> Dictionary:
 	return {
 		"id": event_id(si, ei), "series": si, "index": ei,
 		"type": e[0], "track": e[1], "laps": int(e[2]), "opponents": int(e[3]),
-		"skill": float(e[4]), "reward": int(e[5]),
+		"skill": float(e[4]),
 		"cars": s["cars"], "series_name": s["name"],
 	}
 
@@ -159,23 +156,3 @@ static func lap_targets(track: Track, spec: Dictionary) -> Array:
 	for f in TT_FACTORS:
 		out.append(snappedf(t * f, 0.1))
 	return out
-
-
-## Credits and stars for a result. `position` is the finishing place (1 =
-## win) or, for a time trial, stars come from `stars` directly.
-static func reward(ev: Dictionary, position: int, field: int, stars: int, new_stars: int) -> int:
-	var base := int(ev["reward"])
-	var credits := 0
-	if ev["type"] == "time_trial":
-		credits = int(round(base * maxf(stars / 3.0, 0.25) / 10.0)) * 10
-	else:
-		credits = Garage.race_reward(base, position, field)
-	return credits + new_stars * int(STAR_BONUS[clampi(int(ev["series"]) + 1, 0, STAR_BONUS.size() - 1)])
-
-
-## Credits for a quick race (not career): smaller, but racing always pays.
-static func quick_reward(position: int, field: int, laps: int, difficulty: String) -> int:
-	var base := 500.0 + 250.0 * laps
-	base *= {"easy": 0.7, "medium": 1.0, "hard": 1.35}.get(difficulty, 1.0)
-	base *= clampf(field / 20.0, 0.3, 1.0) + 0.3
-	return Garage.race_reward(int(base), position, field)

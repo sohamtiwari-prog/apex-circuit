@@ -1130,11 +1130,7 @@ func _settle_rewards() -> Dictionary:
 		return {}
 	_rewarded = true
 	if event.is_empty():
-		if mode != "race" or not player.finished:
-			return {}
-		var cr := Career.quick_reward(player.position, entrants.size(), total_laps, _difficulty)
-		save.add_credits(cr)
-		return {"credits": cr}
+		return {}
 	if ev_type == "champ_round":
 		var order: Array = []
 		var ordered := entrants.duplicate()
@@ -1147,10 +1143,7 @@ func _settle_rewards() -> Dictionary:
 				fl = e.best_lap
 				fastest = 0 if e.is_player else e.driver
 		var out := Championship.record_round(save, order, fastest)
-		var base := int({"gp": 6000, "hyper": 4500, "super": 3500, "sports": 2500, "muscle": 1800}.get(String(Championship.active(save).get("class", "gp")), 3000))
-		var cr := Garage.race_reward(base, player.position, entrants.size())
-		save.add_credits(cr)
-		return {"champ": out, "credits": cr, "event": event, "position": player.position}
+		return {"champ": out, "event": event, "position": player.position}
 	if not event.has("id") or String(event["id"]) == "":
 		return {}
 	var stars := 0
@@ -1160,9 +1153,7 @@ func _settle_rewards() -> Dictionary:
 		stars = Career.stars_for_position(ev_type, player.position)
 	var prev: int = save.career_stars(String(event["id"]))
 	var fresh: int = save.set_career_stars(String(event["id"]), stars)
-	var cr := Career.reward(event, player.position, entrants.size(), stars, fresh)
-	save.add_credits(cr)
-	return {"event": event, "stars": stars, "prev": prev, "new": fresh, "credits": cr,
+	return {"event": event, "stars": stars, "prev": prev, "new": fresh,
 		"targets": tt_targets, "best": player.best_lap, "position": player.position}
 
 

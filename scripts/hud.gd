@@ -1011,8 +1011,8 @@ func _champ_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void:
 		sp.custom_minimum_size = Vector2(0, 10)
 		col.add_child(sp)
 		col.add_child(UIStyle.label("CHAMPION!" if int(f["position"]) == 1 else "Season over: P%d" % int(f["position"]), 40, UIStyle.YELLOW, "extrabold", true))
-		if int(f["prize"]) > 0:
-			col.add_child(UIStyle.label("Prize: +" + UIStyle.money(int(f["prize"])), 24, UIStyle.GREEN, "bold", true))
+		if int(f.get("new_stars", 0)) > 0:
+			col.add_child(UIStyle.label("+%d career stars" % int(f["new_stars"]), 24, UIStyle.YELLOW, "bold", true))
 	var sp2 := Control.new()
 	sp2.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(sp2)
@@ -1020,8 +1020,8 @@ func _champ_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void:
 		col.add_child(UIStyle.label("+%d RP   %s" % [int(rank["after"]) - int(rank["before"]), Ranks.tier_name(int(rank["after"]))], 22, Ranks.tier_color(int(rank["after"])), "bold", true))
 
 
-## Career event result: stars (new ones flash in), what they were for, the
-## credits, and rank points.
+## Career event result: stars (new ones flash in), what they were for, and
+## rank points.
 func _reward_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void:
 	var ev: Dictionary = reward["event"]
 	var col := VBoxContainer.new()
@@ -1344,8 +1344,6 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 		var big := UIStyle.label("P%d" % int(me.get("pos", 0)), 150, UIStyle.APEX if int(me.get("pos", 99)) <= 3 else UIStyle.PAPER, "extrabold", true)
 		left.add_child(big)
 		left.add_child(UIStyle.label("of %d" % rows.size(), 30, UIStyle.FOG, "bold", true))
-	if int(reward.get("credits", 0)) > 0:
-		left.add_child(UIStyle.label("+" + UIStyle.money(int(reward["credits"])), 30, UIStyle.GREEN, "extrabold", true))
 	if me.get("best", "-") != "-" and not tt:
 		var bl := UIStyle.label("Best lap %s" % me["best"], 26, UIStyle.PURPLE if me.get("fastest", false) else UIStyle.PAPER, "bold", true)
 		bl.custom_minimum_size = Vector2(0, 54)

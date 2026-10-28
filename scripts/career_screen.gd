@@ -50,7 +50,7 @@ func _build_ui() -> void:
 	v.add_theme_constant_override("separation", 12)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(v)
-	var head: Array = UIStyle.header("Career", func(): get_tree().change_scene_to_file("res://scenes/hub.tscn"), save.credits())
+	var head: Array = UIStyle.header("Career", func(): get_tree().change_scene_to_file("res://scenes/hub.tscn"), "%d stars" % Career.total_stars(save))
 	v.add_child(head[0])
 	_series_box = HBoxContainer.new()
 	_series_box.add_theme_constant_override("separation", 8)
@@ -147,10 +147,10 @@ func _event_card(k: int) -> Control:
 	foot.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	foot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(foot)
-	var money := UIStyle.label(UIStyle.money(int(ev["reward"])), 20, UIStyle.GREEN, "bold", true)
-	money.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	money.size_flags_vertical = Control.SIZE_SHRINK_END
-	foot.add_child(money)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	foot.add_child(gap)
 	if String(ev["track"]) != "":
 		var map := MiniMap.new()
 		map.show_panel = false
@@ -200,27 +200,13 @@ func _build_detail() -> void:
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_detail.add_child(sp)
 
-	# Car: one you own that's allowed here.
-	var allowed: Array = ev["cars"]
+	# Car: any car allowed in this series.
 	var mine: Array = []
-	for c in allowed:
-		if save.owns(String(c)):
-			mine.append(String(c))
+	for c in ev["cars"]:
+		mine.append(String(c))
 	var series_id := String(Career.SERIES[si]["id"])
 	var last := String((save.get_setting("career_car") as Dictionary).get(series_id, ""))
-	_car_pick = last if mine.has(last) else (mine[0] if not mine.is_empty() else "")
-	if mine.is_empty():
-		var names: Array = []
-		for c in allowed:
-			names.append(CarSpecs.display_name(String(c)))
-		var l := UIStyle.label("You need a %s for this series." % " or ".join(names), 21, UIStyle.YELLOW, "bold")
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_detail.add_child(l)
-		var g := UIStyle.button("Go to the Garage", func(): get_tree().change_scene_to_file("res://scenes/garage.tscn"), true, 30)
-		g.custom_minimum_size = Vector2(0, 76)
-		_detail.add_child(g)
-		room.show_spec(CarSpecs.get_spec(String(allowed[0])))
-		return
+	_car_pick = last if mine.has(last) else String(mine[0])
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	_detail.add_child(row)

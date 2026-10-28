@@ -12,7 +12,7 @@ const SAVE_DIR := "user://save"
 const SAVE_PATH := SAVE_DIR + "/profile.json"
 const BACKUP_PATH := SAVE_DIR + "/profile.bak.json"
 const TMP_PATH := SAVE_DIR + "/profile.tmp.json"
-const SCHEMA_VERSION := 5
+const SCHEMA_VERSION := 6
 
 signal saved
 
@@ -86,8 +86,6 @@ const _DEFAULTS := {
 		"podiums": 0,
 	},
 	"best_finish": {},               # "track|car" -> best race position
-	"credits": 10000,                # Garage.START_CREDITS
-	"owned_cars": ["marauder"],      # Garage.STARTER
 	"career": {},                    # event id -> best stars (0..3)
 	"championship": {},              # the season in progress (scripts/championship.gd)
 	"trophies": [],                  # finished seasons: {series, position, year}
@@ -218,29 +216,11 @@ func _migrate(profile: Dictionary) -> void:
 	for key in ["brake_assist", "steer_assist"]:
 		if typeof(st.get(key)) == TYPE_BOOL:
 			st[key] = "full" if st[key] else "off"
-	# v4: the garage. Players from before get credits for the racing they've
-	# already done (their rank points).
-	if int(profile.get("schema", 1)) < 4:
-		profile["credits"] = int(profile.get("credits", 0)) + mini(int(profile.get("rank_points", 0)) * 10, 30000)
-	# v5: upgrades are gone: every credit spent on them comes back.
-	if int(profile.get("schema", 1)) < 5:
-		var refund := 0
-		var ups: Dictionary = profile.get("upgrades", {})
-		for car in ups:
-			for part in ups[car]:
-				for l in range(1, int(ups[car][part]) + 1):
-					refund += Garage.old_upgrade_cost(String(car), l)
-		var jobs: Dictionary = profile.get("upgrade_jobs", {})
-		for key in jobs:
-			var j: Dictionary = jobs[key]
-			if j.has("car"):
-				refund += Garage.old_upgrade_cost(String(j["car"]), int(j["level"]))
-		profile["credits"] = int(profile.get("credits", 0)) + refund
-		profile["upgrade_refund"] = refund
+	# v6: no money and no upgrades: every car is open to everyone.
+	for key in ["credits", "owned_cars", "upgrades", "upgrade_jobs", "upgrade_refund"]:
+		profile.erase(key)
 	if int(profile.get("schema", 1)) < 5 and String(profile["settings"].get("time_of_day", "")) == "day":
 		profile["settings"]["time_of_day"] = "auto"      # so the night races are at night
-	profile.erase("upgrades")
-	profile.erase("upgrade_jobs")
 	# v3: tracks got real elevation and start on the real timing line, so
 	# sector splits and ghost laps from before no longer line up.
 	if int(profile.get("schema", 1)) < 3:
@@ -253,37 +233,7 @@ func _migrate(profile: Dictionary) -> void:
 	profile["schema"] = SCHEMA_VERSION
 
 
-# ---------------------------------------------------------------- garage
-
-func credits() -> int:
-	return int(data.get("credits", 0))
-
-
-func add_credits(n: int) -> void:
-	data["credits"] = credits() + maxi(n, 0)
-	save()
-
-
-## Pays `n` credits if there are enough; false (and nothing paid) if not.
-func spend(n: int) -> bool:
-	if n > credits():
-		return false
-	data["credits"] = credits() - n
-	save()
-	return true
-
-
-func owns(car_id: String) -> bool:
-	return (data["owned_cars"] as Array).has(car_id)
-
-
-func buy_car(car_id: String) -> bool:
-	if owns(car_id) or not spend(Garage.price(car_id)):
-		return false
-	(data["owned_cars"] as Array).append(car_id)
-	save()
-	return true
-
+# ---------------------------------------------------------------- cars
 
 ## A car's spec (every car races as it comes).
 func car_spec(car_id: String, team := 0) -> Dictionary:

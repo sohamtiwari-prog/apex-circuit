@@ -13,7 +13,7 @@ func _ready() -> void:
 	room.build(Vector3(5.0, 1.8, 6.2), Vector3(-2.4, 0.0, 2.2), 40.0)
 	room.spin = 0.12
 	var home := String(save.get_setting("garage_car"))
-	room.show_spec(save.car_spec(home if save.owns(home) else Garage.STARTER))
+	room.show_spec(save.car_spec(home if CarSpecs.CATALOG.has(home) else Garage.STARTER))
 	_build_ui()
 
 
@@ -31,7 +31,7 @@ func _build_ui() -> void:
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(v)
 	var name := String(save.get_setting("player_name"))
-	var head: Array = UIStyle.header(name if name != "" else "Driver profile", func(): get_tree().change_scene_to_file("res://scenes/hub.tscn"), save.credits())
+	var head: Array = UIStyle.header(name if name != "" else "Driver profile", func(): get_tree().change_scene_to_file("res://scenes/hub.tscn"), "%d stars" % Career.total_stars(save))
 	v.add_child(head[0])
 	var body := HBoxContainer.new()
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -50,7 +50,6 @@ func _build_ui() -> void:
 		["Laps", "%d" % int(st["laps"])],
 		["Distance", "%d km" % int(float(st["distance_m"]) / 1000.0)],
 		["Career stars", "%d of %d" % [Career.total_stars(save), Career.SERIES.size() * 18]],
-		["Cars", "%d of %d" % [(save.data["owned_cars"] as Array).size(), CarSpecs.CATALOG.size()]],
 	]
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 6)
