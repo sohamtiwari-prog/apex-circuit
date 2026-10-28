@@ -54,6 +54,10 @@ func _run() -> void:
 		var e0: Dictionary = car_mod.event(si, 0)
 		all_open = all_open and not e0.has("reward") and (e0["cars"] as Array).size() > 0
 	_check(all_open, "career events carry no prize money")
+	var no_locks := true
+	for se in car_mod.SERIES:
+		no_locks = no_locks and not (se as Dictionary).has("unlock")
+	_check(no_locks and not car_mod.has_method("unlocked") and car_mod.total_stars(save) == 0, "every series open on a new profile (no stars needed)")
 
 	# Old saves: money, owned cars and upgrades are cleared; stars stay.
 	var old: Dictionary = save.default_profile()

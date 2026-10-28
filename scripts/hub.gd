@@ -75,10 +75,7 @@ func _build_ui() -> void:
 	var head: Array = UIStyle.header("", Callable(), "%d stars" % Career.total_stars(save))
 	right.add_child(head[0])
 	var stars := Career.total_stars(save)
-	var tier := 0
-	for si in Career.SERIES.size():
-		if Career.unlocked(save, si):
-			tier = si
+	var tier := clampi(int(save.get_setting("career_series")), 0, Career.SERIES.size() - 1)
 	_tile(right, "career", "Career", "%s  ·  %d of %d stars" % [Career.SERIES[tier]["name"], stars, Career.SERIES.size() * 18], "res://scenes/career.tscn", true)
 	var daily := Daily.event()
 	var dstars: int = save.career_stars(String(daily["id"]))

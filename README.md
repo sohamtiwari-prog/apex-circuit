@@ -161,7 +161,7 @@ now for what's coming at your current speed.
   Series, Hypercar Challenge, Grand Prix), six events each: races, duels
   against one rival, overtake challenges (start last), eliminators (last
   car out every lap) and time trials (gold / silver / bronze). Up to 3
-  stars per event; stars unlock the next series. The Grand Prix series
+  stars per event; every series is open from the start. The Grand Prix series
   ends with a full World Championship season.
 - **Garage:** every car is open from the start: no money, no buying, no
   upgrades. Every car races exactly as it comes, so it's down to the

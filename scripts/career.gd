@@ -1,8 +1,8 @@
 class_name Career
 extends RefCounted
 ## Career: five series from club racing to Grand Prix. Each series has six
-## events of different kinds; each event awards up to 3 stars. Stars unlock
-## the next series; each series is raced in its own class of car.
+## events of different kinds; each event awards up to 3 stars. Every series
+## is open from the start; each is raced in its own class of car.
 ##
 ## Event types:
 ##   race        a race; 3 stars for a win, 2 for second, 1 for third
@@ -13,10 +13,10 @@ extends RefCounted
 ##   season      (Grand Prix finale) a full championship season
 
 
-## Each series: id, name, allowed cars, stars needed to unlock, events.
+## Each series: id, name, allowed cars, events.
 ## Event: [type, track, laps, opponents, AI skill]
 const SERIES := [
-	{"id": "club", "name": "Club Muscle Cup", "cars": ["marauder"], "unlock": 0,
+	{"id": "club", "name": "Club Muscle Cup", "cars": ["marauder"],
 		"blurb": "Big V8s, short races. Learn the tracks.",
 		"events": [
 			["race", "kestrel_park", 3, 7, 0.86],
@@ -26,7 +26,7 @@ const SERIES := [
 			["eliminator", "kestrel_park", 5, 5, 0.87],
 			["race", "brianza", 2, 11, 0.89],
 		]},
-	{"id": "sports", "name": "Sports Car Trophy", "cars": ["stuttgart9"], "unlock": 10,
+	{"id": "sports", "name": "Sports Car Trophy", "cars": ["stuttgart9"],
 		"blurb": "Rear-engined and twitchy. Smooth wins.",
 		"events": [
 			["race", "pannonia", 3, 9, 0.89],
@@ -36,7 +36,7 @@ const SERIES := [
 			["overtake", "desert", 2, 9, 0.9],
 			["race", "ardennes", 2, 11, 0.91],
 		]},
-	{"id": "super", "name": "Supercar Series", "cars": ["vanta_gt", "toro_furia"], "unlock": 25,
+	{"id": "super", "name": "Supercar Series", "cars": ["vanta_gt", "toro_furia"],
 		"blurb": "Mid-engined missiles on the great circuits.",
 		"events": [
 			["race", "silvermoor", 2, 11, 0.91],
@@ -46,7 +46,7 @@ const SERIES := [
 			["eliminator", "ile_royale", 6, 6, 0.92],
 			["race", "gulf", 3, 15, 0.93],
 		]},
-	{"id": "hyper", "name": "Hypercar Challenge", "cars": ["veloce", "toro_furia"], "unlock": 42,
+	{"id": "hyper", "name": "Hypercar Challenge", "cars": ["veloce", "toro_furia"],
 		"blurb": "Over 400 km/h. Brake early.",
 		"events": [
 			["race", "brianza", 2, 11, 0.92],
@@ -56,7 +56,7 @@ const SERIES := [
 			["eliminator", "desert", 6, 6, 0.93],
 			["race", "marina", 3, 15, 0.94],
 		]},
-	{"id": "gp", "name": "Grand Prix", "cars": ["gp26"], "unlock": 60,
+	{"id": "gp", "name": "Grand Prix", "cars": ["gp26"],
 		"blurb": "The top of the sport: 1000 hp and 20-car grids.",
 		"events": [
 			["race", "styria", 3, 19, 0.93],
@@ -119,10 +119,6 @@ static func series_stars(save: Node, si: int) -> int:
 	for ei in (SERIES[si]["events"] as Array).size():
 		n += save.career_stars(event_id(si, ei))
 	return n
-
-
-static func unlocked(save: Node, si: int) -> bool:
-	return total_stars(save) >= int(SERIES[si]["unlock"])
 
 
 ## Stars for a finishing position in a race-type event.

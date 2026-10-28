@@ -1,7 +1,7 @@
 extends Node3D
-## Career: the five series across the top (locked ones say how many stars
-## they need), the selected series' six events below, and the chosen event's
-## details on the right with a car picker and Start.
+## Career: the five series across the top (all open, with the stars you've
+## won in each), the selected series' six events below, and the chosen
+## event's details on the right with a car picker and Start.
 
 var save: Node
 var room: Showroom
@@ -22,8 +22,6 @@ func _ready() -> void:
 	room.build(Vector3(5.0, 1.8, 6.2), Vector3(-0.6, 0.0, 1.4), 40.0)
 	room.spin = 0.15
 	si = clampi(int(save.get_setting("career_series")), 0, Career.SERIES.size() - 1)
-	if not Career.unlocked(save, si):
-		si = 0
 	ei = _first_open_event(si)
 	_build_ui()
 	_refresh()
@@ -84,21 +82,17 @@ func _refresh() -> void:
 		c.queue_free()
 	for c in _detail.get_children():
 		c.queue_free()
-	var total := Career.total_stars(save)
 	# Series strip.
 	for k in Career.SERIES.size():
 		var s: Dictionary = Career.SERIES[k]
-		var open := Career.unlocked(save, k)
-		var sub := ("%d / 18 stars" % Career.series_stars(save, k)) if open else ("Needs %d stars (you have %d)" % [int(s["unlock"]), total])
+		var sub := "%d / 18 stars" % Career.series_stars(save, k)
 		var b := UIStyle.tile(String(s["name"]), sub, func():
-			if Career.unlocked(save, k):
-				si = k
-				ei = _first_open_event(k)
-				save.set_setting("career_series", k)
-				_refresh(), k == si, 24)
+			si = k
+			ei = _first_open_event(k)
+			save.set_setting("career_series", k)
+			_refresh(), k == si, 24)
 		b.custom_minimum_size = Vector2(0, 74)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.modulate.a = 1.0 if open else 0.5
 		_series_box.add_child(b)
 	# Events of the selected series.
 	var events: Array = Career.SERIES[si]["events"]
