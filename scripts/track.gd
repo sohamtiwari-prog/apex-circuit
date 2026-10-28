@@ -1027,7 +1027,15 @@ func _build_road() -> void:
 	var mat := ShaderMaterial.new()
 	road_mat = mat
 	mat.shader = load("res://shaders/road.gdshader")
-	mat.set_shader_parameter("grain", _noise_texture(0.06, Color(0, 0, 0), Color(1, 1, 1)))
+	var grain := _noise_texture(0.06, Color(0, 0, 0), Color(1, 1, 1))
+	mat.set_shader_parameter("grain", grain)
+	# The same grain as a normal map (the road shader's fine bump), built
+	# here, synchronously.
+	var gimg: Image = (grain.noise as FastNoiseLite).get_seamless_image(256, 256)
+	gimg.convert(Image.FORMAT_RGB8)
+	gimg.bump_map_to_normal_map(4.8)
+	gimg.generate_mipmaps()
+	mat.set_shader_parameter("grain_normal", ImageTexture.create_from_image(gimg))
 
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
@@ -1325,7 +1333,6 @@ static func _foliage_material() -> StandardMaterial3D:
 	noise.cellular_return_type = FastNoiseLite.RETURN_DISTANCE
 	var img: Image = noise.get_seamless_image(128, 128)
 	img.convert(Image.FORMAT_RGB8)
-	var bump := img.duplicate() as Image
 	for y in 128:
 		for x in 128:
 			var v := img.get_pixel(x, y).r
@@ -1333,10 +1340,8 @@ static func _foliage_material() -> StandardMaterial3D:
 			img.set_pixel(x, y, Color(g, g * 1.04, g * 0.88).clamp())
 	img.generate_mipmaps()
 	mat.albedo_texture = ImageTexture.create_from_image(img)
-	bump.bump_map_to_normal_map(6.0)
-	bump.generate_mipmaps()
-	mat.normal_enabled = true
-	mat.normal_texture = ImageTexture.create_from_image(bump)
+	# (No normal map: with triplanar mapping it costs six texture reads per
+	# leaf pixel; the shaded texture alone reads as leaves.)
 	mat.uv1_triplanar = true
 	mat.uv1_scale = Vector3(0.7, 0.7, 0.7)
 	_foliage_mat = mat

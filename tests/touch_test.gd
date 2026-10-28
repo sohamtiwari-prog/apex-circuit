@@ -73,6 +73,17 @@ func _run() -> void:
 	_check(absf(t.steer) < 0.001, "touches in the middle of the screen don't steer")
 	_touch(t, 2, Vector2(sz.x * 0.6 + r, sz.y * 0.5), false)
 
+	# Far cars: one merged mesh past LOD_DISTANCE, the detailed parts nearer.
+	for i in 90:
+		await process_frame
+	var body: Node = race.car.body
+	var far: MeshInstance3D = body._far
+	var parts_ok := far != null and far.mesh.get_surface_count() == 1 and is_equal_approx(far.visibility_range_begin, body.LOD_DISTANCE)
+	for mi in body.find_children("*", "MeshInstance3D", true, false):
+		if mi != far and mi != body._blob:
+			parts_ok = parts_ok and is_equal_approx((mi as MeshInstance3D).visibility_range_end, body.LOD_DISTANCE)
+	_check(parts_ok, "far away the car is one merged mesh (1 draw call)")
+
 	# Losing focus (an edge swipe showing the system bars) doesn't pause the
 	# race; leaving the app does.
 	race.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)

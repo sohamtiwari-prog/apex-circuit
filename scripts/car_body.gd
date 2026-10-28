@@ -1,8 +1,10 @@
 class_name CarBody
 extends Node3D
 ## Builds a car's 3D model procedurally (see MeshKit). The body is merged
-## into one mesh with a surface per material, so each car costs only a few
-## draw calls; each wheel is one more mesh. Car forward is +Z.
+## into one mesh with a surface per material; each wheel is one more mesh.
+## Far from the camera the whole car (body, driver and wheels) is swapped
+## for a single merged mesh with one material: one draw call instead of
+## ~30, which is most of the cost of a full grid. Car forward is +Z.
 
 const FENDER_LIFT := 0.13      # extra height of the upper body over the station data
 const CABIN_LIFT := 0.13
@@ -14,6 +16,13 @@ static var _mats := {}
 static var _wheel_cache := {}
 var _tail_mat: StandardMaterial3D
 var _brake_level := -1.0
+var _blob: MeshInstance3D
+var _far: MeshInstance3D
+var _lod_wait := 0.0
+
+## Beyond this distance (m) the car is drawn as one merged mesh.
+const LOD_DISTANCE := 50.0
+const LOD_MARGIN := 3.0
 
 
 ## Brake lights: brighter while braking. The GP car's rear light flashes
@@ -57,6 +66,72 @@ func build(car_spec: Dictionary, car: RaceCar) -> void:
 	if spec["body"] == "gp":
 		_gp_decals()
 		set_number(int(spec.get("number", 26)))
+	# The far version is merged once the car has settled on its suspension.
+	_lod_wait = 0.8
+	set_process(true)
+
+
+func _process(delta: float) -> void:
+	if _lod_wait <= 0.0:
+		set_process(false)
+		return
+	_lod_wait -= delta
+	if _lod_wait <= 0.0 and is_inside_tree():
+		build_far_lod()
+		set_process(false)
+
+
+## Merges the body, driver and wheels (as they sit now) into one mesh with a
+## single vertex-coloured material, shown beyond LOD_DISTANCE; the detailed
+## parts are hidden there.
+func build_far_lod() -> void:
+	if _far != null:
+		return
+	var st := SurfaceTool.new()
+	var inv := global_transform.affine_inverse()
+	var parts: Array[MeshInstance3D] = []
+	for n in find_children("*", "MeshInstance3D", true, false):
+		if n != _blob:
+			parts.append(n as MeshInstance3D)
+	for mi in _wheel_mis:
+		if is_instance_valid(mi):
+			parts.append(mi as MeshInstance3D)
+	var any := false
+	for mi in parts:
+		if mi.mesh == null or not mi.is_visible_in_tree():
+			continue
+		var xf := inv * mi.global_transform
+		for s in mi.mesh.get_surface_count():
+			st.append_from(mi.mesh, s, xf)
+			any = true
+	if not any:
+		return
+	_far = MeshInstance3D.new()
+	_far.mesh = st.commit()
+	_far.material_override = _far_material()
+	_far.visibility_range_begin = LOD_DISTANCE
+	_far.visibility_range_begin_margin = LOD_MARGIN
+	add_child(_far)
+	# Match the detailed car (the time-trial ghost is see-through, no shadow).
+	var ref: GeometryInstance3D = parts[0]
+	_far.transparency = ref.transparency
+	_far.cast_shadow = ref.cast_shadow
+	for mi in parts:
+		mi.visibility_range_end = LOD_DISTANCE
+		mi.visibility_range_end_margin = LOD_MARGIN
+
+
+static var _far_mat: StandardMaterial3D
+
+static func _far_material() -> StandardMaterial3D:
+	if _far_mat == null:
+		var m := StandardMaterial3D.new()
+		m.vertex_color_use_as_albedo = true
+		m.vertex_color_is_srgb = true
+		m.metallic = 0.35
+		m.roughness = 0.35
+		_far_mat = m
+	return _far_mat
 
 
 ## A soft dark patch under the car: grounds it at any distance (sun shadows
@@ -74,6 +149,7 @@ func _blob_shadow() -> void:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.visibility_range_end = 260.0
 	add_child(mi)
+	_blob = mi
 
 
 static var _shadow_m: StandardMaterial3D
@@ -129,7 +205,7 @@ func _decal(text: String, pos: Vector3, rot: Vector3, px: float, col: Color, siz
 	l.position = pos
 	l.rotation = rot
 	l.double_sided = false
-	l.visibility_range_end = 55.0
+	l.visibility_range_end = 32.0
 	add_child(l)
 	return l
 
@@ -639,7 +715,7 @@ func _plate_text(pos: Vector3, rear: bool) -> void:
 	l.no_depth_test = false
 	if rear:
 		l.rotation.y = PI
-	l.visibility_range_end = 40.0
+	l.visibility_range_end = 32.0
 	add_child(l)
 
 
@@ -742,7 +818,7 @@ func _attach_wheel(w: CarWheel) -> void:
 	var cmi := MeshInstance3D.new()
 	cmi.mesh = cm
 	cmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	cmi.visibility_range_end = 45.0           # small detail: skip it far away
+	cmi.visibility_range_end = 32.0           # small detail: skip it far away
 	cal.add_child(cmi)
 
 

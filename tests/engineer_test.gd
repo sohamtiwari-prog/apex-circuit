@@ -77,9 +77,14 @@ func _run() -> void:
 	lead.ai.speed_cap = 999.0
 	lead.lap = race.player.lap
 	# Contact buzz.
+	eng._last_buzz_ms = -100000
 	var b0: int = eng.buzzes
 	race.car_contact.emit(race.car, lead.car, 6.0)
 	_check(eng.buzzes > b0, "contact buzzes the phone")
+	b0 = eng.buzzes
+	for k in 12:
+		race.car_contact.emit(race.car, lead.car, 6.0)
+	_check(eng.buzzes == b0, "cars rubbing every tick don't flood the vibrator")
 	while not race._results_shown and race.race_time < 400.0:
 		await physics_frame
 	var last: String = eng.radio_log[eng.radio_log.size() - 1] if not eng.radio_log.is_empty() else ""

@@ -6,6 +6,7 @@ render_mode cull_disabled;
 // rubbered in (darker, smoother) where the cars actually drive.
 
 uniform sampler2D grain : filter_linear_mipmap, repeat_enable;
+uniform sampler2D grain_normal : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform float rubber = 0.32;
 uniform float wetness = 0.0;     // 0 dry .. 1 soaked: darker, glossy, puddles off the line
 
@@ -45,11 +46,8 @@ void fragment() {
 	ROUGHNESS = rough;
 	SPECULAR = spec;
 	// Aggregate texture: a fine bump from the grain, so the surface catches
-	// the light (stronger on gravel, gentler on the rubbered line).
-	vec2 uvb = UV * 7.0;
-	float h0 = texture(grain, uvb).r;
-	float hx = texture(grain, uvb + vec2(0.012, 0.0)).r;
-	float hy = texture(grain, uvb + vec2(0.0, 0.012)).r;
-	float bump = mix(1.6, 0.8, rub) + gravel * 2.5;
-	NORMAL_MAP = normalize(vec3((h0 - hx) * bump, (h0 - hy) * bump, 1.0)) * 0.5 + 0.5;
+	// the light (stronger on gravel, gentler on the rubbered line). The
+	// normals are baked into a texture: one sample per pixel.
+	NORMAL_MAP = texture(grain_normal, UV * 7.0).rgb;
+	NORMAL_MAP_DEPTH = mix(1.0, 0.5, rub) + gravel * 1.55;
 }

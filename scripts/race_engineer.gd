@@ -15,6 +15,7 @@ var race: Node
 var radio_log: Array[String] = []        # everything said (tests)
 var flags_seen := {}                     # kind -> true (tests)
 var buzzes := 0                          # vibrations requested (tests)
+var _last_buzz_ms := -100000
 var _last_pos := 0
 var _pos_since := 0.0
 var _said_pos := 0
@@ -45,7 +46,13 @@ func say(text: String, secs := 4.5) -> void:
 		race.hud.show_radio(text, secs)
 
 
+## At most one vibration every 0.15 s: cars rubbing report contact every
+## physics tick, and a call to the vibrator 120 times a second stutters.
 func buzz(ms: int) -> void:
+	var now := Time.get_ticks_msec()
+	if now - _last_buzz_ms < 150:
+		return
+	_last_buzz_ms = now
 	buzzes += 1
 	if _enabled("vibration") and OS.has_feature("mobile"):
 		Input.vibrate_handheld(ms)
@@ -124,17 +131,19 @@ func tick(delta: float) -> void:
 	if dv > 45.0 and _impact_t <= 0.0 and racing:
 		buzz(int(clampf(dv * 1.2, 50.0, 200.0)))
 		_impact_t = 0.4
-	# Kerbs and grass rumble.
+	# Kerbs and grass rumble: a few longer pulses a second rather than a
+	# stream of tiny ones (each one is a call into the phone's vibrator
+	# service, which can hold up a frame).
 	_kerb_t -= delta
 	if _kerb_t <= 0.0 and absf(car.forward_speed()) > 12.0:
 		var lat := absf(race.track.lateral(car.global_position, p.idx))
 		var on_kerb: bool = lat > race.track.road_half - 0.2 and lat < race.track.road_half + Track.KERB_W
 		if car.wheels_on_grass > 0:
-			buzz(18)
-			_kerb_t = 0.11
+			buzz(45)
+			_kerb_t = 0.3
 		elif on_kerb:
-			buzz(10)
-			_kerb_t = 0.08
+			buzz(30)
+			_kerb_t = 0.25
 	if not racing or race.mode != "race":
 		_set_flag("")
 		return
