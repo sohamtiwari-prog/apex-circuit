@@ -53,7 +53,11 @@ class Entrant:
 	var pit_phase := 0          # 0 racing, 1 down the pit lane, 2 stopped, 3 leaving
 	var pit_dist := 0.0
 	var pit_timer := 0.0
+	var pit_need := 0.0         # this stop's service time
+	var pit_box := -1.0         # pit lane distance of the team's box (-1: none)
+	var pit_t0 := 0.0           # race time entering the pit lane
 	var pit_driver: AIDriver    # drives you through the pit lane
+	var team_idx := 0           # team (or car number) index: which pit box
 	var mini_start := 0.0
 
 
@@ -180,6 +184,7 @@ func _ready() -> void:
 		player.is_player = true
 		player.name = "You"
 		player.team = String(car.spec.get("team_name", car.spec["name"]))
+		player.team_idx = team if car_id == "gp26" else 0
 		entrants.append(player)
 		if mode == "race":
 			_spawn_opponents(team)
@@ -235,7 +240,8 @@ func _ready() -> void:
 		weekend = Weekend.new()
 		add_child(weekend)
 		weekend.setup(self)
-		hud.box_requested.connect(func(): weekend.toggle_box())
+		hud.box_requested.connect(func(): weekend.pit_menu())
+		hud.box_choice.connect(func(c: String): weekend.set_box(c))
 	engineer = RaceEngineer.new()
 	add_child(engineer)
 	engineer.setup(self)
@@ -305,6 +311,7 @@ func _spawn_opponents(player_team: int) -> void:
 			e.name = String(drv["name"])
 			e.driver = i + 1
 		e.team = String(c.spec.get("team_name", c.spec["name"]))
+		e.team_idx = t
 		entrants.append(e)
 
 
@@ -861,7 +868,7 @@ func _update_entrant(e: Entrant, delta: float) -> void:
 			e.outside = 0.0
 	# AI recovery: flipped or stuck for a while -> back on the racing line.
 	var ai_driven := e.ai != null or (e.is_player and autopilot != null)
-	if ai_driven and not e.finished:
+	if ai_driven and not e.finished and e.pit_phase == 0:
 		var flipped := e.car.global_basis.y.y < 0.35
 		var slow := e.car.forward_speed() < 4.0
 		var off_road := absf(track.lateral(e.car.global_position, e.idx)) > track.road_half + 4.0
@@ -1340,7 +1347,7 @@ func _update_hud() -> void:
 		hud.update_timing(shown_lap, lap_time, player.last_lap,
 			best_ms / 1000.0 if best_ms >= 0 else -1.0, lap_valid or mode == "race")
 	if weekend != null and mode == "race":
-		hud.set_tyres(player.compound, player.wear, player.pit_req, player.next_compound, player.pit_phase > 0)
+		hud.set_tyres(player.compound, player.wear, player.pit_req, player.next_compound, player.pit_phase > 0, bool(player.get_meta("limiter", false)))
 	hud.update_engine(car.gear, car.rpm, float(car.spec["upshift_rpm"]), float(car.spec["redline"]),
 		float(car.spec["idle_rpm"]), car.speed_kmh())
 	hud.set_tow(car.tow)
@@ -1362,7 +1369,9 @@ func _update_hud() -> void:
 			var e: Entrant = ordered[i]
 			if i < 2 or absf(i - me) <= 1:
 				var gap := ""
-				if i > 0:
+				if e.pit_phase > 0:
+					gap = "PIT"
+				elif i > 0:
 					var ahead: Entrant = ordered[i - 1]
 					var v := maxf(e.car.forward_speed(), 15.0)
 					gap = "+%.1f" % ((ahead.progress - e.progress) / v)

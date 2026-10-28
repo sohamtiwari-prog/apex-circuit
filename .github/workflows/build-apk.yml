@@ -92,6 +92,9 @@ jobs:
       - name: Race weekend (qualifying, tyres, pit stops, rain)
         run: bash .github/run_test.sh res://tests/weekend_test.gd
 
+      - name: Pit lane (entry road, team boxes, crew, exit) on three circuits
+        run: bash .github/run_test.sh res://tests/pit_test.gd
+
       - name: Race engineer, flags and vibration
         run: bash .github/run_test.sh res://tests/engineer_test.gd
 

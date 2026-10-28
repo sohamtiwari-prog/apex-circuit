@@ -15,6 +15,7 @@ signal menu_requested
 signal chat_requested(index: int)
 signal replay_requested
 signal box_requested
+signal box_choice(compound: String)     # "" = stay out
 var replay_button: Button             # on the results screen
 var replay_available := true:          # pause menu "Watch replay" (single player)
 	set(v):
@@ -105,6 +106,8 @@ func _ready() -> void:
 	_build_drs(root)
 	_build_tow(root)
 	_build_tyres(root)
+	_build_pit_picker(root)
+	_build_pit_stop(root)
 	_build_action(root)
 	_build_radio(root)
 	_build_flag(root)
@@ -362,13 +365,15 @@ func _build_tyres(root: Control) -> void:
 	back.add_child(_tyre_bar)
 
 
-func set_tyres(compound: String, wear: float, box: bool, next: String, pitting: bool) -> void:
+func set_tyres(compound: String, wear: float, box: bool, next: String, pitting: bool, limiter := false) -> void:
 	if _tyre_btn == null:
 		return
 	_tyre_btn.visible = gauge.visible
 	_tyre_badge.compound = compound
 	var left := 1.0 - clampf(wear, 0.0, 1.0)
-	if pitting:
+	if pitting and limiter:
+		_tyre_lbl.text = "LIMITER 80" if fmod(_pulse, 0.8) < 0.55 else ""
+	elif pitting:
 		_tyre_lbl.text = "PIT LANE"
 	elif box:
 		_tyre_lbl.text = "BOX > " + String(Tyres.LETTER.get(next, "M"))
@@ -380,6 +385,160 @@ func set_tyres(compound: String, wear: float, box: bool, next: String, pitting: 
 	var sb := _tyre_btn.get_theme_stylebox("normal") as StyleBoxFlat
 	sb.border_color = UIStyle.YELLOW
 	sb.set_border_width_all(3 if box else 0)
+
+
+# ------------------------------------------------------------ pit board
+
+var _pit_pick: PanelContainer
+var _pit_pick_row: HBoxContainer
+var _pit_pick_time := 0.0
+
+## Tyre choice above the tyre panel: tap a compound to box this lap for it
+## (the engineer's pick is marked), or stay out.
+func _build_pit_picker(root: Control) -> void:
+	_pit_pick = PanelContainer.new()
+	_pit_pick.add_theme_stylebox_override("panel", UIStyle.panel(Color(UIStyle.INK, 0.9), false, UIStyle.YELLOW, 6))
+	_pit_pick.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_pit_pick.offset_left = 92
+	_pit_pick.offset_right = 520
+	_pit_pick.offset_top = -214
+	_pit_pick.offset_bottom = -104
+	_pit_pick.visible = false
+	root.add_child(_pit_pick)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	_pit_pick.add_child(v)
+	v.add_child(UIStyle.label("Box this lap for:", 17, UIStyle.YELLOW, "bold", true))
+	_pit_pick_row = HBoxContainer.new()
+	_pit_pick_row.add_theme_constant_override("separation", 8)
+	v.add_child(_pit_pick_row)
+
+
+func open_pit_picker(recommended: String, boxed: bool, current: String) -> void:
+	if _pit_pick.visible:
+		_pit_pick.visible = false
+		return
+	for c in _pit_pick_row.get_children():
+		c.queue_free()
+	for comp in Tyres.COMPOUNDS:
+		var b := Button.new()
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(78, 66)
+		var chosen: bool = boxed and comp == current
+		var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.95), false)
+		if comp == recommended:
+			sb.border_color = UIStyle.YELLOW
+			sb.set_border_width_all(3)
+		if chosen:
+			sb.bg_color = Color(UIStyle.YELLOW, 0.35)
+		for st in ["normal", "hover", "pressed", "focus"]:
+			b.add_theme_stylebox_override(st, sb)
+		var h := HBoxContainer.new()
+		h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		h.alignment = BoxContainer.ALIGNMENT_CENTER
+		h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(h)
+		var badge := TyreBadge.new()
+		badge.compound = comp
+		badge.custom_minimum_size = Vector2(42, 42)
+		badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		h.add_child(badge)
+		var c: String = comp
+		b.pressed.connect(func():
+			_pit_pick.visible = false
+			box_choice.emit(c))
+		_pit_pick_row.add_child(b)
+	if boxed:
+		var stay := UIStyle.button("Stay out", func():
+			_pit_pick.visible = false
+			box_choice.emit(""), false, 18)
+		stay.custom_minimum_size = Vector2(96, 66)
+		_pit_pick_row.add_child(stay)
+	_pit_pick.reset_size()
+	_pit_pick.visible = true
+	_pit_pick_time = 6.0
+
+
+var _stop: PanelContainer
+var _stop_time: Label
+var _stop_note: Label
+var _stop_bar: ColorRect
+var _stop_need := 0.0
+var _stop_hide := 0.0
+
+## The stop: a timer from the moment the car stops, and how the crew are
+## getting on.
+func _build_pit_stop(root: Control) -> void:
+	_stop = PanelContainer.new()
+	_stop.add_theme_stylebox_override("panel", UIStyle.panel(Color(UIStyle.INK, 0.86), false, UIStyle.YELLOW, 6))
+	_stop.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_stop.offset_left = -130
+	_stop.offset_right = 130
+	_stop.offset_top = 262
+	_stop.offset_bottom = 380
+	_stop.visible = false
+	_stop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_stop)
+	var v := VBoxContainer.new()
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stop.add_child(v)
+	var t := UIStyle.label("PIT STOP", 17, UIStyle.YELLOW, "extrabold", true)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(t)
+	_stop_time = UIStyle.label("0.0", 48, UIStyle.PAPER, "extrabold", true)
+	_stop_time.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(_stop_time)
+	var back := ColorRect.new()
+	back.color = Color(UIStyle.PAPER, 0.15)
+	back.custom_minimum_size = Vector2(220, 6)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(back)
+	_stop_bar = ColorRect.new()
+	_stop_bar.color = UIStyle.YELLOW
+	_stop_bar.size = Vector2(0, 6)
+	back.add_child(_stop_bar)
+	_stop_note = UIStyle.label("", 16, UIStyle.RED, "bold", true)
+	_stop_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(_stop_note)
+
+
+func show_pit_stop(need: float, slow: bool) -> void:
+	_stop_need = need
+	_stop_time.text = "0.0"
+	_stop_time.add_theme_color_override("font_color", UIStyle.PAPER)
+	_stop_note.text = "Slow stop!" if slow else ""
+	_stop_bar.size.x = 0.0
+	_stop.visible = true
+	_stop_hide = 0.0
+
+
+func update_pit_stop(t: float) -> void:
+	if not _stop.visible:
+		return
+	_stop_time.text = "%.1f" % t
+	_stop_bar.size.x = 220.0 * clampf(t / maxf(_stop_need, 0.1), 0.0, 1.0)
+
+
+func finish_pit_stop(t: float) -> void:
+	_stop_time.text = "%.1f s" % t
+	_stop_time.add_theme_color_override("font_color", UIStyle.GREEN if t < 3.0 else (UIStyle.YELLOW if t < 4.5 else UIStyle.RED))
+	_stop_bar.size.x = 220.0
+	_stop_bar.color = UIStyle.GREEN
+	_stop_hide = 2.2
+
+
+func _pit_ui_tick(delta: float) -> void:
+	if _pit_pick_time > 0.0:
+		_pit_pick_time -= delta
+		if _pit_pick_time <= 0.0:
+			_pit_pick.visible = false
+	if _stop_hide > 0.0:
+		_stop_hide -= delta
+		if _stop_hide <= 0.0:
+			_stop.visible = false
+			_stop_bar.color = UIStyle.YELLOW
 
 
 ## A tyre: dark rubber ring with the compound's coloured band and letter.
@@ -1217,7 +1376,8 @@ func _tower_row(r: Dictionary) -> Control:
 	var name := UIStyle.label("YOU" if me else UIStyle.code(String(r["name"])), 21, ink, "bold")
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(name)
-	var gap := UIStyle.label(String(r["gap"]) if r["gap"] != "" else "Leader", 19, Color(ink, 0.8) if me else UIStyle.FOG, "semibold", true)
+	var pit: bool = r["gap"] == "PIT"
+	var gap := UIStyle.label(String(r["gap"]) if r["gap"] != "" else "Leader", 19, UIStyle.YELLOW if pit and not me else (Color(ink, 0.8) if me else UIStyle.FOG), "extrabold" if pit else "semibold", true)
 	h.add_child(gap)
 	return row
 
@@ -1281,6 +1441,7 @@ func _process(delta: float) -> void:
 		_warn_time -= delta
 		if _warn_time <= 0.0:
 			warn.visible = false
+	_pit_ui_tick(delta)
 
 
 # ------------------------------------------------------------ classification

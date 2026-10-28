@@ -92,6 +92,25 @@ var terrain_drawn := PackedFloat32Array()  # heights as drawn (pushed down under
 var _ground_mat: ShaderMaterial
 var road_mat: ShaderMaterial               # (rain sets its wetness)
 var pit_side := 1.0                        # which side of the main straight the pits are
+
+# Pit lane (beside the main straight, where there's room; not on street
+# circuits). Distances along it ("ps") run from the start of the entry road:
+#   0 .. PIT_ENTRY_LEN          entry road, from the track edge to the lane
+#   .. + PIT_STRAIGHT_LEN       the lane behind the pit wall, garages beyond
+#   .. + PIT_EXIT_LEN           exit road back to the track edge
+# Laterals are unsigned (times pit_side).
+# The lengths and where the lane starts are fitted to each circuit.
+var PIT_ENTRY_LEN := 130.0
+var PIT_STRAIGHT_LEN := 440.0
+var PIT_EXIT_LEN := 130.0
+var PIT_BEFORE_LINE := 260.0               # the lane starts this far before the line
+const GARAGE_LEN := 12.0
+const GARAGE_DEPTH := 14.0
+var has_pit_lane := false
+var pit_s0 := 0.0                          # centreline distance where the entry road starts
+var pit_off := 19.0                        # the pit wall's lateral (the barrier line)
+var pit_boxes := {}                        # team index -> ps of its box
+var pit_reason := ""                       # why there's no pit lane (tools)
 var detail := 1.0                          # scenery density (0.55 in battery saver)
 var night := false                         # floodlit night race (set before build)
 ## Tree tops by 6 m cell (for replay cameras: is the view blocked?).
@@ -178,6 +197,7 @@ func build(id: String = "kestrel_park") -> void:
 	_derive_drs()
 	_build_grid()
 	_derive_walls()
+	_plan_pit_lane()
 	_build_ground()
 	_build_road()
 	_build_rubber()
@@ -902,6 +922,8 @@ func surface_at(idx: int, lat: float) -> int:
 	var a := absf(lat)
 	if a <= road_half + KERB_W + 1.0:
 		return 0
+	if has_pit_lane and in_pit_lane(idx, lat):
+		return 0
 	if runoff_type[0].size() == points.size():
 		var kind := runoff_type[1 if lat > 0.0 else 0][idx]
 		if kind != RUNOFF_NONE and a <= road_half + KERB_W + 1.0 + runoff_width:
@@ -1155,6 +1177,28 @@ func _build_walls() -> void:
 			cs.shape = shape
 			var centre := mid + outward * (thick * 0.5 - 0.35)
 			cs.transform = Transform3D(basis, centre + Vector3.UP * (GROUND_Y + height * 0.5 - 0.3))
+			body.add_child(cs)
+	# The pit wall: between the track and the pit lane, along the lane.
+	if has_pit_lane:
+		for i in range(0, n, step):
+			var j := (i + step) % n
+			var psi := pit_ps(i)
+			var psj := pit_ps(j)
+			if psi < PIT_ENTRY_LEN or psj > PIT_ENTRY_LEN + PIT_STRAIGHT_LEN or psj < psi:
+				continue
+			var a: Vector3 = points[i] + rights[i] * pit_off * pit_side
+			var b: Vector3 = points[j] + rights[j] * pit_off * pit_side
+			var dir := b - a
+			dir.y = 0
+			var length := dir.length()
+			if length < 0.1:
+				continue
+			var cs := CollisionShape3D.new()
+			var shape := BoxShape3D.new()
+			shape.size = Vector3(0.8, 3.6, length + 0.6)
+			cs.shape = shape
+			var outward: Vector3 = rights[i] * pit_side
+			cs.transform = Transform3D(Basis.looking_at(-dir / length, Vector3.UP), (a + b) * 0.5 + outward * 0.05 + Vector3.UP * (GROUND_Y + 1.5))
 			body.add_child(cs)
 
 
@@ -1484,14 +1528,204 @@ func _build_city() -> void:
 
 ## True if a box (unscaled transform + size) stays clear of the road and
 ## kerbs everywhere on its footprint, by at least `margin` metres.
-func footprint_clear(xf: Transform3D, size: Vector3, margin := 1.0) -> bool:
+## pit: the pit buildings themselves may stand by the pit lane.
+func footprint_clear(xf: Transform3D, size: Vector3, margin := 1.0, pit := false) -> bool:
 	var limit := road_half + KERB_W + margin
 	var nx := maxi(2, int(size.x / 4.0))
 	var nz := maxi(2, int(size.z / 4.0))
 	for ix in range(nx + 1):
 		for iz in range(nz + 1):
 			var local := Vector3(size.x * (float(ix) / nx - 0.5), 0.0, size.z * (float(iz) / nz - 0.5))
-			if dist_to_centerline(xf * local, limit + 2.0) < limit:
+			var p := xf * local
+			if dist_to_centerline(p, limit + 2.0) < limit:
+				return false
+			if has_pit_lane and not pit and in_pit_area(p, margin):
+				return false
+	return true
+
+
+# ------------------------------------------------------------ pit lane
+
+func pit_total() -> float:
+	return PIT_ENTRY_LEN + PIT_STRAIGHT_LEN + PIT_EXIT_LEN
+
+
+## Distance along the pit lane for a centreline distance (negative before
+## the entry; past pit_total() after the exit).
+func pit_ps_at(s: float) -> float:
+	var d := fposmod(s - pit_s0, total_length)
+	return d - total_length if d > total_length * 0.5 else d
+
+
+func pit_ps(i: int) -> float:
+	return pit_ps_at(cum[(i % points.size() + points.size()) % points.size()])
+
+
+## Unsigned lateral of the middle of the lane cars drive along.
+func pit_lane_lat(ps: float) -> float:
+	var edge := road_half - 1.6
+	var lane := pit_off + 3.6
+	if ps <= 0.0:
+		return edge
+	if ps < PIT_ENTRY_LEN:
+		return lerpf(edge, lane, _smoother(ps / PIT_ENTRY_LEN))
+	var x := ps - PIT_ENTRY_LEN - PIT_STRAIGHT_LEN
+	if x <= 0.0:
+		return lane
+	if x < PIT_EXIT_LEN:
+		return lerpf(lane, edge, _smoother(x / PIT_EXIT_LEN))
+	return edge
+
+
+## Unsigned lateral of the box lane in front of the garages.
+func pit_box_lat() -> float:
+	return pit_off + 9.2
+
+
+## Unsigned [inner, outer] edges of the pit tarmac at ps.
+func pit_tarmac(ps: float) -> Vector2:
+	if ps >= PIT_ENTRY_LEN and ps <= PIT_ENTRY_LEN + PIT_STRAIGHT_LEN:
+		return Vector2(pit_off + 0.6, pit_off + 11.0)
+	var c := pit_lane_lat(ps)
+	return Vector2(c - 4.4, c + 4.0)
+
+
+func in_pit_lane(idx: int, lat: float) -> bool:
+	if signf(lat) != pit_side:
+		return false
+	var ps := pit_ps(idx)
+	if ps < 0.0 or ps > pit_total():
+		return false
+	var t := pit_tarmac(ps)
+	return absf(lat) >= t.x - 0.8 and absf(lat) <= t.y + 0.8
+
+
+## True if a point is on (or within margin of) the pit lane or its roads.
+func in_pit_area(p: Vector3, margin := 1.0) -> bool:
+	var i := nearest_index(p)
+	var ps := pit_ps(i)
+	if ps < -margin or ps > pit_total() + margin:
+		return false
+	var lat := lateral(p, i)
+	if signf(lat) != pit_side:
+		return false
+	var t := pit_tarmac(clampf(ps, 0.0, pit_total()))
+	return absf(lat) >= minf(t.x, road_half + KERB_W) - margin and absf(lat) <= t.y + margin
+
+
+static func _smoother(x: float) -> float:
+	x = clampf(x, 0.0, 1.0)
+	return x * x * x * (x * (x * 6.0 - 15.0) + 10.0)
+
+
+## Puts the pit lane beside the main straight on whichever side has room:
+## pushes that side's barrier out round it (so the entry and exit roads and
+## the lane are driveable and the ground is cut flat for them), and records
+## the team boxes. Street circuits keep their pits on the straight itself.
+func _plan_pit_lane() -> void:
+	has_pit_lane = false
+	if total_length < 1500.0:
+		return
+	var n := points.size()
+	pit_off = wall_offset
+	# Longest lane that fits, the line about two-thirds of the way along it.
+	var fitted := false
+	for straight in [440.0, 380.0, 320.0, 270.0]:
+		for frac in [0.6, 0.45, 0.75, 0.3, 0.85]:
+			for roads in [130.0, 100.0]:
+				PIT_STRAIGHT_LEN = straight
+				PIT_BEFORE_LINE = straight * frac
+				PIT_ENTRY_LEN = roads
+				PIT_EXIT_LEN = roads
+				pit_s0 = fposmod(-PIT_BEFORE_LINE - PIT_ENTRY_LEN, total_length)
+				for side in [-1.0, 1.0]:
+					pit_side = side
+					if _pit_fits(side):
+						fitted = true
+						break
+				if fitted:
+					break
+			if fitted:
+				break
+		if fitted:
+			break
+	if not fitted:
+		pit_side = 1.0
+		return
+	has_pit_lane = true
+	pit_reason = ""
+	# Barrier: out round the roads and the lane (the garages' fronts along it).
+	var arr := wall_right if pit_side > 0.0 else wall_left
+	var target := PackedFloat32Array()
+	target.resize(n)
+	for i in n:
+		target[i] = arr[i]
+		var ps := pit_ps(i)
+		if ps < -24.0 or ps > pit_total() + 24.0:
+			continue
+		var t := pit_tarmac(clampf(ps, 0.0, pit_total()))
+		var want := t.y + 0.9
+		if ps >= PIT_ENTRY_LEN and ps <= PIT_ENTRY_LEN + PIT_STRAIGHT_LEN:
+			want = pit_off + 12.2
+		target[i] = maxf(arr[i], want)
+	for i in n:
+		var acc := 0.0
+		for d in range(-3, 4):
+			acc = maxf(acc, target[(i + d + n) % n])
+		arr[i] = acc
+	if pit_side > 0.0:
+		wall_right = arr
+	else:
+		wall_left = arr
+	# Team boxes: garages are GARAGE_LEN long from the lane's start, the team
+	# colours repeating; each team uses its garage nearest the start that
+	# leaves room to slow down first.
+	pit_boxes.clear()
+	var g := 0
+	while (g + 1) * GARAGE_LEN <= PIT_STRAIGHT_LEN:
+		var ps := PIT_ENTRY_LEN + (g + 0.5) * GARAGE_LEN
+		var team := g % 10
+		if ps > PIT_ENTRY_LEN + 40.0 and ps < PIT_ENTRY_LEN + PIT_STRAIGHT_LEN - 60.0 and not pit_boxes.has(team):
+			pit_boxes[team] = ps
+		g += 1
+	# Keep trees and props off it.
+	var step := 6
+	for i in range(0, n, step):
+		var ps := pit_ps(i)
+		if ps < 0.0 or ps > pit_total():
+			continue
+		var t := pit_tarmac(ps)
+		var inner := maxf(t.x, road_half + KERB_W + 0.5)
+		var mid := (inner + t.y) * 0.5
+		scenery_boxes.append({"xf": Transform3D(Basis.looking_at(-htangents[i], Vector3.UP), points[i] + rights[i] * pit_side * mid),
+			"size": Vector3(t.y - inner + 2.0, 3.0, step * SPACING + 2.0), "overhead": false, "pit": true, "lane": true})
+
+
+func _pit_fits(side: float) -> bool:
+	var n := points.size()
+	var orig := wall_right if side > 0.0 else wall_left
+	var total := pit_total()
+	for i in range(0, n, 2):
+		var ps := pit_ps(i)
+		if ps < -10.0 or ps > total + 10.0:
+			continue
+		var straight := ps >= PIT_ENTRY_LEN and ps <= PIT_ENTRY_LEN + PIT_STRAIGHT_LEN
+		var t := pit_tarmac(clampf(ps, 0.0, total))
+		var reach := (pit_off + 12.0 + GARAGE_DEPTH + 1.0) if straight else (t.y + 4.0)
+		# The lane's offset can't fold over on the inside of a bend.
+		var inside := (curv[i] < 0.0 and side > 0.0) or (curv[i] > 0.0 and side < 0.0)
+		if inside and absf(curv[i]) * reach > 0.6:
+			pit_reason = "bend at ps %.0f (r %.0f m)" % [ps, 1.0 / maxf(absf(curv[i]), 1e-6)]
+			return false
+		# Along the lane the barrier must be the full distance out (the pit
+		# wall) and nothing else may be nearer than this stretch of track.
+		if straight and orig[i] < pit_off - 0.5:
+			pit_reason = "barrier pulled in at ps %.0f (%.1f)" % [ps, orig[i]]
+			return false
+		for lat in [t.y + 1.0, reach]:
+			var p: Vector3 = points[i] + rights[i] * side * lat
+			if dist_to_centerline(p, lat + 3.0) < lat - 1.0:
+				pit_reason = "other track near ps %.0f at %.0f m" % [ps, lat]
 				return false
 	return true
 

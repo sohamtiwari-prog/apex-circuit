@@ -9,7 +9,9 @@ func _initialize() -> void:
 		tr.build(t["id"])
 		var bad := 0
 		for box in tr.scenery_boxes:
-			if not box.get("overhead", false) and not tr.footprint_clear(box["xf"], box["size"], 0.5):
+			if box.get("lane", false):
+				continue                       # the pit lane itself: kept clear, not an object
+			if not box.get("overhead", false) and not tr.footprint_clear(box["xf"], box["size"], 0.5, box.get("pit", false)):
 				bad += 1
 		print("%-12s %3d large objects, %d on or across the road" % [t["id"], tr.scenery_boxes.size(), bad])
 		if bad > 0 or tr.scenery_boxes.is_empty():

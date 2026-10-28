@@ -179,12 +179,24 @@ now for what's coming at your current speed.
   (+1 fastest lap), driver and team standings and a trophy.
 - **Race weekends:** qualifying (one flying lap from a rolling out-lap,
   or skip it) sets the grid; choose soft / medium / hard / wet tyres; tyres
-  wear (grip fades, then drops off a cliff) and you tap the tyre panel to
-  box: the car drives itself down the pit side at 80 km/h, stops for new
-  tyres and rejoins (about 18 s). Weather can be dry, wet or change during
+  wear (grip fades, then drops off a cliff). Weather can be dry, wet or change during
   the race (glossy track, rain, spray, grey skies; slicks lose grip, so
   pit for wets). The AI makes the same calls. Quick races can have
   qualifying, rain and a tyre choice too.
+- **Pit stops:** every circuit has a real pit lane beside the main
+  straight, fitted to its layout (on the side with room; behind the walls
+  on the street circuits): an entry road off the track, a lane behind the
+  pit wall with a fast lane and the box lane in front of the garages,
+  each team's box marked in its colours, and an exit road back on. Tap
+  the tyre panel for the pit board, pick soft / medium / hard / wet (the
+  engineer's pick is marked) or stay out. From just before the entry the
+  car drives itself: down the entry road, LIMITER 80 from the line,
+  into your team's box. The crew (gunner and two tyre men per wheel, jack
+  men, lollipop) jack it up and swap all four wheels while a timer runs:
+  usually 2.2-3 s, now and then a slow one when a wheel nut sticks. Then
+  out along the lane and back onto the track. Cars queue behind a
+  team-mate already in the box, and the timing tower shows PIT for cars
+  in the pit lane.
 
 ## Racing features
 
@@ -386,6 +398,7 @@ tests/
   replay_test.gd     recording, smooth playback, every replay camera, restore after
   career_test.gd     garage, career events, a championship season
   weekend_test.gd    qualifying, tyre wear, pit stops, changing weather
+  pit_test.gd        the pit lane on three circuits: entry, team box, crew, exit
   engineer_test.gd   radio lap reports, yellow/blue flags, vibration
   perf_test.gd       simulation cost per grid size
   edge_test.gd       no invisible walls: leaving and rejoining the track

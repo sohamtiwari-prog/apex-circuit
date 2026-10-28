@@ -12,6 +12,8 @@ var lane_offset := 0.0        # metres right of the racing line
 var skill := 1.0              # 1.0 = the profile's full pace
 var speed_cap := 999.0        # m/s, set by race logic when blocked
 var grip_scale := 1.0         # worn tyres / wet track: corners and braking scale with sqrt(grip)
+## Pit lane: signed lateral to aim for at a sample (off the road allowed).
+var path_lat: Callable
 var target_speed := 0.0
 var _profile := PackedFloat32Array()
 
@@ -47,6 +49,8 @@ func update(car: RaceCar, track: Track) -> void:
 	var ti := (idx + int(look / Track.SPACING)) % n
 	var w := maxf(0.0, track.road_half - 1.1)
 	var off := clampf(track.line_offset[ti] + lane_offset, -w, w)
+	if path_lat.is_valid():
+		off = float(path_lat.call(ti))
 	var tgt: Vector3 = track.points[ti] + track.rights[ti] * off
 	var fwd := car.global_basis.z
 	fwd.y = 0.0
@@ -64,6 +68,12 @@ func update(car: RaceCar, track: Track) -> void:
 	var off_line := clampf((absf(lane_offset) - 0.6) * 0.022, 0.0, 0.12)
 	target_speed = minf(_profile[ahead % n] * skill * (1.0 - off_line) * sqrt(grip_scale), speed_cap)
 	var err := target_speed - v
+	if speed_cap <= 0.0:
+		# Told to stop (a pit box): hold it on the brakes. (A touch of
+		# throttle, or brake-at-a-standstill would select reverse.)
+		car.throttle = 0.06
+		car.brake_input = 1.0
+		return
 	if err > 0.3:
 		car.throttle = clampf(err / 2.0, 0.35, 1.0)
 		car.brake_input = 0.0

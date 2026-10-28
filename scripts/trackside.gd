@@ -276,6 +276,19 @@ func _barrier_kind(i: int, side: int) -> String:
 	return "armco"
 
 
+## Along the pit lane, the barrier drawn on the pit side is the pit wall
+## (the garages stand where the outer barrier would be).
+func _in_pit_straight(i: int, side: float) -> bool:
+	if not track.has_pit_lane or side != track.pit_side:
+		return false
+	var ps := track.pit_ps(i)
+	return ps >= track.PIT_ENTRY_LEN and ps <= track.PIT_ENTRY_LEN + track.PIT_STRAIGHT_LEN
+
+
+func _barrier_lat(i: int, side: float) -> float:
+	return track.pit_off if _in_pit_straight(i, side) else track.wall_at(i, side)
+
+
 func _barriers() -> void:
 	var n := track.size()
 	var step := 3
@@ -287,12 +300,15 @@ func _barriers() -> void:
 		var run := 0
 		for i in range(0, n, step):
 			var j := (i + step) % n
-			var a: Vector3 = track.points[i] + track.rights[i] * track.wall_at(i, side) * side
-			var b: Vector3 = track.points[j] + track.rights[j] * track.wall_at(j, side) * side
+			# No barrier across the ends of the pit lane.
+			if _in_pit_straight(i, side) != _in_pit_straight(j, side):
+				continue
+			var a: Vector3 = track.points[i] + track.rights[i] * _barrier_lat(i, side) * side
+			var b: Vector3 = track.points[j] + track.rights[j] * _barrier_lat(j, side) * side
 			var mid := (a + b) * 0.5
 			var y0 := Track.GROUND_Y
 			var inward: Vector3 = -track.rights[i] * side        # towards the track
-			var kind := _barrier_kind(i, side_i)
+			var kind := "concrete" if _in_pit_straight(i, side) else _barrier_kind(i, side_i)
 			var top := 1.05
 			match kind:
 				"concrete":
@@ -355,10 +371,15 @@ func _gantry() -> void:
 	var span := track.wall_offset + 0.8
 	var y := 7.2
 	var steel := Color(0.24, 0.25, 0.28)
+	# Legs behind the barriers (on the pit wall, on the pit side).
+	var legs := {}
 	for side in [-1.0, 1.0]:
-		_box("metal", Transform3D(basis, p + r * span * side + Vector3(0, y * 0.5, 0)), Vector3(0.6, y, 0.6), steel)
-	_box("metal", Transform3D(basis, p + Vector3(0, y, 0)), Vector3(span * 2.0 + 0.6, 0.7, 0.7), steel)
-	_box("metal", Transform3D(basis, p + Vector3(0, y - 1.1, 0)), Vector3(span * 2.0 + 0.6, 0.15, 0.4), steel)
+		legs[side] = track.pit_off if _in_pit_straight(i, side) else span
+		_box("metal", Transform3D(basis, p + r * float(legs[side]) * side + Vector3(0, y * 0.5, 0)), Vector3(0.6, y, 0.6), steel)
+	var width: float = float(legs[-1.0]) + float(legs[1.0])
+	var centre := p + r * (float(legs[1.0]) - float(legs[-1.0])) * 0.5
+	_box("metal", Transform3D(basis, centre + Vector3(0, y, 0)), Vector3(width + 0.6, 0.7, 0.7), steel)
+	_box("metal", Transform3D(basis, centre + Vector3(0, y - 1.1, 0)), Vector3(width + 0.6, 0.15, 0.4), steel)
 	# Light panel facing the grid (the cars approach from -tangent... the grid
 	# is behind the line, so the panel faces backwards along the track).
 	var panel_c := p + Vector3(0, y - 1.0, 0) - track.htangents[i] * 0.45
@@ -417,16 +438,12 @@ func _process(_d: float) -> void:
 func _pits_and_stands() -> void:
 	var n := track.size()
 	var L := track.total_length
-	var off := track.wall_offset
-	# Pit building along the main straight, on whichever side has room.
-	var start_s := L - 260.0
-	var length := 440.0
-	if track.style != "city":
-		for side in [-1.0, 1.0]:
-			if _pit_complex(start_s, length, side):
-				track.pit_side = side
-				_grandstand_run(start_s + 60.0, 160.0, -side)
-				break
+	# Pit lane and garages beside the main straight (Track plans where), a
+	# grandstand facing them.
+	if track.has_pit_lane:
+		_pit_complex()
+		var lane_s := track.pit_s0 + track.PIT_ENTRY_LEN
+		_grandstand_run(lane_s + 60.0, minf(160.0, track.PIT_STRAIGHT_LEN - 100.0), -track.pit_side)
 	else:
 		_grandstand_run(L - 150.0, 90.0, 1.0)
 	# Grandstands at the three sharpest corners, on the outside.
@@ -451,52 +468,88 @@ func _pits_and_stands() -> void:
 			placed += 1
 
 
-## Pit lane surface, pit wall gaps and the garages building. Returns false
-## (building nothing) if it would land on another part of the circuit.
-func _pit_complex(start_s: float, length: float, side: float) -> bool:
-	var off := track.wall_offset
-	var lane0 := off + 0.6
-	var lane1 := off + 11.0
-	var bld0 := off + 12.0
-	var depth := 16.0
-	var samples := _samples_between(start_s, length)
+## The pit lane: entry road, the lane behind the pit wall (fast lane, box
+## lane with each team's box marked), exit road, and the garages.
+func _pit_complex() -> void:
+	var side := track.pit_side
+	var total := track.pit_total()
+	var e0 := track.PIT_ENTRY_LEN
+	var e1 := track.PIT_ENTRY_LEN + track.PIT_STRAIGHT_LEN
+	var off := track.pit_off
+	var samples := _samples_between(track.pit_s0, total)
 	if samples.size() < 10:
-		return false
-	for k in range(0, samples.size(), 4):
-		var i: int = samples[k]
-		var xf := Transform3D(Basis.looking_at(-track.htangents[i], Vector3.UP), track.points[i] + track.rights[i] * side * (bld0 + depth * 0.5))
-		if not track.footprint_clear(xf, Vector3(depth + 22.0, 10, 10), 2.0):
-			return false
-	var lane_col := Color(0.3, 0.3, 0.31)
-	var y := Track.GROUND_Y + 0.015
+		return
+	var tarmac := Color(0.3, 0.3, 0.31)
+	var white := Color(0.92, 0.92, 0.92)
+	var lift := Vector3(0, Track.GROUND_Y + 0.03, 0)
+	var edge_min := track.road_half + Track.KERB_W + 0.4
 	for k in range(samples.size() - 1):
 		var i: int = samples[k]
 		var j: int = samples[k + 1]
-		var pi: Vector3 = track.points[i]
-		var pj: Vector3 = track.points[j]
-		var ri: Vector3 = track.rights[i] * side
-		var rj: Vector3 = track.rights[j] * side
-		var q := [pi + ri * lane0, pj + rj * lane0, pj + rj * lane1, pi + ri * lane1]
-		for v in range(4):
-			q[v] = q[v] + Vector3(0, y, 0)
-		if side > 0:
-			_quad("concrete", q[0], q[3], q[2], q[1], lane_col)
+		var psi := track.pit_ps(i)
+		var psj := track.pit_ps(j)
+		var ti := track.pit_tarmac(psi)
+		var tj := track.pit_tarmac(psj)
+		var straight := psi >= e0 and psj <= e1
+		var in_i := ti.x if straight else maxf(ti.x, edge_min)
+		var in_j := tj.x if straight else maxf(tj.x, edge_min)
+		if tj.y <= in_j + 0.2:
+			continue
+		_strip(i, j, in_i, in_j, ti.y, tj.y, lift, tarmac)
+		if straight:
+			# Fast lane | box lane.
+			_strip(i, j, off + 6.5, off + 6.5, off + 6.65, off + 6.65, lift + Vector3(0, 0.004, 0), white)
 		else:
-			_quad("concrete", q[0], q[1], q[2], q[3], lane_col)
-		# White line separating the fast lane from the garage boxes.
-		var w0: Vector3 = pi + ri * (lane0 + 6.0) + Vector3(0, y + 0.004, 0)
-		var w1: Vector3 = pj + rj * (lane0 + 6.0) + Vector3(0, y + 0.004, 0)
-		var wd: Vector3 = ri * 0.15
+			# Edge lines along the entry and exit roads.
+			_strip(i, j, ti.y - 0.35, tj.y - 0.35, ti.y - 0.2, tj.y - 0.2, lift + Vector3(0, 0.004, 0), white)
+			if ti.x >= edge_min and tj.x >= edge_min:
+				_strip(i, j, ti.x + 0.2, tj.x + 0.2, ti.x + 0.35, tj.x + 0.35, lift + Vector3(0, 0.004, 0), white)
+	# Speed limit lines across the lane where the limiter goes on and off.
+	for ps in [e0, e1]:
+		var i := _sample_at_ps(samples, ps)
+		var t := track.pit_tarmac(ps)
+		var fwd: Vector3 = track.htangents[i]
+		var r: Vector3 = track.rights[i] * side
+		var p0: Vector3 = track.points[i] + r * t.x + lift + Vector3(0, 0.005, 0)
+		var p1: Vector3 = track.points[i] + r * t.y + lift + Vector3(0, 0.005, 0)
+		var d := fwd * 0.25
 		if side > 0:
-			_quad("concrete", w0, w0 + wd, w1 + wd, w1, Color(0.92, 0.92, 0.92))
+			_quad("concrete", p0 - d, p0 + d, p1 + d, p1 - d, white)
 		else:
-			_quad("concrete", w0, w1, w1 + wd, w0 + wd, Color(0.92, 0.92, 0.92))
-	# The building: garages at ground level, glass hospitality floor, roof.
+			_quad("concrete", p0 + d, p0 - d, p1 - d, p1 + d, white)
+	# Team boxes: an outline in the team's colour with a stop bar at the front.
 	var teams: Array = CarSpecs.TEAMS
+	for team in track.pit_boxes:
+		var ps: float = track.pit_boxes[team]
+		var col: Color = teams[int(team) % teams.size()]["base"]
+		var i0 := _sample_at_ps(samples, ps - 3.6)
+		var i1 := _sample_at_ps(samples, ps + 3.6)
+		var y := lift + Vector3(0, 0.006, 0)
+		_strip(i0, i1, off + 7.0, off + 7.0, off + 7.2, off + 7.2, y, col)
+		_strip(i0, i1, off + 10.8, off + 10.8, off + 11.0, off + 11.0, y, col)
+		for ib in [i0, i1]:
+			var r: Vector3 = track.rights[ib] * side
+			var fwd: Vector3 = track.htangents[ib]
+			var q0: Vector3 = track.points[ib] + r * (off + 7.0) + y
+			var q1: Vector3 = track.points[ib] + r * (off + 11.0) + y
+			var d: Vector3 = fwd * (0.12 if ib == i0 else 0.3)
+			if side > 0:
+				_quad("concrete", q0 - d, q0 + d, q1 + d, q1 - d, col if ib == i0 else white)
+			else:
+				_quad("concrete", q0 + d, q0 - d, q1 - d, q1 + d, col if ib == i0 else white)
+	# The building: garages at ground level, glass hospitality floor, roof.
+	var lane: Array = []
+	for i in samples:
+		var ps := track.pit_ps(i)
+		if ps >= e0 and ps <= e1:
+			lane.append(i)
+	var bld0 := off + 12.0
+	var depth := Track.GARAGE_DEPTH
+	var per := int(Track.GARAGE_LEN / Track.SPACING)
 	var garage := 0
-	for k in range(0, samples.size() - 6, 6):
-		var i: int = samples[k]
-		var j: int = samples[mini(k + 6, samples.size() - 1)]
+	for k in range(0, lane.size() - per, per):
+		var i: int = lane[k]
+		var j: int = lane[mini(k + per, lane.size() - 1)]
 		var a: Vector3 = track.points[i] + track.rights[i] * side * bld0
 		var b: Vector3 = track.points[j] + track.rights[j] * side * bld0
 		var mid := (a + b) * 0.5
@@ -512,10 +565,32 @@ func _pit_complex(start_s: float, length: float, side: float) -> bool:
 		# Glass floor and roof.
 		_box("glass", Transform3D(basis, mid + out * (depth * 0.5 + 1.0) + Vector3(0, 7.0, 0)), Vector3(depth - 2.0, 4.0, seg_len), Color(0.2, 0.32, 0.42))
 		_box("concrete", Transform3D(basis, mid + out * (depth * 0.5 - 1.0) + Vector3(0, 9.2, 0)), Vector3(depth + 2.0, 0.4, seg_len), Color(0.93, 0.93, 0.95))
-		_reserve(Transform3D(basis, mid + out * (depth * 0.5)), Vector3(depth + 2.0, 10.0, seg_len))
-		_reserve(Transform3D(basis, mid - out * 6.0), Vector3(12.0, 1.0, seg_len))
+		_reserve(Transform3D(basis, mid + out * (depth * 0.5)), Vector3(depth + 2.0, 10.0, seg_len), false, true)
 		garage += 1
-	return true
+
+
+## A strip between two laterals (unsigned, on the pit side) from sample i to j.
+func _strip(i: int, j: int, in_i: float, in_j: float, out_i: float, out_j: float, lift: Vector3, col: Color) -> void:
+	var side := track.pit_side
+	var ri: Vector3 = track.rights[i] * side
+	var rj: Vector3 = track.rights[j] * side
+	var q := [track.points[i] + ri * in_i + lift, track.points[j] + rj * in_j + lift,
+		track.points[j] + rj * out_j + lift, track.points[i] + ri * out_i + lift]
+	if side > 0:
+		_quad("concrete", q[0], q[3], q[2], q[1], col)
+	else:
+		_quad("concrete", q[0], q[1], q[2], q[3], col)
+
+
+func _sample_at_ps(samples: Array, ps: float) -> int:
+	var best: int = samples[0]
+	var bd := INF
+	for i in samples:
+		var d := absf(track.pit_ps(i) - ps)
+		if d < bd:
+			bd = d
+			best = i
+	return best
 
 
 func _samples_between(start_s: float, length: float) -> Array:
@@ -601,8 +676,8 @@ func _grandstand_run(start_s: float, length: float, side: float) -> bool:
 ## Keeps trees and buildings out of this box later.
 ## overhead: a structure that spans the road above car height (the hotel
 ## over the tunnel): other scenery keeps clear, but it's meant to be there.
-func _reserve(xf: Transform3D, size: Vector3, overhead := false) -> void:
-	track.scenery_boxes.append({"xf": xf, "size": size, "overhead": overhead})
+func _reserve(xf: Transform3D, size: Vector3, overhead := false, pit := false) -> void:
+	track.scenery_boxes.append({"xf": xf, "size": size, "overhead": overhead, "pit": pit})
 
 
 # ------------------------------------------------------------ bridges
