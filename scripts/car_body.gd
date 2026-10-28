@@ -72,6 +72,7 @@ func _blob_shadow() -> void:
 	mi.rotation.x = -PI / 2
 	mi.position = Vector3(0, float(spec["wheel_y"]) - float(spec["rest_length"]) - float(spec["radius_rear"]) + 0.035, (float(spec["wheel_front_z"]) + float(spec["wheel_rear_z"])) * 0.5)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visibility_range_end = 260.0
 	add_child(mi)
 
 
@@ -741,6 +742,7 @@ func _attach_wheel(w: CarWheel) -> void:
 	var cmi := MeshInstance3D.new()
 	cmi.mesh = cm
 	cmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	cmi.visibility_range_end = 45.0           # small detail: skip it far away
 	cal.add_child(cmi)
 
 
