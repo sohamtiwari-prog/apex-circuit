@@ -32,7 +32,8 @@ static func team(index: int) -> Dictionary:
 
 ## Returns a full spec. `team_index` picks the livery for GP cars and the
 ## paint for road cars (-1 keeps a road car's own colour).
-static func get_spec(id: String, team_index := 0) -> Dictionary:
+## `upgrades` is {part: level} from the garage (scripts/garage.gd).
+static func get_spec(id: String, team_index := 0, upgrades: Dictionary = {}) -> Dictionary:
 	var s: Dictionary
 	match id:
 		"vanta_gt":
@@ -54,6 +55,7 @@ static func get_spec(id: String, team_index := 0) -> Dictionary:
 		s["color"] = t["base"]
 	elif team_index > 0:
 		s["color"] = ROAD_PAINTS[posmod(team_index, ROAD_PAINTS.size())]
+	Garage.apply(s, upgrades)
 	_derive(s)
 	return s
 

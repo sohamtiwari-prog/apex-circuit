@@ -12,11 +12,14 @@ const SAVE_DIR := "user://save"
 const SAVE_PATH := SAVE_DIR + "/profile.json"
 const BACKUP_PATH := SAVE_DIR + "/profile.bak.json"
 const TMP_PATH := SAVE_DIR + "/profile.tmp.json"
-const SCHEMA_VERSION := 3
+const SCHEMA_VERSION := 4
 
 signal saved
 
 var data: Dictionary = {}
+## The career/championship event about to be raced (not saved): the race
+## scene reads it, and clears it when you leave.
+var pending_event: Dictionary = {}
 
 
 func _ready() -> void:
@@ -61,6 +64,12 @@ const _DEFAULTS := {
 		"laps": 3,
 		"opponents": 19,
 		"difficulty": "medium",     # easy, medium, hard
+		"garage_car": "marauder",   # the car on the home screen
+		"career_series": 0,
+		"career_car": {},           # series id -> the car you last raced in it
+		"qualifying": false,        # quick race: qualifying session first
+		"tyres": "medium",          # quick race: starting compound
+		"weather": "dry",           # dry, wet, changing
 	},
 	"best_laps": {},                  # "track|car" -> milliseconds
 	"best_sectors": {},               # "track|car" -> [ms, ms, ms], best of each sector
@@ -75,6 +84,13 @@ const _DEFAULTS := {
 		"podiums": 0,
 	},
 	"best_finish": {},               # "track|car" -> best race position
+	"credits": 10000,                # Garage.START_CREDITS
+	"owned_cars": ["marauder"],      # Garage.STARTER
+	"upgrades": {},                  # car -> {part: level}
+	"upgrade_jobs": {},              # car -> {part, level, done (unix s)}
+	"career": {},                    # event id -> best stars (0..3)
+	"championship": {},              # the season in progress (scripts/championship.gd)
+	"trophies": [],                  # finished seasons: {series, position, year}
 }
 
 
@@ -202,6 +218,10 @@ func _migrate(profile: Dictionary) -> void:
 	for key in ["brake_assist", "steer_assist"]:
 		if typeof(st.get(key)) == TYPE_BOOL:
 			st[key] = "full" if st[key] else "off"
+	# v4: the garage. Players from before get credits for the racing they've
+	# already done (their rank points).
+	if int(profile.get("schema", 1)) < 4:
+		profile["credits"] = int(profile.get("credits", 0)) + mini(int(profile.get("rank_points", 0)) * 10, 30000)
 	# v3: tracks got real elevation and start on the real timing line, so
 	# sector splits and ghost laps from before no longer line up.
 	if int(profile.get("schema", 1)) < 3:
@@ -212,6 +232,152 @@ func _migrate(profile: Dictionary) -> void:
 			for f in dir.get_files():
 				dir.remove(f)
 	profile["schema"] = SCHEMA_VERSION
+
+
+# ---------------------------------------------------------------- garage
+
+func credits() -> int:
+	return int(data.get("credits", 0))
+
+
+func add_credits(n: int) -> void:
+	data["credits"] = credits() + maxi(n, 0)
+	save()
+
+
+## Pays `n` credits if there are enough; false (and nothing paid) if not.
+func spend(n: int) -> bool:
+	if n > credits():
+		return false
+	data["credits"] = credits() - n
+	save()
+	return true
+
+
+func owns(car_id: String) -> bool:
+	return (data["owned_cars"] as Array).has(car_id)
+
+
+func buy_car(car_id: String) -> bool:
+	if owns(car_id) or not spend(Garage.price(car_id)):
+		return false
+	(data["owned_cars"] as Array).append(car_id)
+	save()
+	return true
+
+
+static func _now() -> float:
+	return Time.get_unix_time_from_system()
+
+
+## Installed upgrade levels {part: level} (finishing any upgrade whose time is up).
+func upgrade_levels(car_id: String) -> Dictionary:
+	_finish_jobs()
+	return (data["upgrades"].get(car_id, {}) as Dictionary).duplicate()
+
+
+## Upgrades being installed on this car: [{part, level, done}], soonest first.
+## Several parts can be installed at once.
+func upgrade_jobs(car_id: String) -> Array:
+	_finish_jobs()
+	var out: Array = []
+	for key in data["upgrade_jobs"]:
+		var j: Dictionary = data["upgrade_jobs"][key]
+		if String(j.get("car", "")) == car_id:
+			out.append(j)
+	out.sort_custom(func(x, y): return float(x["done"]) < float(y["done"]))
+	return out
+
+
+## The first upgrade being installed on this car, or {}.
+func upgrade_job(car_id: String) -> Dictionary:
+	var j := upgrade_jobs(car_id)
+	return j[0] if not j.is_empty() else {}
+
+
+## The job installing `part` on this car, or {}.
+func part_job(car_id: String, part: String) -> Dictionary:
+	_finish_jobs()
+	return data["upgrade_jobs"].get(car_id + "|" + part, {})
+
+
+func _finish_jobs() -> void:
+	var jobs: Dictionary = data["upgrade_jobs"]
+	if jobs.is_empty():
+		return
+	var now := _now()
+	var changed := false
+	for key in jobs.keys():
+		var j: Dictionary = jobs[key]
+		if not j.has("car"):
+			jobs.erase(key)              # (an older format)
+			continue
+		if float(j["done"]) <= now:
+			var car := String(j["car"])
+			if not data["upgrades"].has(car):
+				data["upgrades"][car] = {}
+			data["upgrades"][car][String(j["part"])] = int(j["level"])
+			jobs.erase(key)
+			changed = true
+	if changed:
+		save()
+
+
+## Pays for and starts the next level of `part` (other parts can be
+## installing at the same time).
+func start_upgrade(car_id: String, part: String) -> bool:
+	if not owns(car_id) or not part_job(car_id, part).is_empty():
+		return false
+	var level := int(upgrade_levels(car_id).get(part, 0)) + 1
+	if level > Garage.MAX_LEVEL or not spend(Garage.upgrade_cost(car_id, level)):
+		return false
+	data["upgrade_jobs"][car_id + "|" + part] = {"car": car_id, "part": part, "level": level, "done": _now() + Garage.upgrade_seconds(level)}
+	save()
+	return true
+
+
+func part_seconds_left(car_id: String, part: String) -> float:
+	var j := part_job(car_id, part)
+	return maxf(float(j["done"]) - _now(), 0.0) if not j.is_empty() else 0.0
+
+
+func upgrade_seconds_left(car_id: String) -> float:
+	var j := upgrade_job(car_id)
+	return maxf(float(j["done"]) - _now(), 0.0) if not j.is_empty() else 0.0
+
+
+## Finish an upgrade now for a small fee (the soonest one if no part given).
+func rush_upgrade(car_id: String, part := "") -> bool:
+	var j := part_job(car_id, part) if part != "" else upgrade_job(car_id)
+	if j.is_empty():
+		return false
+	var left := maxf(float(j["done"]) - _now(), 0.0)
+	if not spend(Garage.rush_cost(car_id, int(j["level"]), left)):
+		return false
+	j["done"] = _now() - 0.001
+	_finish_jobs()
+	return true
+
+
+## The car's spec as you've upgraded it.
+func car_spec(car_id: String, team := 0) -> Dictionary:
+	return CarSpecs.get_spec(car_id, team, upgrade_levels(car_id) if owns(car_id) else {})
+
+
+# ---------------------------------------------------------------- career
+
+func career_stars(event_id: String) -> int:
+	return int(data["career"].get(event_id, 0))
+
+
+## Records an event result; returns how many stars are new.
+func set_career_stars(event_id: String, stars: int) -> int:
+	var old := career_stars(event_id)
+	if stars > old:
+		data["career"][event_id] = stars
+		save()
+		return stars - old
+	return 0
 
 
 ## Personal best time (s) for sector k (0..2), or -1.

@@ -42,6 +42,7 @@ var remote := false               # driven by the network (another phone), not s
 var remote_vel := Vector3.ZERO
 var _light_t := 0.0
 var drs_open := false             # set by race logic in DRS zones (GP car)
+var grip_scale := 1.0               # tyres and weather (scripts/tyres.gd)
 var tow := 0.0                     # slipstream behind another car, 0..1 (set by race logic)
 const SLIPSTREAM := 0.24           # drag shed in the closest tow (about 7% more top speed)
 
@@ -429,7 +430,7 @@ func _simulate_wheels(delta: float, drive_force: float, brake_force: float) -> v
 		var cv := lin + ang.cross(arm)
 		var vx := cv.dot(fwd)
 		var vy := cv.dot(side)
-		var mu := _mu_f if front else _mu_r
+		var mu := (_mu_f if front else _mu_r) * grip_scale
 		if w.surface != 0:
 			mu *= GRASS_GRIP if w.surface == 1 else GRAVEL_GRIP
 			wheels_on_grass += 1

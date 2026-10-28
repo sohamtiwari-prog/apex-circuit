@@ -144,6 +144,35 @@ out as soon as you steer (Moderate adds half as much), so you can always use
 can accelerate, yellow where you'll need to ease off, red where you must brake
 now for what's coming at your current speed.
 
+## Career, garage and championships
+
+- **Home screen:** Career, Championship, Quick race, Friends and Garage,
+  with your car, rank and credits.
+- **Career:** five series (Club Muscle Cup, Sports Car Trophy, Supercar
+  Series, Hypercar Challenge, Grand Prix), six events each: races, duels
+  against one rival, overtake challenges (start last), eliminators (last
+  car out every lap) and time trials (gold / silver / bronze). Up to 3
+  stars per event; stars unlock the next series. The Grand Prix series
+  ends with a full World Championship season.
+- **Garage:** start with the Marauder V8 and 10,000 credits; buy the rest
+  (18,000 to 120,000 CR). Every race pays credits (quick races too).
+  Five upgrades per car (engine, aero, brakes, tyres, weight), three levels
+  each, cheap and quick: 30 s, 1 min, 2 min, several at once, or finish
+  now for a small fee. Upgrades change the physics; the Performance Rating
+  (PR) sums the car up. Players from before the garage get credits for the
+  rank points they'd earned.
+- **Championship:** pick a class you own a car for, 3 to 6 rounds, 2 to 5
+  laps; the same 20 drivers all season, points 25-18-15-12-10-8-6-4-2-1
+  (+1 fastest lap), driver and team standings, a trophy and prize money.
+- **Race weekends:** qualifying (one flying lap from a rolling out-lap,
+  or skip it) sets the grid; choose soft / medium / hard / wet tyres; tyres
+  wear (grip fades, then drops off a cliff) and you tap the tyre panel to
+  box: the car drives itself down the pit side at 80 km/h, stops for new
+  tyres and rejoins (about 18 s). Weather can be dry, wet or change during
+  the race (glossy track, rain, spray, grey skies; slicks lose grip, so
+  pit for wets). The AI makes the same calls. Quick races can have
+  qualifying, rain and a tyre choice too.
+
 ## Racing features
 
 - **Sector times:** each lap in three sectors, coloured like F1 timing:
@@ -256,7 +285,7 @@ backup. Android's auto-backup is enabled too.
   audio, traction control and ABS, cockpit view, main menu with car and track select
 - [x] **Milestone 2: racing.** 20-car grids, start lights, overtaking AI, positions, results
 - [x] **Multiplayer.** Race friends over Wi-Fi/hotspot or online, bots fill the grid
-- [ ] **Milestone 3: career and garage.** Events, currency, buying cars, upgrades
+- [x] **Milestone 3: career and garage.** Career series, credits, buying cars, upgrades, championships, race weekends
 - [ ] **Milestone 4: content and polish.** More GP tracks (Monza, Spa, ...), more cars,
   realistic textures and models, tyre compounds, pit stops, DRS
 
@@ -286,6 +315,13 @@ scripts/
   replay.gd          records every car; replay playback, seeking, highlights
   replay_camera.gd   TV towers, helicopter, blimp, drone, chase, onboards, auto director
   replay_ui.gd       replay controls and timeline
+  hub.gd             home screen
+  career.gd / career_screen.gd          career series, events, stars, rewards
+  garage.gd / garage_screen.gd          prices, upgrades, Performance Rating
+  championship.gd / championship_screen.gd  seasons, points, standings
+  weekend.gd         qualifying, tyre wear, pit stops, weather
+  tyres.gd           compounds, wear and wet grip
+  showroom.gd        the turntable behind the menus
   hud.gd             timing tower, lap timing, pause menu, classification
   touch_controls.gd  multi-touch pedals and steering buttons
   save_manager.gd    crash-safe profile saving (autoload "Save")
@@ -306,6 +342,8 @@ tests/
   race_test.gd       a full 20-car race to the results screen
   collision_test.gd  rear-end hits, offset hits, rubbing wheels, slipstream
   replay_test.gd     recording, smooth playback, every replay camera, restore after
+  career_test.gd     garage, upgrades, career events, a championship season
+  weekend_test.gd    qualifying, tyre wear, pit stops, changing weather
   perf_test.gd       simulation cost per grid size
   edge_test.gd       no invisible walls: leaving and rejoining the track
   handling_diag.gd   step-steer response, the numbers behind the handling

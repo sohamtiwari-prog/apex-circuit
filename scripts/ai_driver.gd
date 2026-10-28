@@ -11,6 +11,7 @@ var idx := -1
 var lane_offset := 0.0        # metres right of the racing line
 var skill := 1.0              # 1.0 = the profile's full pace
 var speed_cap := 999.0        # m/s, set by race logic when blocked
+var grip_scale := 1.0         # worn tyres / wet track: corners and braking scale with sqrt(grip)
 var target_speed := 0.0
 var _profile := PackedFloat32Array()
 
@@ -61,7 +62,7 @@ func update(car: RaceCar, track: Track) -> void:
 	var ahead := idx + 3 + int(absf(v) * 0.04)
 	# Off the racing line the corner is tighter: give a little speed away.
 	var off_line := clampf((absf(lane_offset) - 0.6) * 0.022, 0.0, 0.12)
-	target_speed = minf(_profile[ahead % n] * skill * (1.0 - off_line), speed_cap)
+	target_speed = minf(_profile[ahead % n] * skill * (1.0 - off_line) * sqrt(grip_scale), speed_cap)
 	var err := target_speed - v
 	if err > 0.3:
 		car.throttle = clampf(err / 2.0, 0.35, 1.0)

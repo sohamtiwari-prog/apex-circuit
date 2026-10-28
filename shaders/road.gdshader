@@ -7,6 +7,7 @@ render_mode cull_disabled;
 
 uniform sampler2D grain : filter_linear_mipmap, repeat_enable;
 uniform float rubber = 0.32;
+uniform float wetness = 0.0;     // 0 dry .. 1 soaked: darker, glossy, puddles off the line
 
 void fragment() {
 	vec3 c = COLOR.rgb;
@@ -30,7 +31,17 @@ void fragment() {
 	col = mix(col, asphalt_c, asphalt);
 	col = mix(col, gravel_c, gravel);
 	col = mix(col, c * (0.88 + 0.22 * g2), runoff);
+	float rough = mix(0.9, 0.72, rub) - 0.12 * (1.0 - code) * step(code, 0.1);
+	float spec = mix(0.4, 0.15, gravel);
+	if (wetness > 0.0) {
+		// Standing water collects in the low patches; the line dries first.
+		float puddle = smoothstep(0.45, 0.75, g3 + g1 * 0.25) * (1.0 - rub * 0.6);
+		float w = wetness * (1.0 - gravel * 0.5);
+		col *= 1.0 - 0.38 * w;
+		rough = mix(rough, mix(0.32, 0.06, puddle), w);
+		spec = mix(spec, 0.65, w);
+	}
 	ALBEDO = col;
-	ROUGHNESS = mix(0.9, 0.72, rub) - 0.12 * (1.0 - code) * step(code, 0.1);
-	SPECULAR = mix(0.4, 0.15, gravel);
+	ROUGHNESS = rough;
+	SPECULAR = spec;
 }

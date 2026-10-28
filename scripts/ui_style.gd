@@ -104,6 +104,61 @@ static func button(text: String, cb: Callable, primary := false, size := 26) -> 
 	return b
 
 
+## "12,450 CR"
+static func money(n: int) -> String:
+	var s := str(absi(n))
+	var out := ""
+	while s.length() > 3:
+		out = "," + s.substr(s.length() - 3) + out
+		s = s.substr(0, s.length() - 3)
+	return ("-" if n < 0 else "") + s + out + " CR"
+
+
+## Top bar for the menu screens: back arrow, title, and your credits.
+## Returns [bar, credits label].
+static func header(title: String, on_back: Callable, credits: int) -> Array:
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 16)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if on_back.is_valid():
+		var b := button("‹", on_back, false, 52)
+		b.custom_minimum_size = Vector2(84, 62)
+		bar.add_child(b)
+	var t := outlined(label(title, 44, PAPER, "extrabold", true), 5)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	t.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	bar.add_child(t)
+	var pill := PanelContainer.new()
+	var sb := panel(Color(TARMAC, 0.9), true, GREEN, 4)
+	sb.content_margin_left = 18
+	sb.content_margin_right = 18
+	pill.add_theme_stylebox_override("panel", sb)
+	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bar.add_child(pill)
+	var c := label(money(credits), 30, PAPER, "extrabold", true)
+	pill.add_child(c)
+	return [bar, c]
+
+
+## A big menu tile: title, a line under it, the whole thing tappable.
+static func tile(title: String, sub: String, cb: Callable, primary := false, size := 40) -> Button:
+	var b := button("", cb, primary, size)
+	b.custom_minimum_size = Vector2(0, 96)
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 30
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_theme_constant_override("separation", -6)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(v)
+	v.add_child(label(title, size, INK if primary else PAPER, "extrabold", true))
+	var s := label(sub, 19, Color(INK, 0.75) if primary else FOG, "semibold", true)
+	s.name = "Sub"
+	v.add_child(s)
+	return b
+
+
 ## Three-letter timing code from a driver name ("L. Novak" -> "NOV").
 static func code(name: String) -> String:
 	var parts := name.split(" ")

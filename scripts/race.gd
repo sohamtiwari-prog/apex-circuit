@@ -3,7 +3,7 @@ extends Node3D
 ## a full grid of AI cars with a standing start, live positions and results.
 ## Car, track, mode, laps and difficulty come from the player's settings.
 
-enum State { GRID, RACING, FINISHED }
+enum State { GRID, RACING, FINISHED, QUALI }
 
 const GRAVITY := 9.81
 const DRIVER_NAMES := [
@@ -42,6 +42,18 @@ class Entrant:
 	var sector_start := 0.0
 	var mini := 0               # minisector being driven (0..MINIS-1)
 	var outside := 0.0          # seconds spent beyond the barriers
+	var eliminated := false     # eliminator events: out of the race
+	var driver := -1            # championship: index in the season's driver list
+	# Race weekend (scripts/weekend.gd): tyres and pit stops.
+	var compound := "medium"
+	var wear := 0.0
+	var stops := 0
+	var pit_req := false
+	var next_compound := "medium"
+	var pit_phase := 0          # 0 racing, 1 down the pit lane, 2 stopped, 3 leaving
+	var pit_dist := 0.0
+	var pit_timer := 0.0
+	var pit_driver: AIDriver    # drives you through the pit lane
 	var mini_start := 0.0
 
 
@@ -101,6 +113,14 @@ var net: NetRace = null            # multiplayer session, if any
 var Net: Node                      # the Net autoload, looked up at runtime
 var _tod := ""
 var replay: Replay
+## Career / championship event being raced ({} for a quick race); see
+## scripts/career.gd. ev_type: race, duel, overtake, eliminator, time_trial.
+var event: Dictionary = {}
+var ev_type := ""
+var tt_targets: Array = []
+var _elim_lap := 0
+var last_reward := {}                  # what the results screen showed (tests)
+var weekend: Weekend                   # tyres, pits, weather, qualifying (single player)
 
 
 func _ready() -> void:
@@ -124,6 +144,15 @@ func _ready() -> void:
 		for g in net_info["grid"]:
 			if g["kind"] == "player" and int(g["id"]) == Net.my_id:
 				car_id = String(g["car"])
+	if net_info.is_empty() and not save.pending_event.is_empty():
+		event = save.pending_event
+		ev_type = String(event["type"])
+		track_id = String(event["track"])
+		car_id = String(event["car"])
+		total_laps = int(event["laps"])
+		mode = "time_trial" if ev_type == "time_trial" else "race"
+		var sk := float(event.get("skill", 0.92))
+		_difficulty = "easy" if sk < 0.89 else ("medium" if sk < 0.93 else "hard")
 	lap_key = save.lap_key(track_id, car_id)
 	DisplayServer.screen_set_keep_on(true)
 
@@ -139,7 +168,7 @@ func _ready() -> void:
 	else:
 		var team := int(save.get_setting("team"))
 		car = RaceCar.new()
-		car.setup(CarSpecs.get_spec(car_id, team if car_id == "gp26" else 0))
+		car.setup(save.car_spec(car_id, team if car_id == "gp26" else 0))
 		add_child(car)
 		player = Entrant.new()
 		player.car = car
@@ -149,6 +178,9 @@ func _ready() -> void:
 		entrants.append(player)
 		if mode == "race":
 			_spawn_opponents(team)
+		if ev_type == "time_trial":
+			# Targets from the standard car, so upgrades help you beat them.
+			tt_targets = Career.lap_targets(track, CarSpecs.get_spec(car_id))
 	_apply_assists()
 
 	audio = CarAudio.new()
@@ -195,6 +227,11 @@ func _ready() -> void:
 		hud.chat_requested.connect(func(i: int): Net.chat(i))
 		Net.chat_received.connect(_on_chat)
 
+	if net == null:
+		weekend = Weekend.new()
+		add_child(weekend)
+		weekend.setup(self)
+		hud.box_requested.connect(func(): weekend.toggle_box())
 	replay = Replay.new()
 	add_child(replay)
 	replay.setup(self)
@@ -203,12 +240,19 @@ func _ready() -> void:
 	hud.replay_available = net == null
 
 	_restart()
+	if weekend != null and weekend.qualifying:
+		weekend.begin_qualifying()
 
 
 func _spawn_opponents(player_team: int) -> void:
 	var count := int(save.get_setting("opponents"))
 	var difficulty := String(save.get_setting("difficulty"))
 	var base_skill: float = {"easy": 0.86, "medium": 0.93, "hard": 0.985}.get(difficulty, 0.93)
+	var models: Array = [car_id]
+	if not event.is_empty():
+		count = int(event["opponents"])
+		base_skill = float(event["skill"])
+		models = event.get("cars", [car_id])
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(track_id) + count
 	# GP: two cars per team (the player's teammate first); road: varied paint.
@@ -227,7 +271,15 @@ func _spawn_opponents(player_team: int) -> void:
 		var e := Entrant.new()
 		var t: int = slots[i % slots.size()]
 		var c := RaceCar.new()
-		c.setup(CarSpecs.get_spec(car_id, t))
+		var model: String = models[(i + 1) % models.size()] if models.size() > 1 else String(models[0])
+		if model != "gp26" and car_id == "gp26":
+			t = i + 1
+		var drv: Dictionary = {}
+		if event.has("drivers") and i + 1 < (event["drivers"] as Array).size():
+			drv = event["drivers"][i + 1]
+			model = String(drv["car"])
+			t = int(drv["team"])
+		c.setup(CarSpecs.get_spec(model, t))
 		add_child(c)
 		var a := CarAudio.new()
 		c.add_child(a)
@@ -236,7 +288,13 @@ func _spawn_opponents(player_team: int) -> void:
 		e.ai = AIDriver.new()
 		# Spread the field: each driver a little different, front-runners quicker.
 		e.ai.skill = clampf(base_skill + rng.randf_range(-0.025, 0.02) - i * 0.0015, 0.75, 1.0)
+		if ev_type == "duel":
+			e.ai.skill = base_skill               # one rival: no spread
 		e.name = DRIVER_NAMES[i % DRIVER_NAMES.size()]
+		if not drv.is_empty():
+			e.ai.skill = float(drv["skill"])
+			e.name = String(drv["name"])
+			e.driver = i + 1
 		e.team = String(c.spec.get("team_name", c.spec["name"]))
 		entrants.append(e)
 
@@ -321,19 +379,28 @@ func _place(e: Entrant, xform: Transform3D) -> void:
 	e.car.reset_controls()
 	e.idx = track.nearest_index(xform.origin, -1)
 	e.prev_idx = e.idx
-	if e.ai != null:
-		e.ai.idx = e.idx
-		e.ai.lane_offset = 0.0
-		e.ai.speed_cap = 999.0
+	var drv: AIDriver = e.ai if e.ai != null else (autopilot if e.is_player else null)
+	if drv != null:
+		drv.idx = e.idx
+		drv.lane_offset = 0.0
+		drv.speed_cap = 999.0
 
 
 func _restart() -> void:
 	_results_shown = false
 	_ranked = false
+	_rewarded = false
 	hud.hide_results()
 	replay.clear()
 	# Player starts mid-grid in a race; on the line in a time trial.
 	var player_slot := mini(9, entrants.size() - 1) if mode == "race" else 0
+	match ev_type:
+		"race", "eliminator":
+			player_slot = int((entrants.size() - 1) * 0.6)
+		"overtake":
+			player_slot = entrants.size() - 1
+		"duel":
+			player_slot = 1
 	var k := 0
 	for e in entrants:
 		var slot := player_slot if e.is_player else (k if k < player_slot else k + 1)
@@ -341,6 +408,8 @@ func _restart() -> void:
 			k += 1
 		if net != null:
 			slot = e.slot
+		elif weekend != null and not weekend.grid_order.is_empty():
+			slot = weekend.grid_order.find(e)
 		_place(e, _grid_pose(slot))
 		e.car.controls_enabled = false
 		e.lap = 0
@@ -359,6 +428,12 @@ func _restart() -> void:
 		e.mini_start = 0.0
 		e.drs_armed = false
 		e.car.drs_open = false
+		e.eliminated = false
+		e.car.visible = true
+		if not e.remote:
+			e.car.freeze = false
+	if weekend != null:
+		weekend.reset()
 	session_sectors = [INF, INF, INF]
 	_my_session_sectors = [INF, INF, INF]
 	session_minis.resize(MINIS)
@@ -377,7 +452,13 @@ func _restart() -> void:
 	if net != null and not Net.is_host():
 		lights_out_at = 1e9              # the host decides when the lights go out
 	lap_valid = true
+	_elim_lap = 0
 	var title := "%d-lap race" % total_laps if mode == "race" else "Time trial"
+	if not event.is_empty():
+		title = "%s: %s" % [Career.TYPE_NAMES.get(ev_type, "Race"), title]
+	if not tt_targets.is_empty():
+		get_tree().create_timer(3.2).timeout.connect(func():
+			hud.show_banner("Gold %s   Silver %s   Bronze %s" % [UIStyle.fmt_time(tt_targets[0]), UIStyle.fmt_time(tt_targets[1]), UIStyle.fmt_time(tt_targets[2])], UIStyle.YELLOW, 4.0))
 	hud.show_banner("%s, %s" % [track.track_name, title], UIStyle.PAPER, 3.0)
 	hud.show_center("")
 	for e in entrants:
@@ -431,6 +512,8 @@ func _slipstream() -> void:
 	var mine: Array = []
 	var all: Array = []
 	for e in entrants:
+		if e.eliminated:
+			continue
 		all.append(e.car)
 		if not e.remote:
 			mine.append(e.car)
@@ -481,7 +564,9 @@ func _quit_to_menu() -> void:
 		Net.leave()
 	save.save()
 	get_tree().paused = false
-	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+	var back := String(event.get("return_to", "res://scenes/menu.tscn"))
+	save.pending_event = {}
+	get_tree().change_scene_to_file(back if net == null else "res://scenes/hub.tscn")
 
 
 func _notification(what: int) -> void:
@@ -600,7 +685,9 @@ func _physics_process(delta: float) -> void:
 	if replay.playing:
 		return                          # the replay is posing the cars
 	_tick += 1
-	if autopilot != null:
+	if weekend != null and weekend.player_in_pit():
+		weekend.drive_player()
+	elif autopilot != null:
 		autopilot.update(car, track)
 	else:
 		_read_input()
@@ -614,11 +701,13 @@ func _physics_process(delta: float) -> void:
 
 	# AI drivers think at 60 Hz (half the physics rate) and check traffic at
 	# 30 Hz: plenty for driving, and keeps a full grid cheap on a phone.
-	if _tick % 4 == 0:
+	if _tick % 4 == 0 and state != State.QUALI:
 		_traffic()
-	if _tick % 2 == 0:
+	if weekend != null:
+		weekend.pre_drive()
+	if _tick % 2 == 0 and state != State.QUALI:
 		for e in entrants:
-			if e.ai != null and not (e.finished and e.car.forward_speed() < 1.0):
+			if e.ai != null and not (e.finished and e.car.forward_speed() < 1.0) and not e.eliminated:
 				e.ai.update(e.car, track)
 				if e.finished:
 					e.ai.speed_cap = 25.0      # cool-down lap
@@ -627,6 +716,8 @@ func _physics_process(delta: float) -> void:
 		net.physics_tick(delta)
 	for e in entrants:
 		_update_entrant(e, delta)
+	if weekend != null:
+		weekend.physics(delta)
 	if (_tick % 6 == 0 or state == State.FINISHED) and (net == null or Net.is_host()):
 		_update_positions()
 
@@ -709,7 +800,7 @@ func _update_entrant(e: Entrant, delta: float) -> void:
 		e.ghost -= delta
 		if e.ghost <= 0.0:
 			e.car.set_ghost(false)
-	if state == State.GRID:
+	if state == State.GRID or state == State.QUALI:
 		return
 	# Checkpoints at 25/50/75% must be passed in order.
 	var quarter := int(e.idx * 4 / n)
@@ -915,8 +1006,14 @@ func _complete_lap(e: Entrant) -> void:
 	if mode == "race" and e.lap >= total_laps:
 		e.finished = true
 		e.finish_time = race_time
+	if ev_type == "time_trial" and e.is_player and e.lap >= total_laps:
+		e.finished = true
+		e.finish_time = race_time
 	replay.on_lap(e, lap_time)
-	if e.is_player:
+	if ev_type == "eliminator" and e.lap > _elim_lap and e.lap < total_laps and not e.eliminated:
+		_elim_lap = e.lap
+		_eliminate_last()
+	if e.is_player and not e.eliminated:
 		_player_lap(lap_time)
 		if e.finished:
 			_player_finished()
@@ -952,8 +1049,11 @@ func _player_finished() -> void:
 		# Hand the car to the AI for the cool-down lap.
 		autopilot = AIDriver.new()
 		autopilot.speed_cap = 30.0
-	hud.show_center("P%d" % player.position)
-	save.record_race(track_id, car_id, player.position, entrants.size())
+	if ev_type == "time_trial":
+		hud.show_center("")
+	else:
+		hud.show_center("P%d" % player.position)
+		save.record_race(track_id, car_id, player.position, entrants.size())
 	get_tree().create_timer(2.5).timeout.connect(_show_results)
 
 
@@ -974,6 +1074,8 @@ func _show_results() -> void:
 		var gap := ""
 		if e == winner:
 			gap = Hud.fmt_time(e.finish_time) if e.finished else ""
+		elif e.eliminated:
+			gap = "Out, lap %d" % (e.lap + 1)
 		elif e.finished:
 			gap = "+%.3f" % (e.finish_time - winner.finish_time)
 		else:
@@ -984,14 +1086,91 @@ func _show_results() -> void:
 			"color": e.car.spec["color"], "fastest": e == fastest})
 	var rank := _award_rank(fastest == player)
 	var watch := func(): watch_replay(false)
-	if net == null:
-		hud.show_results(rows, func(): _restart(), func(): _quit_to_menu(), "Race again", rank, watch)
+	var reward := _settle_rewards()
+	last_reward = reward
+	if ev_type == "champ_round":
+		# Points are in: no retries, on to the standings.
+		hud.show_results(rows, func(): _quit_to_menu(), func(): _quit_to_menu(), "Standings", rank, watch, reward)
+	elif net == null:
+		hud.show_results(rows, func(): _restart(), func(): _quit_to_menu(), "Try again" if not event.is_empty() else "Race again", rank, watch, reward)
 	elif Net.is_host():
 		hud.show_results(rows, func(): net.back_to_lobby(), func(): _quit_to_menu(), "Back to lobby", rank, watch)
 	else:
 		hud.show_results(rows, Callable(), func(): _quit_to_menu(), "Race again", rank, watch)
 	if net != null and hud.replay_button != null:
 		hud.replay_button.disabled = true      # until every car is home (see _physics_process)
+
+
+## Credits (and career stars) for this finish, once per race.
+var _rewarded := false
+
+func _settle_rewards() -> Dictionary:
+	if net != null or _rewarded or player == null:
+		return {}
+	_rewarded = true
+	if event.is_empty():
+		if mode != "race" or not player.finished:
+			return {}
+		var cr := Career.quick_reward(player.position, entrants.size(), total_laps, _difficulty)
+		save.add_credits(cr)
+		return {"credits": cr}
+	if ev_type == "champ_round":
+		var order: Array = []
+		var ordered := entrants.duplicate()
+		ordered.sort_custom(_by_position)
+		var fastest := -1
+		var fl := INF
+		for e in ordered:
+			order.append(maxi(e.driver, 0) if not e.is_player else 0)
+			if e.best_lap > 0.0 and e.best_lap < fl:
+				fl = e.best_lap
+				fastest = 0 if e.is_player else e.driver
+		var out := Championship.record_round(save, order, fastest)
+		var base := int({"gp": 6000, "hyper": 4500, "super": 3500, "sports": 2500, "muscle": 1800}.get(String(Championship.active(save).get("class", "gp")), 3000))
+		var cr := Garage.race_reward(base, player.position, entrants.size())
+		save.add_credits(cr)
+		return {"champ": out, "credits": cr, "event": event, "position": player.position}
+	if not event.has("id") or String(event["id"]) == "":
+		return {}
+	var stars := 0
+	if ev_type == "time_trial":
+		stars = Career.stars_for_lap(player.best_lap, tt_targets)
+	else:
+		stars = Career.stars_for_position(ev_type, player.position)
+	var prev: int = save.career_stars(String(event["id"]))
+	var fresh: int = save.set_career_stars(String(event["id"]), stars)
+	var cr := Career.reward(event, player.position, entrants.size(), stars, fresh)
+	save.add_credits(cr)
+	return {"event": event, "stars": stars, "prev": prev, "new": fresh, "credits": cr,
+		"targets": tt_targets, "best": player.best_lap, "position": player.position}
+
+
+## Eliminator: the last car still running is out.
+func _eliminate_last() -> void:
+	_update_positions()
+	var left := 0
+	var last: Entrant = null
+	for e in entrants:
+		if e.eliminated:
+			continue
+		left += 1
+		if last == null or e.position > last.position:
+			last = e
+	if last == null or left <= 1:
+		return
+	last.eliminated = true
+	last.finished = true
+	last.finish_time = race_time
+	last.car.set_ghost(true)
+	last.car.visible = false
+	last.car.controls_enabled = false
+	last.car.freeze = true
+	_update_positions()
+	if last.is_player:
+		hud.show_banner("You're out!  P%d" % last.position, UIStyle.RED)
+		_player_finished()
+	else:
+		hud.show_banner("%s is out" % last.name, UIStyle.RED, 2.5)
 
 
 ## Rank points for this finish (races only, once per race).
@@ -1014,6 +1193,11 @@ func _award_rank(fastest_lap: bool) -> Dictionary:
 # ------------------------------------------------------------ race order
 
 func _by_position(a: Entrant, b: Entrant) -> bool:
+	# Knocked out (eliminator): behind everyone still in, the last out ahead.
+	if a.eliminated != b.eliminated:
+		return b.eliminated
+	if a.eliminated:
+		return a.finish_time > b.finish_time
 	# Finished cars by finishing time, then everyone else by distance covered.
 	if a.finished and b.finished:
 		return a.finish_time < b.finish_time
@@ -1051,7 +1235,7 @@ func _traffic() -> void:
 		var drv: AIDriver = e.ai
 		if drv == null and e.is_player:
 			drv = autopilot
-		if drv == null:
+		if drv == null or e.pit_phase > 0 or e.eliminated:
 			continue
 		var my_s: float = track.cum[e.idx]
 		var my_lat := track.lateral(e.car.global_position, e.idx)
@@ -1062,7 +1246,7 @@ func _traffic() -> void:
 		var lead_lat := 0.0
 		var beside: Array[float] = []        # lateral positions of cars alongside
 		for o in entrants:
-			if o == e or o.ghost > 0.0:
+			if o == e or o.ghost > 0.0 or o.eliminated or o.pit_phase > 0:
 				continue
 			var gap := fposmod(track.cum[o.idx] - my_s + L * 0.5, L) - L * 0.5
 			# Mirrors: a faster car coming up behind counts as alongside sooner.
@@ -1136,8 +1320,11 @@ func _update_hud() -> void:
 	var lap_time := race_time - player.lap_start if state != State.GRID else 0.0
 	var best_ms: int = save.get_best_lap(lap_key)
 	var shown_lap := mini(player.lap + 1, total_laps) if mode == "race" else player.lap + 1
-	hud.update_timing(shown_lap, lap_time, player.last_lap,
-		best_ms / 1000.0 if best_ms >= 0 else -1.0, lap_valid or mode == "race")
+	if state != State.QUALI:
+		hud.update_timing(shown_lap, lap_time, player.last_lap,
+			best_ms / 1000.0 if best_ms >= 0 else -1.0, lap_valid or mode == "race")
+	if weekend != null and mode == "race":
+		hud.set_tyres(player.compound, player.wear, player.pit_req, player.next_compound, player.pit_phase > 0)
 	hud.update_engine(car.gear, car.rpm, float(car.spec["upshift_rpm"]), float(car.spec["redline"]),
 		float(car.spec["idle_rpm"]), car.speed_kmh())
 	hud.set_tow(car.tow)

@@ -690,4 +690,4 @@ func _my_rp() -> int:
 func _to_menu() -> void:
 	Net.stop_discovery()
 	Net.leave()
-	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+	get_tree().change_scene_to_file("res://scenes/hub.tscn")

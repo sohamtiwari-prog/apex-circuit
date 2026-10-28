@@ -14,6 +14,7 @@ signal settings_changed
 signal menu_requested
 signal chat_requested(index: int)
 signal replay_requested
+signal box_requested
 var replay_button: Button             # on the results screen
 var replay_available := true:          # pause menu "Watch replay" (single player)
 	set(v):
@@ -103,6 +104,8 @@ func _ready() -> void:
 	_build_minimap(root)
 	_build_drs(root)
 	_build_tow(root)
+	_build_tyres(root)
+	_build_action(root)
 	_build_messages(root)
 	_build_lights(root)
 	_build_pause_menu(root)
@@ -303,6 +306,209 @@ func _build_tow(root: Control) -> void:
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	stack.add_child(l)
+
+
+# ------------------------------------------------------------ tyres and pits
+
+var _tyre_btn: Button
+var _tyre_badge: TyreBadge
+var _tyre_lbl: Label
+var _tyre_bar: ColorRect
+
+## Tyre panel, right of the rev gauge: compound, wear, and BOX (tap).
+func _build_tyres(root: Control) -> void:
+	_tyre_btn = Button.new()
+	_tyre_btn.focus_mode = Control.FOCUS_NONE
+	_tyre_btn.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_tyre_btn.offset_left = 172
+	_tyre_btn.offset_right = 352
+	_tyre_btn.offset_top = -96
+	_tyre_btn.offset_bottom = -26
+	_tyre_btn.visible = false
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.75))
+	for st in ["normal", "hover", "pressed", "focus"]:
+		_tyre_btn.add_theme_stylebox_override(st, sb)
+	_tyre_btn.pressed.connect(func(): box_requested.emit())
+	root.add_child(_tyre_btn)
+	var h := HBoxContainer.new()
+	h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	h.offset_left = 12
+	h.offset_right = -10
+	h.add_theme_constant_override("separation", 10)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tyre_btn.add_child(h)
+	_tyre_badge = TyreBadge.new()
+	_tyre_badge.custom_minimum_size = Vector2(46, 46)
+	_tyre_badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(_tyre_badge)
+	var v := VBoxContainer.new()
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.add_theme_constant_override("separation", 4)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(v)
+	_tyre_lbl = UIStyle.label("", 20, UIStyle.PAPER, "extrabold", true)
+	v.add_child(_tyre_lbl)
+	var back := ColorRect.new()
+	back.color = Color(UIStyle.PAPER, 0.15)
+	back.custom_minimum_size = Vector2(0, 7)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(back)
+	_tyre_bar = ColorRect.new()
+	_tyre_bar.size = Vector2(0, 7)
+	_tyre_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	back.add_child(_tyre_bar)
+
+
+func set_tyres(compound: String, wear: float, box: bool, next: String, pitting: bool) -> void:
+	if _tyre_btn == null:
+		return
+	_tyre_btn.visible = gauge.visible
+	_tyre_badge.compound = compound
+	var left := 1.0 - clampf(wear, 0.0, 1.0)
+	if pitting:
+		_tyre_lbl.text = "PIT LANE"
+	elif box:
+		_tyre_lbl.text = "BOX > " + String(Tyres.LETTER.get(next, "M"))
+	else:
+		_tyre_lbl.text = "%d%%  BOX?" % int(round(left * 100.0)) if wear > 0.7 else "%d%%" % int(round(left * 100.0))
+	_tyre_lbl.add_theme_color_override("font_color", UIStyle.YELLOW if box or pitting else (UIStyle.RED if wear > 0.8 else UIStyle.PAPER))
+	_tyre_bar.size.x = (_tyre_bar.get_parent() as Control).size.x * left
+	_tyre_bar.color = UIStyle.GREEN if wear < 0.6 else (UIStyle.YELLOW if wear < 0.8 else UIStyle.RED)
+	var sb := _tyre_btn.get_theme_stylebox("normal") as StyleBoxFlat
+	sb.border_color = UIStyle.YELLOW
+	sb.set_border_width_all(3 if box else 0)
+
+
+## A tyre: dark rubber ring with the compound's coloured band and letter.
+class TyreBadge extends Control:
+	var compound := "medium":
+		set(v):
+			if v != compound:
+				compound = v
+				queue_redraw()
+
+	func _draw() -> void:
+		var c := size * 0.5
+		var r := minf(size.x, size.y) * 0.5
+		draw_circle(c, r, Color(0.08, 0.08, 0.09))
+		draw_arc(c, r * 0.72, 0, TAU, 40, Tyres.COLOR.get(compound, Color.WHITE), r * 0.16, true)
+		var f := UIStyle.font("extrabold", false)
+		var fs := int(r * 0.9)
+		var t := String(Tyres.LETTER.get(compound, "M"))
+		var w := f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		draw_string(f, c + Vector2(-w * 0.5, fs * 0.36), t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
+
+
+# ------------------------------------------------------------ action button
+
+var _action: Button
+
+func _build_action(root: Control) -> void:
+	_action = UIStyle.button("", Callable(), false, 24)
+	_action.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_action.offset_left = -150
+	_action.offset_right = 150
+	_action.offset_top = 150
+	_action.offset_bottom = 212
+	_action.visible = false
+	root.add_child(_action)
+
+
+## A single button under the banner (e.g. "Skip qualifying").
+func show_action(text: String, cb: Callable) -> void:
+	for c in _action.pressed.get_connections():
+		_action.pressed.disconnect(c["callable"])
+	_action.text = text
+	_action.pressed.connect(cb)
+	_action.visible = true
+
+
+func hide_action() -> void:
+	_action.visible = false
+
+
+## Qualifying classification, your tyre choice for the race, and Start.
+func show_quali(rows: Array, compound: String, weather: String, on_start: Callable) -> void:
+	for c in results_panel.get_children():
+		c.queue_free()
+	touch.release_all()
+	touch.visible = false
+	_set_live_visible(false)
+	var chosen := [compound]
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 28 if side != "left" else 44)
+	results_panel.add_child(margin)
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 36)
+	margin.add_child(cols)
+	var me := {}
+	for r in rows:
+		if r["player"]:
+			me = r
+	var left := VBoxContainer.new()
+	left.custom_minimum_size = Vector2(420, 0)
+	left.add_theme_constant_override("separation", 4)
+	cols.add_child(left)
+	left.add_child(UIStyle.label("Qualifying", 30, UIStyle.FOG, "bold", true))
+	left.add_child(UIStyle.label("P%d" % int(me.get("pos", 0)), 120, UIStyle.APEX if int(me.get("pos", 99)) <= 3 else UIStyle.PAPER, "extrabold", true))
+	left.add_child(UIStyle.label(String(me.get("time", "")) + ("   pole!" if int(me.get("pos", 0)) == 1 else ""), 30, UIStyle.PURPLE if int(me.get("pos", 0)) == 1 else UIStyle.PAPER, "bold", true))
+	var sp := Control.new()
+	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left.add_child(sp)
+	var wl := {"dry": "Dry race", "wet": "Wet race: wets are fitted", "changing": "Rain expected during the race"}
+	left.add_child(UIStyle.label("Race tyres  ·  " + String(wl.get(weather, "")), 20, UIStyle.FOG, "bold", true))
+	var tyres := HBoxContainer.new()
+	tyres.add_theme_constant_override("separation", 8)
+	left.add_child(tyres)
+	var btns := {}
+	var paint := func():
+		for k in btns:
+			var b: Button = btns[k]
+			var sb := UIStyle.panel(Color(UIStyle.TARMAC_2, 0.95) if k != chosen[0] else Color(Tyres.COLOR[k], 0.9))
+			for st in ["normal", "hover", "pressed", "focus"]:
+				b.add_theme_stylebox_override(st, sb)
+			b.add_theme_color_override("font_color", UIStyle.INK if k == chosen[0] else UIStyle.PAPER)
+			b.add_theme_color_override("font_hover_color", UIStyle.INK if k == chosen[0] else UIStyle.PAPER)
+	for k in Tyres.COMPOUNDS:
+		var b := UIStyle.button(String(Tyres.NAMES[k]), func():
+			chosen[0] = k
+			paint.call(), false, 22)
+		b.custom_minimum_size = Vector2(0, 58)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tyres.add_child(b)
+		btns[k] = b
+	paint.call()
+	var go := UIStyle.button("Start the race", func():
+		results_panel.visible = false
+		touch.visible = true
+		_set_live_visible(true)
+		on_start.call(chosen[0]), true, 34)
+	go.custom_minimum_size = Vector2(0, 80)
+	left.add_child(go)
+
+	var right := VBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.add_theme_constant_override("separation", 8)
+	cols.add_child(right)
+	right.add_child(UIStyle.label("Starting grid", 36, UIStyle.PAPER, "extrabold", true))
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.scroll_deadzone = 24
+	right.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 4)
+	scroll.add_child(list)
+	for r in rows:
+		var rr: Dictionary = r.duplicate()
+		rr["best"] = r["time"]
+		rr["fastest"] = int(r["pos"]) == 1
+		list.add_child(_result_row(rr))
+	results_panel.visible = true
 
 
 func set_tow(t: float) -> void:
@@ -700,6 +906,86 @@ func _rank_column(cols: Control, rank: Dictionary) -> void:
 	tw.tween_method(set_rp, float(before), float(after), 1.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 
+## Championship round: points scored, where that leaves you.
+func _champ_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void:
+	var ev: Dictionary = reward["event"]
+	var out: Dictionary = reward["champ"]
+	var col := VBoxContainer.new()
+	col.custom_minimum_size = Vector2(340, 0)
+	col.add_theme_constant_override("separation", 4)
+	cols.add_child(col)
+	col.add_child(UIStyle.label(String(ev.get("series_name", "Championship")), 22, UIStyle.FOG, "bold", true))
+	col.add_child(UIStyle.label("Round %d of %d" % [int(ev["round"]) + 1, int(ev["rounds"])], 34, UIStyle.PAPER, "extrabold", true))
+	col.add_child(UIStyle.label("+%d points" % int(out["gained"]), 64, UIStyle.APEX, "extrabold", true))
+	var b := int(out["before"])
+	var a := int(out["after"])
+	var move := "" if a == b else ("  (up from P%d)" % b if a < b else "  (down from P%d)" % b)
+	col.add_child(UIStyle.label("Championship: P%d%s" % [a, move], 24, UIStyle.GREEN if a < b else UIStyle.PAPER, "bold", true))
+	if out.has("final"):
+		var f: Dictionary = out["final"]
+		var sp := Control.new()
+		sp.custom_minimum_size = Vector2(0, 10)
+		col.add_child(sp)
+		col.add_child(UIStyle.label("CHAMPION!" if int(f["position"]) == 1 else "Season over: P%d" % int(f["position"]), 40, UIStyle.YELLOW, "extrabold", true))
+		if int(f["prize"]) > 0:
+			col.add_child(UIStyle.label("Prize: +" + UIStyle.money(int(f["prize"])), 24, UIStyle.GREEN, "bold", true))
+	var sp2 := Control.new()
+	sp2.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(sp2)
+	if not rank.is_empty():
+		col.add_child(UIStyle.label("+%d RP   %s" % [int(rank["after"]) - int(rank["before"]), Ranks.tier_name(int(rank["after"]))], 22, Ranks.tier_color(int(rank["after"])), "bold", true))
+
+
+## Career event result: stars (new ones flash in), what they were for, the
+## credits, and rank points.
+func _reward_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void:
+	var ev: Dictionary = reward["event"]
+	var col := VBoxContainer.new()
+	col.custom_minimum_size = Vector2(340, 0)
+	col.add_theme_constant_override("separation", 4)
+	cols.add_child(col)
+	col.add_child(UIStyle.label(String(ev.get("series_name", "Career")), 22, UIStyle.FOG, "bold", true))
+	col.add_child(UIStyle.label(Career.TYPE_NAMES.get(String(ev["type"]), "Race"), 34, UIStyle.PAPER, "extrabold", true))
+	var stars := StarRow.new()
+	stars.custom_minimum_size = Vector2(300, 84)
+	stars.stars = int(reward["prev"])
+	col.add_child(stars)
+	var got := int(reward["stars"])
+	var msg := ""
+	if int(reward["new"]) > 0:
+		msg = "%d new star%s!" % [int(reward["new"]), "" if int(reward["new"]) == 1 else "s"]
+	elif got == 0:
+		msg = "No stars this time"
+	else:
+		msg = "Matched your best"
+	col.add_child(UIStyle.label(msg, 26, UIStyle.YELLOW if int(reward["new"]) > 0 else UIStyle.FOG, "bold", true))
+	if String(ev["type"]) == "time_trial":
+		var names := ["Gold", "Silver", "Bronze"]
+		var tg: Array = reward["targets"]
+		for k in mini(tg.size(), 3):
+			var h := HBoxContainer.new()
+			col.add_child(h)
+			var n := UIStyle.label("%s  %d star%s" % [names[k], 3 - k, "" if k == 2 else "s"], 20, UIStyle.FOG, "semibold")
+			n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			h.add_child(n)
+			var beat: bool = float(reward["best"]) > 0.0 and float(reward["best"]) <= float(tg[k])
+			h.add_child(UIStyle.label(UIStyle.fmt_time(float(tg[k])), 20, UIStyle.GREEN if beat else UIStyle.PAPER, "bold", true))
+	else:
+		col.add_child(UIStyle.label(String(Career.TYPE_RULES.get(String(ev["type"]), "")), 18, UIStyle.FOG, "medium"))
+		(col.get_child(col.get_child_count() - 1) as Label).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var sp := Control.new()
+	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(sp)
+	if not rank.is_empty():
+		col.add_child(UIStyle.label("+%d RP   %s" % [int(rank["after"]) - int(rank["before"]), Ranks.tier_name(int(rank["after"]))], 22, Ranks.tier_color(int(rank["after"])), "bold", true))
+	# New stars light up one by one.
+	var tw := create_tween()
+	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	for s in range(int(reward["prev"]) + 1, got + 1):
+		tw.tween_interval(0.45)
+		tw.tween_callback(func(): stars.stars = s)
+
+
 func _rank_bar(parent: Control) -> ColorRect:
 	var back := ColorRect.new()
 	back.color = Color(UIStyle.PAPER, 0.12)
@@ -934,7 +1220,7 @@ func _set_live_visible(on: bool) -> void:
 
 
 ## rows: [{pos, name, team, gap, best, player, color, fastest}]
-func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_text := "Race again", rank: Dictionary = {}, on_replay: Callable = Callable()) -> void:
+func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_text := "Race again", rank: Dictionary = {}, on_replay: Callable = Callable(), reward: Dictionary = {}) -> void:
 	for c in results_panel.get_children():
 		c.queue_free()
 	touch.release_all()
@@ -958,11 +1244,21 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 	left.custom_minimum_size = Vector2(300, 0)
 	left.add_theme_constant_override("separation", 0)
 	cols.add_child(left)
-	left.add_child(UIStyle.label("You finished", 30, UIStyle.FOG, "bold", true))
-	var big := UIStyle.label("P%d" % int(me.get("pos", 0)), 150, UIStyle.APEX if int(me.get("pos", 99)) <= 3 else UIStyle.PAPER, "extrabold", true)
-	left.add_child(big)
-	left.add_child(UIStyle.label("of %d" % rows.size(), 30, UIStyle.FOG, "bold", true))
-	if me.get("best", "-") != "-":
+	var tt: bool = reward.has("event") and reward["event"]["type"] == "time_trial"
+	if tt:
+		left.add_child(UIStyle.label("Best lap", 30, UIStyle.FOG, "bold", true))
+		var bt := UIStyle.label(String(me.get("best", "-")), 72, UIStyle.PAPER, "extrabold", true)
+		bt.custom_minimum_size = Vector2(0, 150)
+		bt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		left.add_child(bt)
+	else:
+		left.add_child(UIStyle.label("You finished", 30, UIStyle.FOG, "bold", true))
+		var big := UIStyle.label("P%d" % int(me.get("pos", 0)), 150, UIStyle.APEX if int(me.get("pos", 99)) <= 3 else UIStyle.PAPER, "extrabold", true)
+		left.add_child(big)
+		left.add_child(UIStyle.label("of %d" % rows.size(), 30, UIStyle.FOG, "bold", true))
+	if int(reward.get("credits", 0)) > 0:
+		left.add_child(UIStyle.label("+" + UIStyle.money(int(reward["credits"])), 30, UIStyle.GREEN, "extrabold", true))
+	if me.get("best", "-") != "-" and not tt:
 		var bl := UIStyle.label("Best lap %s" % me["best"], 26, UIStyle.PURPLE if me.get("fastest", false) else UIStyle.PAPER, "bold", true)
 		bl.custom_minimum_size = Vector2(0, 54)
 		bl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
@@ -1002,7 +1298,11 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 	menu.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lower.add_child(menu)
 
-	if not rank.is_empty():
+	if reward.has("champ"):
+		_champ_column(cols, reward, rank)
+	elif reward.has("event"):
+		_reward_column(cols, reward, rank)
+	elif not rank.is_empty():
 		_rank_column(cols, rank)
 
 	# Right: the classification.

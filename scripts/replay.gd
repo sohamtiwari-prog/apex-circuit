@@ -124,7 +124,7 @@ func _sample() -> void:
 			c.brake_input, c.throttle, 1.0 if c.drs_open else 0.0]))
 		order.append(clampi(int(e.position), 0, 255))
 		laps.append(clampi(int(e.lap), 0, 255))
-	var racing: bool = int(race.state) != 0
+	var racing: bool = int(race.state) == 1 or int(race.state) == 2
 	clock.append(float(race.race_time) if racing else 0.0)
 	count += 1
 	if racing and not _racing:

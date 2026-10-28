@@ -86,6 +86,12 @@ jobs:
       - name: Replays and replay cameras
         run: bash .github/run_test.sh res://tests/replay_test.gd
 
+      - name: Career, garage, upgrades and championship
+        run: bash .github/run_test.sh res://tests/career_test.gd
+
+      - name: Race weekend (qualifying, tyres, pit stops, rain)
+        run: bash .github/run_test.sh res://tests/weekend_test.gd
+
       - name: No scenery on the road
         run: bash .github/run_test.sh res://tests/scenery_test.gd
 

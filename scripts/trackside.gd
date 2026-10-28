@@ -381,6 +381,7 @@ func _pits_and_stands() -> void:
 	if track.style != "city":
 		for side in [-1.0, 1.0]:
 			if _pit_complex(start_s, length, side):
+				track.pit_side = side
 				_grandstand_run(start_s + 60.0, 160.0, -side)
 				break
 	else:

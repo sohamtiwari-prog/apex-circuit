@@ -85,6 +85,8 @@ var terrain_wild := PackedByteArray()      # 0 mown by the track .. 255 rough la
 var sea_level := NAN                       # coastal tracks: water height
 var terrain_drawn := PackedFloat32Array()  # heights as drawn (pushed down under the road)
 var _ground_mat: ShaderMaterial
+var road_mat: ShaderMaterial               # (rain sets its wetness)
+var pit_side := 1.0                        # which side of the main straight the pits are
 var detail := 1.0                          # scenery density (0.55 in battery saver)
 ## Tree tops by 6 m cell (for replay cameras: is the view blocked?).
 const TREE_CELL := 6.0
@@ -951,6 +953,7 @@ func _build_road() -> void:
 				_band(st, faces, i, j, -h + LINE_W, h - LINE_W, Color(0.93, 0.93, 0.93, 0.0), 0.3, 0.45, 0.006, 0.006)
 
 	var mat := ShaderMaterial.new()
+	road_mat = mat
 	mat.shader = load("res://shaders/road.gdshader")
 	mat.set_shader_parameter("grain", _noise_texture(0.06, Color(0, 0, 0), Color(1, 1, 1)))
 
@@ -1416,8 +1419,32 @@ func _optimise_line() -> void:
 ## backwards from each corner. Cached per car.
 ## centre = true: the same for a car driving the middle of the road
 ## (tighter than the racing line), used by brake assist when you're off-line.
+## A flying lap's time (s) for a car driven at `pace` of its cornering
+## and braking limits: the speed profile, plus how fast it can actually
+## accelerate out of each corner (power, traction and drag).
+func lap_estimate(spec: Dictionary, pace := 1.0) -> float:
+	var prof := speed_profile(spec)
+	var n := prof.size()
+	var m := float(spec["mass"])
+	var p := float(spec["power"])
+	var f_max := float(spec["max_drive_force"])
+	var drag := float(spec["drag"])
+	# Start the lap at the speed it would really carry over the line.
+	var v := prof[n - 1] * pace
+	for _loop in 2:
+		var t := 0.0
+		for i in n:
+			var cap := prof[i] * pace
+			var a := (minf(f_max, p / maxf(v, 1.0)) - drag * v * v) / m
+			v = minf(sqrt(maxf(v * v + 2.0 * maxf(a, 0.0) * SPACING, 0.0)), cap)
+			t += SPACING / maxf(v, 3.0)
+		if _loop == 1:
+			return t
+	return 0.0
+
+
 func speed_profile(spec: Dictionary, centre := false) -> PackedFloat32Array:
-	var key: String = String(spec["id"]) + ("|centre" if centre else "")
+	var key: String = String(spec["id"]) + String(spec.get("variant", "")) + ("|centre" if centre else "")
 	if _profiles.has(key):
 		return _profiles[key]
 	var n := points.size()
