@@ -583,8 +583,12 @@ func _quit_to_menu() -> void:
 	get_tree().change_scene_to_file(back if net == null else "res://scenes/hub.tscn")
 
 
+## Pause only when you actually leave the game (home, app switcher, screen
+## off, a call). Not on a plain focus loss: on Android that also happens
+## when an edge swipe shows the system bars over the full-screen game, or
+## a gesture overlay pops up, while you're still driving.
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+	if what == NOTIFICATION_APPLICATION_PAUSED:
 		if replay != null and replay.playing:
 			replay.set_paused(true)
 		elif hud != null and not hud.is_paused() and not _results_shown:

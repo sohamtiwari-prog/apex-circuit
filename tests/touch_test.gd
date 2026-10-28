@@ -73,6 +73,15 @@ func _run() -> void:
 	_check(absf(t.steer) < 0.001, "touches in the middle of the screen don't steer")
 	_touch(t, 2, Vector2(sz.x * 0.6 + r, sz.y * 0.5), false)
 
+	# Losing focus (an edge swipe showing the system bars) doesn't pause the
+	# race; leaving the app does.
+	race.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	race.notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	_check(not race.hud.is_paused() and not race.hud.pause_panel.visible, "a focus loss (system bars) doesn't open the pause menu")
+	race.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	_check(race.hud.is_paused() and race.hud.pause_panel.visible, "leaving the app pauses the race")
+	race.hud.set_paused(false)
+
 	# Assist levels and migration of old on/off saves.
 	_check(is_equal_approx(save.assist_level("steer_assist"), 0.0), "assist off = 0")
 	st["brake_assist"] = "moderate"
