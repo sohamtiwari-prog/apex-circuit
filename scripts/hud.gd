@@ -106,6 +106,8 @@ func _ready() -> void:
 	_build_tow(root)
 	_build_tyres(root)
 	_build_action(root)
+	_build_radio(root)
+	_build_flag(root)
 	_build_messages(root)
 	_build_lights(root)
 	_build_pause_menu(root)
@@ -400,6 +402,84 @@ class TyreBadge extends Control:
 		draw_string(f, c + Vector2(-w * 0.5, fs * 0.36), t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
 
 
+# ------------------------------------------------------------ radio and flags
+
+var _radio: PanelContainer
+var _radio_lbl: Label
+var _radio_time := 0.0
+var _flag: PanelContainer
+var _flag_lbl: Label
+var _flag_swatch: ColorRect
+var _flag_kind := ""
+
+
+## Race engineer messages: a radio card under the timing tower.
+func _build_radio(root: Control) -> void:
+	_radio = PanelContainer.new()
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.88), true, UIStyle.GREEN)
+	_radio.add_theme_stylebox_override("panel", sb)
+	_radio.position = Vector2(18, 336)
+	_radio.custom_minimum_size = Vector2(0, 0)
+	_radio.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radio.visible = false
+	root.add_child(_radio)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", -2)
+	_radio.add_child(v)
+	v.add_child(UIStyle.label("RADIO", 16, UIStyle.GREEN, "extrabold", true))
+	_radio_lbl = UIStyle.label("", 22, UIStyle.PAPER, "bold")
+	_radio_lbl.custom_minimum_size = Vector2(0, 0)
+	v.add_child(_radio_lbl)
+
+
+func show_radio(text: String, secs := 4.5) -> void:
+	if _radio == null:
+		return
+	_radio_lbl.text = text
+	_radio.visible = text != "" and gauge.visible
+	_radio.reset_size()
+	_radio_time = secs
+
+
+## Flag signal at the top of the screen: yellow, blue, or none ("").
+func _build_flag(root: Control) -> void:
+	_flag = PanelContainer.new()
+	_flag.add_theme_stylebox_override("panel", UIStyle.panel(Color(UIStyle.TARMAC, 0.9)))
+	_flag.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_flag.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_flag.offset_top = 18
+	_flag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_flag.visible = false
+	root.add_child(_flag)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 12)
+	_flag.add_child(h)
+	_flag_swatch = ColorRect.new()
+	_flag_swatch.custom_minimum_size = Vector2(46, 32)
+	_flag_swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(_flag_swatch)
+	_flag_lbl = UIStyle.label("", 26, UIStyle.PAPER, "extrabold", true)
+	h.add_child(_flag_lbl)
+
+
+func set_flag(kind: String, text := "") -> void:
+	if _flag == null or kind == _flag_kind:
+		return
+	_flag_kind = kind
+	_flag.visible = kind != ""
+	match kind:
+		"yellow":
+			_flag_swatch.color = Color("ffd21f")
+			_flag_lbl.text = text if text != "" else "YELLOW FLAG"
+		"blue":
+			_flag_swatch.color = Color("2a7cff")
+			_flag_lbl.text = text if text != "" else "BLUE FLAG: let them by"
+		"green":
+			_flag_swatch.color = UIStyle.GREEN
+			_flag_lbl.text = "GREEN: track clear"
+	_flag.reset_size()
+
+
 # ------------------------------------------------------------ action button
 
 var _action: Button
@@ -685,6 +765,8 @@ func _build_pause_menu(root: Control) -> void:
 	_setting(v, "abs", "ABS", func(): _toggle("abs"))
 	_setting(v, "line", "Racing line", func(): _toggle("racing_line"))
 	_setting(v, "ghost", "Ghost car (time trial)", func(): _toggle("ghost"))
+	_setting(v, "vibration", "Vibration", func(): _toggle("vibration"))
+	_setting(v, "engineer", "Race engineer radio", func(): _toggle("engineer"))
 	_setting(v, "graphics", "Graphics", func():
 		save.set_setting("graphics", "saver" if save.get_setting("graphics") != "saver" else "high"))
 	_refresh_menu()
@@ -753,6 +835,8 @@ func _refresh_menu() -> void:
 	(_menu_buttons["abs"] as Label).text = on_off.call("abs")
 	(_menu_buttons["line"] as Label).text = on_off.call("racing_line")
 	(_menu_buttons["ghost"] as Label).text = on_off.call("ghost")
+	(_menu_buttons["vibration"] as Label).text = on_off.call("vibration")
+	(_menu_buttons["engineer"] as Label).text = on_off.call("engineer")
 	(_menu_buttons["graphics"] as Label).text = "Battery saver" if save.get_setting("graphics") == "saver" else "High"
 	touch.configure(control, bool(save.get_setting("auto_accelerate")), float(save.get_setting("tilt_sensitivity")))
 	settings_changed.emit()
@@ -1165,6 +1249,10 @@ func show_warning(text: String, secs := 1.5) -> void:
 
 
 func _process(delta: float) -> void:
+	if _radio_time > 0.0:
+		_radio_time -= delta
+		if _radio_time <= 0.0:
+			_radio.visible = false
 	if _banner_time > 0.0:
 		_banner_time -= delta
 		if _banner_time <= 0.0:

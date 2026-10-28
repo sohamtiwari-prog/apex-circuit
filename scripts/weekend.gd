@@ -157,7 +157,7 @@ func physics(delta: float) -> void:
 			if wetness == 0.0 and _rain == null:
 				_build_rain()
 			if wetness == 0.0:
-				race.hud.show_banner("Rain is starting: the track will be wet in a lap", UIStyle.YELLOW, 4.0)
+				race.engineer.say("Rain is starting. Track will be wet in about a lap.", 6.0)
 			wetness = minf(wetness + delta / 45.0, 1.0)
 	for e in race.entrants:
 		if e.remote:

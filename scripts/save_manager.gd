@@ -70,6 +70,8 @@ const _DEFAULTS := {
 		"qualifying": false,        # quick race: qualifying session first
 		"tyres": "medium",          # quick race: starting compound
 		"weather": "dry",           # dry, wet, changing
+		"vibration": true,          # phone buzzes on contact, kerbs, grass
+		"engineer": true,           # race engineer radio messages
 	},
 	"best_laps": {},                  # "track|car" -> milliseconds
 	"best_sectors": {},               # "track|car" -> [ms, ms, ms], best of each sector

@@ -121,6 +121,7 @@ var tt_targets: Array = []
 var _elim_lap := 0
 var last_reward := {}                  # what the results screen showed (tests)
 var weekend: Weekend                   # tyres, pits, weather, qualifying (single player)
+var engineer: RaceEngineer             # radio, flags, vibration
 
 
 func _ready() -> void:
@@ -233,6 +234,9 @@ func _ready() -> void:
 		add_child(weekend)
 		weekend.setup(self)
 		hud.box_requested.connect(func(): weekend.toggle_box())
+	engineer = RaceEngineer.new()
+	add_child(engineer)
+	engineer.setup(self)
 	replay = Replay.new()
 	add_child(replay)
 	replay.setup(self)
@@ -726,6 +730,7 @@ func _physics_process(delta: float) -> void:
 		_update_entrant(e, delta)
 	if weekend != null:
 		weekend.physics(delta)
+	engineer.tick(delta)
 	if (_tick % 6 == 0 or state == State.FINISHED) and (net == null or Net.is_host()):
 		_update_positions()
 
@@ -905,6 +910,11 @@ func _update_drs(e: Entrant) -> void:
 
 
 ## Seconds behind the car one place ahead (99 if leading).
+## Time gap (s) between a car ahead and one behind, at the follower's pace.
+func _gap_seconds(ahead: Entrant, behind: Entrant) -> float:
+	return maxf(ahead.progress - behind.progress, 0.0) / maxf(behind.car.forward_speed(), 15.0)
+
+
 func _gap_ahead(e: Entrant) -> float:
 	for o in entrants:
 		if o.position == e.position - 1:
@@ -1018,6 +1028,7 @@ func _complete_lap(e: Entrant) -> void:
 		e.finished = true
 		e.finish_time = race_time
 	replay.on_lap(e, lap_time)
+	engineer.on_lap(e, lap_time)
 	if ev_type == "eliminator" and e.lap > _elim_lap and e.lap < total_laps and not e.eliminated:
 		_elim_lap = e.lap
 		_eliminate_last()
