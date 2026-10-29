@@ -66,6 +66,11 @@ func _run() -> void:
 	var green := false
 	for f in 360:
 		await physics_frame
+		if f % 30 == 29:
+			# Keep it close behind (you'd otherwise drive away from it in a second).
+			bi = posmod(race.player.idx - 20, n)
+			race._place(victim, race.track.pose_at(bi, victim.car.spawn_height(), -race.track.road_half + 1.0))
+			victim.ai.speed_cap = 0.0
 		victim.lap = race.player.lap + (2 if bi > race.player.idx else 1)
 		if eng._flag == "green":
 			green = true
