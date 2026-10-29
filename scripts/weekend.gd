@@ -27,6 +27,8 @@ const ENTRY_BEFORE_LINE := 260.0
 const AUTO_FROM := 220.0          # the car drives itself in from this far before the entry
 const PIT_DECEL := 9.0            # m/s2, slowing for the limiter line
 const QUEUE_GAP := 9.0            # waiting behind the car in the box
+const STUCK_T := 3.0              # sitting still this long in the pit lane: the crew push you on
+const QUEUE_MAX := 14.0           # longest wait behind a team-mate in the box
 
 var race: Node
 var track: Track
@@ -127,8 +129,18 @@ func reset() -> void:
 		e.stops = 0
 		e.pit_phase = 0
 		e.pit_req = false
+		e.pit_cool = false
+		e.pit_still = 0.0
+		e.pit_box = -1.0
 		if e.is_player:
 			e.compound = player_compound
+			e.pit_driver = null
+			e.set_meta("limiter", false)
+		if e.ai != null:
+			e.ai.path_lat = Callable()
+	for pc in crew.values():
+		(pc as PitCrew).release()
+	crew.clear()
 	if weather == "changing":
 		wetness = 0.0
 	_apply_weather()
@@ -177,10 +189,31 @@ func _pit_lat(i: int, e) -> float:
 
 ## Where a car in phase 1 stops: its box, or behind a car already in it.
 func _stop_ps(e) -> float:
+	if e.pit_box < 0.0:
+		return e.pit_box
+	var at := box_pos(e.pit_box)
 	for o in race.entrants:
-		if o != e and o.pit_box == e.pit_box and o.pit_phase == 2:
+		# (Only a car that's really there: another phone's car may say it's
+		# stopped while its copy here is somewhere else.)
+		if o != e and o.pit_box == e.pit_box and o.pit_phase == 2 and o.car.global_position.distance_squared_to(at) < 18.0 * 18.0:
 			return e.pit_box - QUEUE_GAP
 	return e.pit_box
+
+
+var _box_pos := {}
+
+## Where a box is in the world.
+func box_pos(ps: float) -> Vector3:
+	if not _box_pos.has(ps):
+		_box_pos[ps] = lane_pose(ps, track.pit_box_lat(), 0.0).origin
+	return _box_pos[ps]
+
+
+## A pose in the pit lane: lane distance ps, unsigned lateral lat.
+func lane_pose(ps: float, lat: float, height := -1.0) -> Transform3D:
+	var s := fposmod(track.pit_s0 + ps, track.total_length)
+	var i := clampi(track.cum.bsearch(s), 0, track.size() - 1)
+	return track.pose_at(i, race.car.spawn_height() if height < 0.0 else height, track.pit_side * lat)
 
 
 ## Speed limit for a pitting car: slow for the limiter line, 80 km/h in the
@@ -210,6 +243,9 @@ func player_in_pit() -> bool:
 
 
 func drive_player() -> void:
+	if race.player.pit_driver == null:
+		race.player.pit_driver = AIDriver.new()
+		race.player.pit_driver.idx = race.player.idx
 	race.player.pit_driver.update(race.car, track)
 
 
@@ -261,14 +297,16 @@ func physics(delta: float) -> void:
 
 ## AI: box when the tyres are gone (with racing left) or for the weather.
 func _strategy(e) -> void:
-	if e.is_player or e.finished or e.pit_req or e.pit_phase > 0 or e.eliminated:
+	if e.is_player or e.finished or e.pit_req or e.pit_phase > 0 or e.eliminated or e.dnf:
 		return
 	var laps_left: float = float(race.total_laps) - e.progress / track.total_length
 	if laps_left < 0.6:
 		return
 	var want := Tyres.best_for(wetness, laps_left, track.total_length)
 	var weather_call: bool = (want == "wet") != (e.compound == "wet")
-	if e.wear > 0.8 or weather_call:
+	# A VSC halves what a stop costs: box if the tyres are past halfway.
+	var cheap: bool = race.control != null and race.control.vsc and not race.control.vsc_ending and e.wear > 0.45 and laps_left > 1.5
+	if e.wear > 0.8 or weather_call or cheap:
 		e.pit_req = true
 		e.next_compound = want
 
@@ -285,7 +323,37 @@ func pit_menu() -> void:
 	var e = race.player
 	if e == null or e.pit_phase > 0 or e.finished:
 		return
-	race.hud.open_pit_picker(player_next(), e.pit_req, e.next_compound)
+	var loss := pit_loss()
+	if race.control != null and race.control.vsc:
+		loss *= 0.55                         # everyone else is slow too
+	var info := "rejoin ~P%d  (stop costs ~%d s%s)" % [rejoin_position(loss), int(round(loss)), ", cheap under the VSC" if race.control != null and race.control.vsc else ""]
+	if e.pen_pending > 0.0:
+		info += "  +%d s penalty served" % int(round(e.pen_pending))
+	race.hud.open_pit_picker(player_next(), e.pit_req, e.next_compound, info)
+
+
+## Seconds a stop costs against staying out: the lane at 80 km/h, the stop
+## itself, slowing down and getting going again, less the same distance at
+## racing speed. (Penalties to serve on top.)
+func pit_loss() -> float:
+	var stop := 2.6
+	if track.has_pit_lane:
+		var lane := track.PIT_STRAIGHT_LEN / PIT_SPEED + (track.PIT_ENTRY_LEN + track.PIT_EXIT_LEN) / 38.0
+		return lane + stop + 2.5 - track.pit_total() / 68.0 + race.player.pen_pending
+	return PIT_LEN / PIT_SPEED + STOP_TIME - PIT_LEN / 68.0 + race.player.pen_pending
+
+
+## Where you'd come out if you boxed now: every car less than the stop's
+## cost behind you gets past.
+func rejoin_position(loss: float) -> int:
+	var me = race.player
+	var pos := int(me.position)
+	for o in race.entrants:
+		if o == me or o.dnf or o.finished or o.eliminated or o.pit_phase > 0 or int(o.position) < int(me.position):
+			continue
+		if race.timing_gap(me, o) >= 0.0 and race.timing_gap(me, o) < loss:
+			pos += 1
+	return pos
 
 
 ## Box this lap for a compound ("" = stay out).
@@ -319,12 +387,15 @@ func _pit_lane(e, delta: float, v: float) -> void:
 	var total := track.pit_total()
 	match e.pit_phase:
 		0:
-			if not e.pit_req or e.finished:
+			if ps >= 0.0:
+				e.pit_cool = false             # past the entry: next time round is fine
+			if not e.pit_req or e.finished or e.pit_cool or e.dnf:
 				return
 			if ps >= -AUTO_FROM and ps < 0.0:
 				e.pit_phase = 1
 				e.pit_box = float(track.pit_boxes.get(posmod(e.team_idx, 10), track.PIT_ENTRY_LEN + 60.0))
 				e.pit_t0 = race.race_time
+				e.pit_still = 0.0
 				e.car.set_ghost(true)
 				e.ghost = 0.0
 				if e.is_player:
@@ -341,36 +412,116 @@ func _pit_lane(e, delta: float, v: float) -> void:
 				_start_service(e)
 			elif d < -3.0 and not queued:
 				_start_service(e)            # (ran past it: serve it here)
+			else:
+				_watch(e, delta, v, QUEUE_MAX if queued and d < QUEUE_GAP + 6.0 else STUCK_T)
 		2:
+			e.pit_svc += delta
 			if v < 1.0:
 				e.pit_timer += delta
 			if e.is_player:
 				race.hud.update_pit_stop(e.pit_timer)
 			if crew.has(e):
-				(crew[e] as PitCrew).progress = clampf(e.pit_timer / maxf(e.pit_need, 0.1), 0.0, 1.0)
-			if e.pit_timer >= e.pit_need:
+				var work := maxf(e.pit_need - e.pit_pen, 0.1)
+				(crew[e] as PitCrew).progress = clampf((e.pit_timer - e.pit_pen) / work, 0.0, 1.0)
+			# (Rolling in the box, so the clock never runs? The crew finish anyway.)
+			if e.pit_timer >= e.pit_need or e.pit_svc > e.pit_need + 6.0:
 				_end_service(e)
 		3:
 			if e.is_player and ps >= track.PIT_ENTRY_LEN + track.PIT_STRAIGHT_LEN and e.get_meta("limiter", false):
 				e.set_meta("limiter", false)
 				race.hud.show_banner("Limiter off", UIStyle.GREEN, 1.5)
 			if ps >= total or ps < -5.0:
-				e.pit_phase = 0
-				e.pit_req = false
-				e.pit_box = -1.0
-				e.ghost = 1.5                  # back to solid once clear (race.gd)
-				var drv: AIDriver = e.ai if e.ai != null else e.pit_driver
-				drv.path_lat = Callable()
-				drv.lane_offset = 0.0
-				drv.speed_cap = 999.0
-				if e.is_player:
-					e.pit_driver = null
-					if race.autopilot != null:
-						race.autopilot.idx = e.idx      # (tests: it last knew where the car was a lap ago)
-					var lost: float = race.race_time - e.pit_t0
-					race.engineer.say("Good stop, %.1f seconds stationary. Back out in P%d." % [e.pit_need, int(e.position)], 5.0)
-					race.hud.show_banner("Rejoined: P%d" % int(e.position), UIStyle.PAPER, 2.0)
-					e.set_meta("last_pit_loss", lost)
+				_leave_pits(e)
+			else:
+				_watch(e, delta, v, STUCK_T)
+
+
+## Sitting still in the pit lane (blocked, beached on the entry road, facing
+## the wrong way): after a few seconds the crew push the car on.
+func _watch(e, delta: float, v: float, limit: float) -> void:
+	if v < 1.0:
+		e.pit_still += delta
+		if e.pit_still > limit:
+			_unstick(e)
+	else:
+		e.pit_still = maxf(e.pit_still - delta * 2.0, 0.0)
+
+
+func _unstick(e) -> void:
+	e.pit_still = 0.0
+	if not track.has_pit_lane:
+		return
+	if e.pit_phase == 3:
+		# On the way out: out of the exit road, back in the race.
+		var ps := track.pit_total() + 8.0
+		race._place(e, lane_pose(ps, track.pit_lane_lat(ps), e.car.spawn_height()))
+		_leave_pits(e)
+	else:
+		# On the way in: into the box (the crew wheel it there).
+		race._place(e, lane_pose(e.pit_box, track.pit_box_lat(), e.car.spawn_height()))
+		if e.pit_driver != null:
+			e.pit_driver.idx = e.idx
+		if e.pit_phase == 1:
+			_start_service(e)
+	e.car.controls_enabled = true
+	if e.is_player:
+		race.cam.snap()
+
+
+## Back in the race from the pit lane (or a stop called off).
+func _leave_pits(e) -> void:
+	e.pit_phase = 0
+	e.pit_box = -1.0
+	e.pit_still = 0.0
+	e.ghost = maxf(e.ghost, 1.5)               # back to solid once clear (race.gd)
+	if crew.has(e):
+		(crew[e] as PitCrew).release()
+		crew.erase(e)
+	var drv: AIDriver = e.ai if e.ai != null else e.pit_driver
+	if drv != null:
+		drv.path_lat = Callable()
+		drv.lane_offset = 0.0
+		drv.speed_cap = 999.0
+	if e.is_player:
+		e.pit_driver = null
+		e.set_meta("limiter", false)
+		if race.autopilot != null:
+			race.autopilot.idx = e.idx      # (tests: it last knew where the car was a lap ago)
+	if e.pit_req:
+		return                             # (called off: still boxing, next lap)
+	if e.is_player:
+		var lost: float = race.race_time - e.pit_t0
+		race.engineer.say("Good stop, %.1f seconds stationary. Back out in P%d." % [e.pit_need, int(e.position)], 5.0)
+		race.hud.show_banner("Rejoined: P%d" % int(e.position), UIStyle.PAPER, 2.0)
+		e.set_meta("last_pit_loss", lost)
+
+
+## Reset (or off beyond the barriers) part-way through a stop. With a pit
+## lane: on the way in the crew wheel the car into its box and the stop goes
+## on; on the way out it's put at the pit exit. Returns true if it placed
+## the car. Without one: the stop is called off (tyres done if the crew were
+## nearly finished) and it boxes again next time round.
+func on_reset(e) -> bool:
+	if e.pit_phase == 0:
+		return false
+	if track.has_pit_lane and e.pit_box > 0.0:
+		var ps := track.pit_ps(e.idx)
+		# (Still out on the track before the entry: called off, as below.)
+		if e.pit_phase >= 2 or ps >= 0.0:
+			var phase: int = e.pit_phase
+			_unstick(e)
+			if phase == 2:
+				e.pit_svc = 0.0
+			return true
+	var done: bool = e.pit_phase == 3 or (e.pit_phase == 2 and e.pit_timer > e.pit_pen + (e.pit_need - e.pit_pen) * 0.6)
+	if e.pit_phase == 2 and done:
+		_end_service(e)
+	e.pit_req = not done
+	e.pit_cool = not done
+	_leave_pits(e)
+	if e.is_player:
+		race.hud.show_banner("Pit stop called off: boxing next lap" if not done else "Back on track", UIStyle.YELLOW, 3.0)
+	return false
 
 
 var crew := {}                         # entrant -> PitCrew at work
@@ -391,15 +542,24 @@ func remote_pit(e, was: int, now: int) -> void:
 func _start_service(e) -> void:
 	e.pit_phase = 2
 	e.pit_timer = 0.0
+	e.pit_svc = 0.0
+	e.pit_still = 0.0
 	# Most stops take 2.2-3 s; one in sixteen goes wrong (a stuck wheel nut).
 	var slow := _rng.randf() < 0.0625
 	e.pit_need = _rng.randf_range(2.2, 2.6 if e.is_player else 3.0) + (_rng.randf_range(2.0, 4.5) if slow else 0.0)
+	# A time penalty is served first: the crew can't touch the car until it's done.
+	e.pit_pen = e.pen_pending
+	if e.pit_pen > 0.0:
+		e.pen_pending = 0.0
+		e.pit_need += e.pit_pen
+		if race.control != null:
+			race.control.served(e, e.pit_pen)
 	var pc := PitCrew.new()
 	race.add_child(pc)
 	pc.setup(e.car, track, e.team_idx, Tyres.COLOR.get(e.next_compound, Color.WHITE))
 	crew[e] = pc
 	if e.is_player:
-		race.hud.show_pit_stop(e.pit_need, slow)
+		race.hud.show_pit_stop(e.pit_need, slow, e.pit_pen)
 		if slow:
 			race.engineer.say("Problem on the %s wheel, stay with us..." % ["front left", "front right", "rear left", "rear right"][_rng.randi() % 4], 4.0)
 
@@ -408,6 +568,9 @@ func _end_service(e) -> void:
 	e.compound = e.next_compound if Tyres.COMPOUNDS.has(e.next_compound) else "medium"
 	e.wear = 0.0
 	e.stops += 1
+	e.pit_req = false
+	e.pitted_lap = true
+	e.stints.append(e.compound)
 	e.pit_phase = 3
 	if crew.has(e):
 		(crew[e] as PitCrew).release()
@@ -442,14 +605,20 @@ func _pit(e, delta: float, v: float) -> void:
 			if e.pit_phase == 1 and e.pit_dist >= STOP_AT:
 				e.pit_phase = 2
 				e.pit_timer = 0.0
+				e.pit_pen = e.pen_pending
+				e.pen_pending = 0.0
+				if e.pit_pen > 0.0 and race.control != null:
+					race.control.served(e, e.pit_pen)
 			elif e.pit_phase == 2:
 				if v < 1.0:
 					e.pit_timer += delta
-				var need := STOP_TIME + (0.0 if e.is_player else float(e.idx % 7) * 0.12)
+				var need: float = STOP_TIME + (0.0 if e.is_player else float(e.idx % 7) * 0.12) + e.pit_pen
 				if e.pit_timer >= need:
 					e.compound = e.next_compound if Tyres.COMPOUNDS.has(e.next_compound) else "medium"
 					e.wear = 0.0
 					e.stops += 1
+					e.pitted_lap = true
+					e.stints.append(e.compound)
 					e.pit_phase = 3
 					if e.is_player:
 						race.hud.show_banner("%s tyres on: go, go, go!" % Tyres.NAMES[e.compound], UIStyle.GREEN, 2.5)

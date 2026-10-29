@@ -60,6 +60,30 @@ func update(car: RaceCar, track: Track) -> void:
 	var alpha := fwd.normalized().signed_angle_to(to / ld, Vector3.UP)   # + = target to the left
 	var wheelbase: float = float(car.spec["wheel_front_z"]) - float(car.spec["wheel_rear_z"])
 	var delta := atan2(2.0 * wheelbase * sin(alpha), ld)
+	# Within the tyres: never turn the front wheels further from where the
+	# front axle is actually going than the tyres' peak slip. Asking for more
+	# just slides the front; and when the rear steps out this turns the
+	# wheels the other way (opposite lock) instead of steering into a spin.
+	# (Angles in the car's frame, the same side positive as the steering.)
+	var bx := car.global_basis.x
+	var vlat := car.linear_velocity.dot(bx)
+	var vlon := car.linear_velocity.dot(car.global_basis.z)
+	var yaw := car.angular_velocity.dot(car.global_basis.y)
+	var rear_slide := false
+	var over_rotating := false
+	if vlon > 8.0:
+		var beta_f := atan2(vlat + yaw * float(car.spec["wheel_front_z"]), vlon)
+		var beta_r := atan2(vlat + yaw * float(car.spec["wheel_rear_z"]), vlon)
+		var ap := deg_to_rad(float(car.spec["slip_peak_front"])) * 1.15
+		delta = clampf(delta, beta_f - ap, beta_f + ap)
+		rear_slide = absf(beta_r) > deg_to_rad(float(car.spec["slip_peak_rear"])) * 1.4
+		# Rotating faster than the bend asks for (the rear starting to come
+		# round on the way in): ease the turn-in and the brakes now, before
+		# it's a slide the steering can't catch at speed.
+		var bend := absf(float(track.line_curv[idx])) * vlon
+		over_rotating = absf(yaw) > bend * 1.3 + 0.15 and signf(yaw) == signf(delta)
+		if over_rotating:
+			delta *= 0.7
 	car.steer_input = car.input_for_angle(-delta, v)
 
 	# --- speed: look slightly ahead in the profile to allow for response lag
@@ -74,10 +98,23 @@ func update(car: RaceCar, track: Track) -> void:
 		car.throttle = 0.06
 		car.brake_input = 1.0
 		return
+	var lock := absf(car.steer_input)
+	if rear_slide:
+		# The rear's sliding: off the brakes (locked or loaded rears won't
+		# grip) and just a breath of throttle while the opposite lock catches it.
+		car.throttle = 0.12
+		car.brake_input = 0.0
+		return
+	if lock > 0.9 and v > 14.0 and err > -0.8:
+		# On full lock and still not turning enough (pushed wide, a tighter
+		# line than planned): off the throttle and a touch of brake to load
+		# the front, rather than ploughing on into the run-off.
+		car.throttle = 0.0
+		car.brake_input = 0.25
+		return
 	if err > 0.3:
 		# Feed the power in as the lock comes off: full throttle on full
 		# lock pushes the front straight on (or the rear round).
-		var lock := absf(car.steer_input)
 		var room_t := clampf(1.3 - lock, 0.3, 1.0) if absf(v) > 8.0 else 1.0
 		car.throttle = clampf(err / 2.0, minf(0.35, room_t), room_t)
 		car.brake_input = 0.0
@@ -88,6 +125,8 @@ func update(car: RaceCar, track: Track) -> void:
 		# and the car would plough straight on.
 		var turn := absf(car.steer_input)
 		var room := clampf(1.3 - turn, 0.45, 1.0)
+		if over_rotating:
+			room = minf(room, 0.4)
 		car.brake_input = clampf(-err / 3.0, 0.15, room)
 	else:
 		car.throttle = 0.3

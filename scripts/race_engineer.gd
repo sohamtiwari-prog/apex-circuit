@@ -27,6 +27,7 @@ var _prev_v := Vector3.ZERO
 var _kerb_t := 0.0
 var _impact_t := 0.0
 var _flag := ""
+var _flag_text := ""
 var _flag_t := 0.0
 var _slow := {}                          # entrant -> seconds crawling
 
@@ -194,9 +195,22 @@ func _update_flags(p) -> void:
 	var L: float = race.track.total_length
 	var my_s: float = p.progress
 	# Yellow: a car stopped or crawling (for over a second) on the track in
-	# the next 300 m. Not in the first seconds after the start.
+	# the next 300 m. Not in the first seconds after the start. (Races: the
+	# marshal sectors of race control.)
 	var yellow := false
+	var double := false
+	var rc: RaceControl = race.control
+	if rc != null:
+		if rc.vsc:
+			var lim := int(round(rc.vsc_limit(race.car) * 3.6))
+			_set_flag("vsc", ("VSC ENDING  ·  max %d km/h" if rc.vsc_ending else "VIRTUAL SAFETY CAR  ·  max %d km/h") % lim)
+			return
+		var here := rc.flag_at(p.idx)
+		double = here == 2
+		yellow = here > 0
 	for o in race.entrants:
+		if rc != null:
+			break
 		if o == p or o.finished or o.eliminated or o.pit_phase > 0 or not o.car.visible:
 			_slow.erase(o)
 			continue
@@ -213,11 +227,13 @@ func _update_flags(p) -> void:
 		var gap := float(o.progress) - my_s
 		if gap > L * 0.75 and gap < L + 5.0 and gap > L - 70.0:
 			blue = true
-	if yellow:
-		_set_flag("yellow")
+	if double:
+		_set_flag("double", "DOUBLE YELLOW: slow down, no overtaking")
+	elif yellow:
+		_set_flag("yellow", "YELLOW FLAG: no overtaking")
 	elif blue:
 		_set_flag("blue")
-	elif _flag == "yellow":
+	elif _flag == "yellow" or _flag == "double" or _flag == "vsc":
 		_set_flag("green")
 		get_tree().create_timer(2.0).timeout.connect(func():
 			if _flag == "green":
@@ -226,12 +242,13 @@ func _update_flags(p) -> void:
 		_set_flag("")
 
 
-func _set_flag(kind: String) -> void:
-	if kind == _flag:
+func _set_flag(kind: String, text := "") -> void:
+	if kind == _flag and text == _flag_text:
 		return
-	if kind == "yellow" and _flag != "yellow":
-		say("Yellow flag ahead: car off. Careful.", 3.0)
+	if (kind == "yellow" or kind == "double") and _flag != "yellow" and _flag != "double":
+		say("Yellow flag ahead: car off. Careful, no overtaking.", 3.0)
 	_flag = kind
+	_flag_text = text
 	if kind != "":
 		flags_seen[kind] = true
-	race.hud.set_flag(kind)
+	race.hud.set_flag(kind, text)

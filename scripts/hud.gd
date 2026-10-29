@@ -111,6 +111,7 @@ func _ready() -> void:
 	_build_action(root)
 	_build_radio(root)
 	_build_flag(root)
+	_build_race_control(root)
 	_build_messages(root)
 	_build_lights(root)
 	_build_pause_menu(root)
@@ -128,12 +129,17 @@ func _build_tower(root: Control) -> void:
 	root.add_child(_tower)
 	var head := PanelContainer.new()
 	head.add_theme_stylebox_override("panel", UIStyle.panel(Color(UIStyle.TARMAC, 0.86), true, UIStyle.APEX))
-	head.custom_minimum_size = Vector2(236, 0)
+	head.custom_minimum_size = Vector2(TOWER_W, 0)
 	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tower.add_child(head)
+	var hv := VBoxContainer.new()
+	hv.add_theme_constant_override("separation", -6)
+	hv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(hv)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 6)
-	head.add_child(h)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hv.add_child(h)
 	_pos_big = UIStyle.label("P1", 44, UIStyle.PAPER, "extrabold", true)
 	h.add_child(_pos_big)
 	_pos_of = UIStyle.label("/20", 22, UIStyle.FOG, "bold", true)
@@ -142,15 +148,186 @@ func _build_tower(root: Control) -> void:
 	h.add_child(_pos_of)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	h.add_child(sp)
 	_lap_lbl = UIStyle.label("Lap 1", 24, UIStyle.PAPER, "bold", true)
 	_lap_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_lap_lbl.size_flags_vertical = Control.SIZE_FILL
 	h.add_child(_lap_lbl)
+	_tower_mode_lbl = UIStyle.label("", 14, UIStyle.FOG, "bold", true)
+	_tower_mode_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	hv.add_child(_tower_mode_lbl)
+	# Tap the header: around you / whole field, interval / gap to the leader.
+	var tap := Button.new()
+	tap.flat = true
+	tap.focus_mode = Control.FOCUS_NONE
+	tap.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var clear := StyleBoxEmpty.new()
+	for st in ["normal", "hover", "pressed", "focus"]:
+		tap.add_theme_stylebox_override(st, clear)
+	tap.pressed.connect(cycle_tower)
+	head.add_child(tap)
 	_rows_box = VBoxContainer.new()
 	_rows_box.add_theme_constant_override("separation", 2)
 	_rows_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tower.add_child(_rows_box)
+	for i in TOWER_SLOTS:
+		_tower_slots.append(_make_tower_slot())
+	_show_tower_mode()
+
+
+const TOWER_W := 262.0
+const TOWER_SLOTS := 24
+var _tower_slots: Array = []       # [{box, dots, row, sb, pos, bar, name, tyre, status, gap, pen, me}]
+var _tower_mode_lbl: Label
+var tower_full := false            # the whole field (else the cars around you)
+var tower_leader := false          # gaps to the leader (else to the car ahead)
+var _tower_rows: Array = []
+var _tower_pos := 1
+var _tower_total := 1
+
+
+## Tap on the tower header: around you (interval) -> whole field (interval)
+## -> whole field (gap to the leader) -> around you.
+func cycle_tower() -> void:
+	if not tower_full:
+		tower_full = true
+		tower_leader = false
+	elif not tower_leader:
+		tower_leader = true
+	else:
+		tower_full = false
+		tower_leader = false
+	_show_tower_mode()
+	if not _tower_rows.is_empty():
+		update_tower(_tower_pos, _tower_total, _tower_rows)
+
+
+func _show_tower_mode() -> void:
+	if _tower_mode_lbl != null:
+		_tower_mode_lbl.text = ("ALL" if tower_full else "NEAR") + "  ·  " + ("GAP TO LEADER" if tower_leader else "INTERVAL") + "   (tap)"
+	var big := not tower_full
+	for sl in _tower_slots:
+		var fs := 20 if big else 17
+		for key in ["pos", "name", "gap"]:
+			(sl[key] as Label).add_theme_font_size_override("font_size", fs)
+		(sl["status"] as Label).add_theme_font_size_override("font_size", fs - 3)
+		(sl["pen"] as Label).add_theme_font_size_override("font_size", fs - 4)
+		(sl["row"] as Control).custom_minimum_size = Vector2(TOWER_W, 30 if big else 23)
+		(sl["tyre"] as Control).custom_minimum_size = Vector2(22, 22) if big else Vector2(18, 18)
+		(sl["bar"] as Control).custom_minimum_size = Vector2(5, 20 if big else 16)
+
+
+func _make_tower_slot() -> Dictionary:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 0)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.visible = false
+	_rows_box.add_child(box)
+	var dots := UIStyle.outlined(UIStyle.label("·  ·  ·", 14, UIStyle.FOG, "bold"), 3)
+	dots.custom_minimum_size = Vector2(TOWER_W, 10)
+	dots.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(dots)
+	var row := PanelContainer.new()
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.8))
+	sb.content_margin_top = 0
+	sb.content_margin_bottom = 0
+	sb.content_margin_left = 6
+	sb.content_margin_right = 6
+	row.add_theme_stylebox_override("panel", sb)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(row)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(h)
+	var p := UIStyle.label("", 20, UIStyle.PAPER, "extrabold", true)
+	p.custom_minimum_size = Vector2(26, 0)
+	p.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	h.add_child(p)
+	var bar := ColorRect.new()
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(bar)
+	var name := UIStyle.label("", 20, UIStyle.PAPER, "bold")
+	name.custom_minimum_size = Vector2(52, 0)
+	h.add_child(name)
+	var tyre := TyreBadge.new()
+	tyre.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	tyre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(tyre)
+	var status := UIStyle.label("", 17, UIStyle.YELLOW, "extrabold", true)
+	status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(status)
+	var pen := UIStyle.label("", 16, UIStyle.RED, "extrabold", true)
+	h.add_child(pen)
+	var gap := UIStyle.label("", 20, UIStyle.FOG, "semibold", true)
+	gap.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	gap.custom_minimum_size = Vector2(66, 0)
+	h.add_child(gap)
+	return {"box": box, "dots": dots, "row": row, "sb": sb, "pos": p, "bar": bar, "name": name,
+		"tyre": tyre, "status": status, "pen": pen, "gap": gap, "me": null}
+
+
+## The live order. rows (everyone, in order): {pos, name, color, player,
+## compound, int, ldr, status, pen, fastest}. Rows are reused (no flicker).
+func update_tower(pos: int, total: int, rows: Array) -> void:
+	_tower_rows = rows
+	_tower_pos = pos
+	_tower_total = total
+	_pos_big.text = "P%d" % pos
+	_pos_of.text = "/%d" % total
+	var me := clampi(pos - 1, 0, maxi(rows.size() - 1, 0))
+	for i in rows.size():
+		if rows[i]["player"]:
+			me = i
+	# Which rows: everyone if they fit, else the front and the cars around you.
+	var show: Array[int] = []
+	var vp_h := get_viewport().get_visible_rect().size.y if is_inside_tree() else 720.0
+	var fit := int((vp_h - 14.0 - 70.0 - 150.0) / 25.0) if tower_full else 7
+	if rows.size() <= fit:
+		for i in rows.size():
+			show.append(i)
+	else:
+		var front := 3 if not tower_full else maxi(fit - 4, 3)
+		for i in mini(front, rows.size()):
+			show.append(i)
+		for i in range(me - 2, me + 3):
+			if i >= 0 and i < rows.size() and not show.has(i) and show.size() < fit:
+				show.append(i)
+		show.sort()
+	var last := -1
+	for k in _tower_slots.size():
+		var sl: Dictionary = _tower_slots[k]
+		if k >= show.size():
+			(sl["box"] as Control).visible = false
+			continue
+		var i: int = show[k]
+		var r: Dictionary = rows[i]
+		(sl["box"] as Control).visible = true
+		(sl["dots"] as Control).visible = last >= 0 and i > last + 1
+		last = i
+		var mine: bool = r["player"]
+		if sl["me"] != mine:
+			sl["me"] = mine
+			(sl["sb"] as StyleBoxFlat).bg_color = Color(UIStyle.APEX, 0.95) if mine else Color(UIStyle.TARMAC, 0.8)
+			var ink := UIStyle.INK if mine else UIStyle.PAPER
+			(sl["pos"] as Label).add_theme_color_override("font_color", ink)
+			(sl["name"] as Label).add_theme_color_override("font_color", ink)
+			(sl["gap"] as Label).add_theme_color_override("font_color", Color(ink, 0.8) if mine else UIStyle.FOG)
+		(sl["pos"] as Label).text = str(r["pos"])
+		(sl["bar"] as ColorRect).color = r.get("color", UIStyle.FOG)
+		(sl["name"] as Label).text = "YOU" if mine else UIStyle.code(String(r["name"]))
+		var tb: TyreBadge = sl["tyre"]
+		tb.visible = r.get("compound", "") != ""
+		tb.compound = String(r.get("compound", "medium"))
+		var st := String(r.get("status", ""))
+		var stl: Label = sl["status"]
+		stl.text = st
+		stl.add_theme_color_override("font_color", UIStyle.YELLOW if st == "PIT" else (UIStyle.RED if st == "DNF" else (UIStyle.PURPLE if st == "FL" else (Color(UIStyle.INK, 0.8) if mine else UIStyle.FOG))))
+		var pen := float(r.get("pen", 0.0))
+		(sl["pen"] as Label).text = ("+%ds" % int(round(pen))) if pen > 0.0 else ""
+		(sl["gap"] as Label).text = String(r["ldr"] if tower_leader else r["int"])
 
 
 func _build_timing(root: Control) -> void:
@@ -392,6 +569,7 @@ func set_tyres(compound: String, wear: float, box: bool, next: String, pitting: 
 var _pit_pick: PanelContainer
 var _pit_pick_row: HBoxContainer
 var _pit_pick_time := 0.0
+var _pit_info: Label
 
 ## Tyre choice above the tyre panel: tap a compound to box this lap for it
 ## (the engineer's pick is marked), or stay out.
@@ -408,16 +586,23 @@ func _build_pit_picker(root: Control) -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 4)
 	_pit_pick.add_child(v)
-	v.add_child(UIStyle.label("Box this lap for:", 17, UIStyle.YELLOW, "bold", true))
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 14)
+	v.add_child(top)
+	top.add_child(UIStyle.label("Box this lap for:", 17, UIStyle.YELLOW, "bold", true))
+	_pit_info = UIStyle.label("", 16, UIStyle.PAPER, "semibold", true)
+	top.add_child(_pit_info)
 	_pit_pick_row = HBoxContainer.new()
 	_pit_pick_row.add_theme_constant_override("separation", 8)
 	v.add_child(_pit_pick_row)
 
 
-func open_pit_picker(recommended: String, boxed: bool, current: String) -> void:
+func open_pit_picker(recommended: String, boxed: bool, current: String, info := "") -> void:
 	if _pit_pick.visible:
 		_pit_pick.visible = false
 		return
+	_pit_info.text = info
+	_pit_info.visible = info != ""
 	for c in _pit_pick_row.get_children():
 		c.queue_free()
 	for comp in Tyres.COMPOUNDS:
@@ -504,11 +689,11 @@ func _build_pit_stop(root: Control) -> void:
 	v.add_child(_stop_note)
 
 
-func show_pit_stop(need: float, slow: bool) -> void:
+func show_pit_stop(need: float, slow: bool, penalty := 0.0) -> void:
 	_stop_need = need
 	_stop_time.text = "0.0"
 	_stop_time.add_theme_color_override("font_color", UIStyle.PAPER)
-	_stop_note.text = "Slow stop!" if slow else ""
+	_stop_note.text = ("Serving %d s penalty" % int(round(penalty))) if penalty > 0.0 else ("Slow stop!" if slow else "")
 	_stop_bar.size.x = 0.0
 	_stop.visible = true
 	_stop_hide = 0.0
@@ -570,6 +755,7 @@ var _flag: PanelContainer
 var _flag_lbl: Label
 var _flag_swatch: ColorRect
 var _flag_kind := ""
+var _flag_text := ""
 
 
 ## Race engineer messages: a radio card under the timing tower.
@@ -577,7 +763,11 @@ func _build_radio(root: Control) -> void:
 	_radio = PanelContainer.new()
 	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.88), true, UIStyle.GREEN)
 	_radio.add_theme_stylebox_override("panel", sb)
-	_radio.position = Vector2(18, 336)
+	# Right-hand side, under the lap timing (the tower can be the whole field).
+	_radio.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_radio.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_radio.offset_right = -16
+	_radio.offset_top = 300
 	_radio.custom_minimum_size = Vector2(0, 0)
 	_radio.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_radio.visible = false
@@ -586,8 +776,9 @@ func _build_radio(root: Control) -> void:
 	v.add_theme_constant_override("separation", -2)
 	_radio.add_child(v)
 	v.add_child(UIStyle.label("RADIO", 16, UIStyle.GREEN, "extrabold", true))
-	_radio_lbl = UIStyle.label("", 22, UIStyle.PAPER, "bold")
-	_radio_lbl.custom_minimum_size = Vector2(0, 0)
+	_radio_lbl = UIStyle.label("", 21, UIStyle.PAPER, "bold")
+	_radio_lbl.custom_minimum_size = Vector2(400, 0)
+	_radio_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(_radio_lbl)
 
 
@@ -596,7 +787,9 @@ func show_radio(text: String, secs := 4.5) -> void:
 		return
 	_radio_lbl.text = text
 	_radio.visible = text != "" and gauge.visible
+	_radio_lbl.custom_minimum_size.x = clampf(UIStyle.font("bold").get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 21).x + 4.0, 160.0, 400.0)
 	_radio.reset_size()
+	_radio.offset_left = _radio.offset_right - _radio.size.x
 	_radio_time = secs
 
 
@@ -622,14 +815,24 @@ func _build_flag(root: Control) -> void:
 
 
 func set_flag(kind: String, text := "") -> void:
-	if _flag == null or kind == _flag_kind:
+	if _flag == null or (kind == _flag_kind and text == _flag_text):
 		return
 	_flag_kind = kind
+	_flag_text = text
 	_flag.visible = kind != ""
 	match kind:
 		"yellow":
 			_flag_swatch.color = Color("ffd21f")
 			_flag_lbl.text = text if text != "" else "YELLOW FLAG"
+		"double":
+			_flag_swatch.color = Color("ffd21f")
+			_flag_lbl.text = text if text != "" else "DOUBLE YELLOW: slow down"
+		"vsc":
+			_flag_swatch.color = Color("ffd21f")
+			_flag_lbl.text = text if text != "" else "VIRTUAL SAFETY CAR"
+		"chequered":
+			_flag_swatch.color = UIStyle.PAPER
+			_flag_lbl.text = text if text != "" else "CHEQUERED FLAG"
 		"blue":
 			_flag_swatch.color = Color("2a7cff")
 			_flag_lbl.text = text if text != "" else "BLUE FLAG: let them by"
@@ -637,6 +840,49 @@ func set_flag(kind: String, text := "") -> void:
 			_flag_swatch.color = UIStyle.GREEN
 			_flag_lbl.text = "GREEN: track clear"
 	_flag.reset_size()
+
+
+# ------------------------------------------------------------ race control
+
+var _rc: PanelContainer
+var _rc_lbl: Label
+var _rc_time := 0.0
+var _rc_lines: Array[String] = []
+
+## Race control messages, top centre under the flag (the last two, ~6 s).
+func _build_race_control(root: Control) -> void:
+	_rc = PanelContainer.new()
+	var sb := UIStyle.panel(Color(0.02, 0.03, 0.07, 0.9), true, Color("ffd21f"))
+	_rc.add_theme_stylebox_override("panel", sb)
+	_rc.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_rc.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_rc.offset_top = 72
+	_rc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rc.visible = false
+	root.add_child(_rc)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", -2)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rc.add_child(v)
+	v.add_child(UIStyle.label("RACE CONTROL", 14, Color("ffd21f"), "extrabold", true))
+	_rc_lbl = UIStyle.label("", 19, UIStyle.PAPER, "bold")
+	_rc_lbl.custom_minimum_size = Vector2(0, 0)
+	v.add_child(_rc_lbl)
+
+
+func show_race_control(text: String, mine := false) -> void:
+	if _rc == null:
+		return
+	_rc_lines.append(text)
+	while _rc_lines.size() > 2:
+		_rc_lines.pop_front()
+	_rc_lbl.text = "\n".join(_rc_lines)
+	_rc_lbl.add_theme_color_override("font_color", UIStyle.APEX if mine else UIStyle.PAPER)
+	_rc.visible = gauge.visible
+	_rc.reset_size()
+	_rc.offset_left = -_rc.size.x * 0.5
+	_rc.offset_right = _rc.size.x * 0.5
+	_rc_time = 6.0
 
 
 # ------------------------------------------------------------ action button
@@ -1253,6 +1499,7 @@ func set_race_mode(race: bool, laps: int) -> void:
 	_race_mode = race
 	_total_laps = laps
 	_rows_box.visible = race
+	_tower_mode_lbl.visible = race
 	_pos_big.visible = race
 	_pos_of.visible = race
 	if not race:
@@ -1332,56 +1579,6 @@ func show_lights(lit: int, out: bool) -> void:
 		lights[i].add_theme_stylebox_override("panel", sb)
 
 
-## rows: [{pos, name, gap, player, color}] for the cars to show.
-func update_position(pos: int, total: int, rows: Array) -> void:
-	_pos_big.text = "P%d" % pos
-	_pos_of.text = "/%d" % total
-	for c in _rows_box.get_children():
-		c.queue_free()
-	var last := 0
-	for r in rows:
-		if int(r["pos"]) > last + 1:
-			var dots := UIStyle.outlined(UIStyle.label("·  ·  ·", 14, UIStyle.FOG, "bold"), 3)
-			dots.custom_minimum_size = Vector2(236, 12)
-			dots.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			_rows_box.add_child(dots)
-		last = int(r["pos"])
-		_rows_box.add_child(_tower_row(r))
-
-
-func _tower_row(r: Dictionary) -> Control:
-	var me: bool = r["player"]
-	var row := PanelContainer.new()
-	var sb := UIStyle.panel(Color(UIStyle.APEX, 0.95) if me else Color(UIStyle.TARMAC, 0.8))
-	sb.content_margin_top = 1
-	sb.content_margin_bottom = 1
-	sb.content_margin_left = 8
-	row.add_theme_stylebox_override("panel", sb)
-	row.custom_minimum_size = Vector2(236, 32)
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 8)
-	row.add_child(h)
-	var ink := UIStyle.INK if me else UIStyle.PAPER
-	var p := UIStyle.label(str(r["pos"]), 21, ink, "extrabold", true)
-	p.custom_minimum_size = Vector2(26, 0)
-	p.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	h.add_child(p)
-	var bar := ColorRect.new()
-	bar.color = r.get("color", UIStyle.FOG)
-	bar.custom_minimum_size = Vector2(5, 22)
-	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	h.add_child(bar)
-	var name := UIStyle.label("YOU" if me else UIStyle.code(String(r["name"])), 21, ink, "bold")
-	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	h.add_child(name)
-	var pit: bool = r["gap"] == "PIT"
-	var gap := UIStyle.label(String(r["gap"]) if r["gap"] != "" else "Leader", 19, UIStyle.YELLOW if pit and not me else (Color(ink, 0.8) if me else UIStyle.FOG), "extrabold" if pit else "semibold", true)
-	h.add_child(gap)
-	return row
-
-
 # ------------------------------------------------------------ messages
 
 func show_center(text: String) -> void:
@@ -1442,6 +1639,12 @@ func _process(delta: float) -> void:
 		if _warn_time <= 0.0:
 			warn.visible = false
 	_pit_ui_tick(delta)
+	_results_tick(delta)
+	if _rc_time > 0.0:
+		_rc_time -= delta
+		if _rc_time <= 0.0:
+			_rc.visible = false
+			_rc_lines.clear()
 
 
 # ------------------------------------------------------------ classification
@@ -1469,7 +1672,16 @@ func _set_live_visible(on: bool) -> void:
 
 
 ## rows: [{pos, name, team, gap, best, player, color, fastest}]
-func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_text := "Race again", rank: Dictionary = {}, on_replay: Callable = Callable(), reward: Dictionary = {}) -> void:
+## live (optional): returns {"rows": rows, "stats": stats rows} for a
+## results screen that keeps updating while others are still racing, with a
+## Race stats tab (see _stats_row).
+func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_text := "Race again", rank: Dictionary = {}, on_replay: Callable = Callable(), reward: Dictionary = {}, live: Callable = Callable()) -> void:
+	_res_live = live
+	_res_tab = 0
+	_res_detail = ""
+	_res_sig = ""
+	_res_t = 0.5
+	_res_big = null
 	for c in results_panel.get_children():
 		c.queue_free()
 	touch.release_all()
@@ -1504,6 +1716,7 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 		left.add_child(UIStyle.label("You finished", 30, UIStyle.FOG, "bold", true))
 		var big := UIStyle.label("P%d" % int(me.get("pos", 0)), 150, UIStyle.APEX if int(me.get("pos", 99)) <= 3 else UIStyle.PAPER, "extrabold", true)
 		left.add_child(big)
+		_res_big = big
 		left.add_child(UIStyle.label("of %d" % rows.size(), 30, UIStyle.FOG, "bold", true))
 	if me.get("best", "-") != "-" and not tt:
 		var bl := UIStyle.label("Best lap %s" % me["best"], 26, UIStyle.PURPLE if me.get("fastest", false) else UIStyle.PAPER, "bold", true)
@@ -1545,31 +1758,127 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 	menu.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lower.add_child(menu)
 
+	var kids := cols.get_child_count()
 	if reward.has("champ"):
 		_champ_column(cols, reward, rank)
 	elif reward.has("event"):
 		_reward_column(cols, reward, rank)
 	elif not rank.is_empty():
 		_rank_column(cols, rank)
+	_res_mid = cols.get_child(kids) if cols.get_child_count() > kids else null
 
-	# Right: the classification.
+	# Right: the classification, and (live) the race stats.
 	var right := VBoxContainer.new()
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	right.add_theme_constant_override("separation", 8)
 	cols.add_child(right)
-	right.add_child(UIStyle.label("Classification", 36, UIStyle.PAPER, "extrabold", true))
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 10)
+	right.add_child(tabs)
+	_res_tabs.clear()
+	var names := ["Classification", "Race stats"] if live.is_valid() else ["Classification"]
+	for k in names.size():
+		var kk := k
+		var tb := UIStyle.button(names[k], func(): _set_res_tab(kk), false, 24)
+		tb.custom_minimum_size = Vector2(0, 54)
+		tabs.add_child(tb)
+		_res_tabs.append(tb)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.scroll_deadzone = 24
 	right.add_child(scroll)
+	_res_scroll = scroll
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list.add_theme_constant_override("separation", 4)
 	scroll.add_child(list)
-	for r in rows:
-		list.add_child(_result_row(r))
+	_res_list = list
+	_res_data = {"rows": rows, "stats": []}
+	if live.is_valid():
+		_res_data = live.call()
+	_fill_results()
+	_style_res_tabs()
 	results_panel.visible = true
+
+
+var _res_live: Callable
+var _res_data := {}
+var _res_tab := 0
+var _res_detail := ""             # stats: the driver opened (name), "" for the table
+var _res_sig := ""
+var _res_t := 0.0
+var _res_list: VBoxContainer
+var _res_scroll: ScrollContainer
+var _res_tabs: Array[Button] = []
+var _res_big: Label
+var _res_mid: Control
+
+
+func _set_res_tab(k: int) -> void:
+	_res_tab = k
+	_res_detail = ""
+	_style_res_tabs()
+	_fill_results()
+	if _res_scroll != null:
+		_res_scroll.scroll_vertical = 0
+
+
+func _style_res_tabs() -> void:
+	for k in _res_tabs.size():
+		var on := k == _res_tab
+		var b: Button = _res_tabs[k]
+		var sb := UIStyle.panel(UIStyle.PAPER if on else Color(UIStyle.TARMAC_2, 0.9))
+		for st in ["normal", "hover", "pressed"]:
+			b.add_theme_stylebox_override(st, sb)
+		b.add_theme_color_override("font_color", UIStyle.INK if on else UIStyle.FOG)
+		b.add_theme_color_override("font_hover_color", UIStyle.INK if on else UIStyle.FOG)
+	# The stats table wants the room of the middle column.
+	if _res_mid != null:
+		_res_mid.visible = _res_tab == 0
+
+
+## Every half second while the results are up: the order and gaps as the
+## others finish (and penalties are applied).
+func _results_tick(delta: float) -> void:
+	if not results_panel.visible or not _res_live.is_valid():
+		return
+	_res_t -= delta
+	if _res_t > 0.0:
+		return
+	_res_t = 0.5
+	_res_data = _res_live.call()
+	if _res_big != null:
+		for r in _res_data.get("rows", []):
+			if r["player"]:
+				_res_big.text = "P%d" % int(r["pos"])
+	_fill_results()
+
+
+func _fill_results() -> void:
+	if _res_list == null:
+		return
+	var sig := "%d|%s|%s" % [_res_tab, _res_detail, str(_res_data.get("rows" if _res_tab == 0 else "stats", []))]
+	if sig == _res_sig:
+		return
+	_res_sig = sig
+	for c in _res_list.get_children():
+		_res_list.remove_child(c)
+		c.queue_free()
+	if _res_tab == 0:
+		for r in _res_data.get("rows", []):
+			_res_list.add_child(_result_row(r))
+		return
+	var stats: Array = _res_data.get("stats", [])
+	if _res_detail != "":
+		for r in stats:
+			if String(r["name"]) == _res_detail:
+				_driver_detail(r)
+				return
+		_res_detail = ""
+	_res_list.add_child(_stats_head())
+	for r in stats:
+		_res_list.add_child(_stats_row(r))
 
 
 func _result_row(r: Dictionary) -> Control:
@@ -1610,3 +1919,157 @@ func _result_row(r: Dictionary) -> Control:
 	best.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	h.add_child(best)
 	return row
+
+
+# ------------------------------------------------------------ race stats
+
+const STATS_COLS := [["Driver", 150], ["Grid", 80], ["Best lap", 96], ["Top", 58], ["Tyres", 118], ["Pen", 46], ["Led", 38]]
+
+
+func _stats_head() -> Control:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 8)
+	var p := UIStyle.label("", 16, UIStyle.FOG, "bold")
+	p.custom_minimum_size = Vector2(46, 0)
+	h.add_child(p)
+	for c in STATS_COLS:
+		var l := UIStyle.label(String(c[0]), 16, UIStyle.FOG, "bold")
+		l.custom_minimum_size = Vector2(float(c[1]), 0)
+		h.add_child(l)
+	var hint := UIStyle.label("Tap a driver for lap times", 15, UIStyle.FOG, "semibold")
+	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	h.add_child(hint)
+	return h
+
+
+## rows: {pos, name, team, color, player, status, reason, grid, best,
+## best_fast, top, stints [compounds], stops, pen, led, laps [[time,
+## compound, pitted]]}. Tap a driver for their race lap by lap.
+func _stats_row(r: Dictionary) -> Control:
+	var mine: bool = r["player"]
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.custom_minimum_size = Vector2(0, 40)
+	var sb := UIStyle.panel(Color(UIStyle.APEX, 0.95) if mine else Color(UIStyle.TARMAC_2, 0.95))
+	for st in ["normal", "hover", "pressed", "focus"]:
+		b.add_theme_stylebox_override(st, sb)
+	var name := String(r["name"])
+	b.pressed.connect(func():
+		_res_detail = name
+		_fill_results()
+		if _res_scroll != null:
+			_res_scroll.scroll_vertical = 0)
+	var h := HBoxContainer.new()
+	h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	h.offset_left = 4
+	h.add_theme_constant_override("separation", 8)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(h)
+	var ink := UIStyle.INK if mine else UIStyle.PAPER
+	var dim := Color(ink, 0.75) if mine else UIStyle.FOG
+	var status := String(r.get("status", ""))
+	var p := UIStyle.label(str(r["pos"]) if status == "" else status, 20, ink, "extrabold", true)
+	p.custom_minimum_size = Vector2(42, 0)
+	p.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(p)
+	var grid := int(r["grid"])
+	var moved: int = grid - int(r["pos"])
+	var arrow := "" if status != "" else ("  +%d" % moved if moved > 0 else ("  -%d" % -moved if moved < 0 else "  ="))
+	var pen := float(r["pen"])
+	var cells: Array = [
+		["You" if mine else name, ink, "bold"],
+		["P%d%s" % [grid, arrow], (UIStyle.GREEN if moved > 0 else (UIStyle.RED if moved < 0 else dim)) if not mine and status == "" else dim, "semibold"],
+		[String(r["best"]), UIStyle.PURPLE if r.get("best_fast", false) else ink, "semibold"],
+		["%d" % int(r["top"]), dim, "semibold"],
+		["", ink, ""],
+		[("+%d" % int(pen)) if pen > 0.0 else "-", UIStyle.RED if pen > 0.0 and not mine else dim, "bold"],
+		[str(r["led"]), dim, "semibold"],
+	]
+	for k in cells.size():
+		var w := float(STATS_COLS[k][1])
+		if k == 4:
+			var tyres := HBoxContainer.new()
+			tyres.custom_minimum_size = Vector2(w, 0)
+			tyres.add_theme_constant_override("separation", 2)
+			tyres.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			for comp in r.get("stints", []):
+				var tb := TyreBadge.new()
+				tb.compound = String(comp)
+				tb.custom_minimum_size = Vector2(22, 22)
+				tb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+				tb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				tyres.add_child(tb)
+			h.add_child(tyres)
+			continue
+		var l := UIStyle.label(String(cells[k][0]), 19, cells[k][1], String(cells[k][2]), k > 0)
+		l.custom_minimum_size = Vector2(w, 0)
+		l.clip_text = true
+		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		h.add_child(l)
+	return b
+
+
+## One driver's race: summary and every lap (tyre, pit stops, best lap).
+func _driver_detail(r: Dictionary) -> void:
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 12)
+	_res_list.add_child(top)
+	var back := UIStyle.button("‹ All drivers", func():
+		_res_detail = ""
+		_fill_results(), false, 20)
+	back.custom_minimum_size = Vector2(170, 48)
+	top.add_child(back)
+	var bar := ColorRect.new()
+	bar.color = r.get("color", UIStyle.FOG)
+	bar.custom_minimum_size = Vector2(6, 30)
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(bar)
+	var who := UIStyle.label("%s   %s" % ["You" if r["player"] else String(r["name"]), String(r.get("team", ""))], 24, UIStyle.PAPER, "extrabold")
+	who.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(who)
+	var status := String(r.get("status", ""))
+	var finish := ("P%d" % int(r["pos"])) if status == "" else status
+	var summary := "Started P%d, finished %s  ·  Best lap %s  ·  Top speed %d km/h  ·  %d stop%s  ·  Penalties %s  ·  Laps led %d" % [
+		int(r["grid"]), finish, String(r["best"]), int(r["top"]), int(r["stops"]), "" if int(r["stops"]) == 1 else "s",
+		("+%d s" % int(r["pen"])) if float(r["pen"]) > 0.0 else "none", int(r["led"])]
+	if String(r.get("reason", "")) != "":
+		summary += "  ·  Retired: " + String(r["reason"]).to_lower()
+	var sl := UIStyle.label(summary, 18, UIStyle.FOG, "semibold")
+	sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sl.custom_minimum_size = Vector2(400, 0)
+	_res_list.add_child(sl)
+	var laps: Array = r.get("laps", [])
+	var best := INF
+	for lp in laps:
+		best = minf(best, float(lp[0]))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 28)
+	grid.add_theme_constant_override("v_separation", 4)
+	_res_list.add_child(grid)
+	for k in laps.size():
+		var lp: Array = laps[k]
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 10)
+		grid.add_child(h)
+		var n := UIStyle.label("Lap %d" % (k + 1), 19, UIStyle.FOG, "semibold", true)
+		n.custom_minimum_size = Vector2(72, 0)
+		h.add_child(n)
+		var t := float(lp[0])
+		var tl := UIStyle.label(fmt_time(t), 20, UIStyle.PURPLE if t <= best else UIStyle.PAPER, "bold", true)
+		tl.custom_minimum_size = Vector2(104, 0)
+		h.add_child(tl)
+		var tb := TyreBadge.new()
+		tb.compound = String(lp[1])
+		tb.custom_minimum_size = Vector2(22, 22)
+		tb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		h.add_child(tb)
+		if bool(lp[2]):
+			h.add_child(UIStyle.label("PIT", 17, UIStyle.YELLOW, "extrabold", true))
+	if laps.is_empty():
+		_res_list.add_child(UIStyle.label("No laps completed yet.", 20, UIStyle.FOG, "semibold"))

@@ -59,6 +59,24 @@ class Entrant:
 	var pit_driver: AIDriver    # drives you through the pit lane
 	var team_idx := 0           # team (or car number) index: which pit box
 	var mini_start := 0.0
+	var pit_still := 0.0        # seconds sitting still in the pit lane (unstuck after a while)
+	var pit_cool := false       # a stop was abandoned (reset): box next time round
+	var pit_svc := 0.0          # seconds in the box this stop
+	var pit_pen := 0.0          # penalty being served at this stop
+	# Race control (scripts/race_control.gd).
+	var pen_pending := 0.0      # seconds of time penalty not yet served
+	var pen_total := 0.0        # all time penalties given this race
+	var tl_strikes := 0         # track limits: times all four wheels went off
+	var dnf := false            # retired (mechanical failure)
+	var dnf_reason := ""
+	# Stats (results screen).
+	var grid := 0               # grid position (1 = pole)
+	var top_speed := 0.0        # km/h
+	var laps_led := 0
+	var lap_log: Array = []     # per lap: [time, compound, pitted]
+	var stints: Array = []      # compounds used, in order
+	var marks := PackedFloat32Array()   # race time at each timing line crossed (gaps)
+	var pitted_lap := false     # stopped during the lap being driven
 
 
 var track: Track
@@ -125,6 +143,7 @@ var tt_targets: Array = []
 var _elim_lap := 0
 var last_reward := {}                  # what the results screen showed (tests)
 var weekend: Weekend                   # tyres, pits, weather, qualifying
+var control: RaceControl               # flags, penalties, VSC, retirements (races)
 var _net_cfg := {}                     # multiplayer: the host's race settings
 
 
@@ -251,6 +270,10 @@ func _ready() -> void:
 	engineer = RaceEngineer.new()
 	add_child(engineer)
 	engineer.setup(self)
+	if mode == "race":
+		control = RaceControl.new()
+		add_child(control)
+		control.setup(self)
 	replay = Replay.new()
 	add_child(replay)
 	replay.setup(self)
@@ -460,8 +483,27 @@ func _restart() -> void:
 		e.car.visible = true
 		if not e.remote:
 			e.car.freeze = false
+			if e.dnf:
+				e.car.set_ghost(false)
+		e.dnf = false
+		e.dnf_reason = ""
+		if e.ai != null:
+			e.ai.path_lat = Callable()
+		e.pen_pending = 0.0
+		e.pen_total = 0.0
+		e.tl_strikes = 0
+		e.grid = slot + 1
+		e.top_speed = 0.0
+		e.laps_led = 0
+		e.lap_log = []
+		e.marks = PackedFloat32Array()
+		e.pitted_lap = false
 	if weekend != null:
 		weekend.reset()
+	for e in entrants:
+		e.stints = [e.compound]
+	if control != null:
+		control.reset()
 	session_sectors = [INF, INF, INF]
 	_my_session_sectors = [INF, INF, INF]
 	session_minis.resize(MINIS)
@@ -503,6 +545,8 @@ func _reset_to_track(e: Entrant, manual: bool) -> void:
 	var rl := track.lateral(e.car.global_position, e.idx)
 	reset_log.append("%s%s at %.0f m (lap %d), %.1f m %s, %.0f km/h, pit %d, upright %.2f, %s" % [e.name, " (you)" if e.is_player else "",
 		track.cum[e.idx], e.lap + 1, absf(rl), "right" if rl > 0.0 else "left", e.car.speed_kmh(), e.pit_phase, e.car.global_basis.y.y, "manual" if manual else "auto"])
+	if weekend != null and weekend.on_reset(e):
+		return                          # (part-way through a pit stop: into the box, or out of the exit)
 	var idx := track.nearest_index(e.car.global_position, -1)
 	_place(e, track.pose_at(idx, e.car.spawn_height(), track.line_offset[idx]))
 	e.car.controls_enabled = state == State.RACING
@@ -746,7 +790,7 @@ func _physics_process(delta: float) -> void:
 		for e in entrants:
 			if e.ai != null and not (e.finished and e.car.forward_speed() < 1.0) and not e.eliminated:
 				e.ai.update(e.car, track)
-				if e.finished:
+				if e.finished and not e.dnf:
 					e.ai.speed_cap = 25.0      # cool-down lap
 
 	if net != null:
@@ -755,6 +799,8 @@ func _physics_process(delta: float) -> void:
 		_update_entrant(e, delta)
 	if weekend != null:
 		weekend.physics(delta)
+	if control != null and _tick % 12 == 0 and (state == State.RACING or state == State.FINISHED):
+		control.tick(12.0 / Engine.physics_ticks_per_second)
 	engineer.tick(delta)
 	if (_tick % 6 == 0 or state == State.FINISHED) and (net == null or Net.is_host()):
 		_update_positions()
@@ -836,10 +882,13 @@ func _update_entrant(e: Entrant, delta: float) -> void:
 	e.idx = track.track_index(e.car.global_position, e.idx)
 	if e.ghost > 0.0:
 		e.ghost -= delta
-		if e.ghost <= 0.0:
+		if e.ghost <= 0.0 and not e.remote and not e.dnf:
 			e.car.set_ghost(false)
 	if state == State.GRID or state == State.QUALI:
 		return
+	if not e.finished:
+		var kmh := (e.car.remote_vel if e.remote else e.car.linear_velocity).length() * 3.6
+		e.top_speed = maxf(e.top_speed, kmh)
 	# Checkpoints at 25/50/75% must be passed in order.
 	var quarter := int(e.idx * 4 / n)
 	if quarter == e.next_checkpoint and e.next_checkpoint < 4:
@@ -886,7 +935,7 @@ func _update_entrant(e: Entrant, delta: float) -> void:
 			e.outside = 0.0
 	# AI recovery: flipped or stuck for a while -> back on the racing line.
 	var ai_driven := e.ai != null or (e.is_player and autopilot != null)
-	if ai_driven and not e.finished and e.pit_phase == 0:
+	if ai_driven and not e.finished and e.pit_phase == 0 and not e.dnf:
 		var flipped := e.car.global_basis.y.y < 0.35
 		var slow := e.car.forward_speed() < 4.0
 		var off_road := absf(track.lateral(e.car.global_position, e.idx)) > track.road_half + 4.0
@@ -1010,11 +1059,16 @@ func _update_minis(e: Entrant) -> void:
 		if e.is_player:
 			for m in range(e.mini, cur):
 				hud.show_mini(m, -1.0, 0.0, UIStyle.FOG)
+		if not e.finished:
+			for m in range(ahead):
+				e.marks.append(race_time)
 		e.mini = cur
 		e.mini_start = race_time
 
 
 func _complete_mini(e: Entrant, m: int) -> void:
+	if not e.finished:
+		e.marks.append(race_time)        # a timing line (gaps on the tower)
 	var t := race_time - e.mini_start
 	e.mini_start = race_time
 	e.mini = (m + 1) % MINIS
@@ -1048,6 +1102,10 @@ func _complete_lap(e: Entrant) -> void:
 	e.mini_start = race_time
 	var lap_time := race_time - e.lap_start
 	e.lap_start = race_time
+	if e.position == 1 and not e.finished:
+		e.laps_led += 1
+	e.lap_log.append([lap_time, e.compound, e.pitted_lap])
+	e.pitted_lap = false
 	e.lap += 1
 	e.last_lap = lap_time
 	if e.best_lap < 0.0 or lap_time < e.best_lap:
@@ -1058,6 +1116,8 @@ func _complete_lap(e: Entrant) -> void:
 	if ev_type == "time_trial" and e.is_player and e.lap >= total_laps:
 		e.finished = true
 		e.finish_time = race_time
+	if e.finished and (net == null or Net.is_host()):
+		_update_positions()              # (the order at the flag, before anyone's told)
 	replay.on_lap(e, lap_time)
 	engineer.on_lap(e, lap_time)
 	if ev_type == "eliminator" and e.lap > _elim_lap and e.lap < total_laps and not e.eliminated:
@@ -1112,43 +1172,87 @@ func _show_results() -> void:
 		return
 	_results_shown = true
 	hud.show_center("")
-	var rows: Array = []
-	var ordered := entrants.duplicate()
-	ordered.sort_custom(_by_position)
-	var winner: Entrant = ordered[0]
-	var fastest: Entrant = null
-	for e in ordered:
-		if e.best_lap > 0.0 and (fastest == null or e.best_lap < fastest.best_lap):
-			fastest = e
-	for e in ordered:
-		var gap := ""
-		if e == winner:
-			gap = Hud.fmt_time(e.finish_time) if e.finished else ""
-		elif e.eliminated:
-			gap = "Out, lap %d" % (e.lap + 1)
-		elif e.finished:
-			gap = "+%.3f" % (e.finish_time - winner.finish_time)
-		else:
-			var laps_down: int = winner.lap - e.lap
-			gap = "+%d lap%s" % [laps_down, "" if laps_down == 1 else "s"] if laps_down >= 1 else "Running"
-		rows.append({"pos": e.position, "name": e.name, "team": e.team, "gap": gap,
-			"best": Hud.fmt_time(e.best_lap) if e.best_lap > 0.0 else "-", "player": e.is_player,
-			"color": e.car.spec["color"], "fastest": e == fastest})
+	var rows := result_rows()
+	var fastest: Entrant = _fastest_lap()
 	var rank := _award_rank(fastest == player)
 	var watch := func(): watch_replay(false)
 	var reward := _settle_rewards()
 	last_reward = reward
+	var live := live_results if mode == "race" else Callable()
 	if ev_type == "champ_round":
 		# Points are in: no retries, on to the standings.
-		hud.show_results(rows, func(): _quit_to_menu(), func(): _quit_to_menu(), "Standings", rank, watch, reward)
+		hud.show_results(rows, func(): _quit_to_menu(), func(): _quit_to_menu(), "Standings", rank, watch, reward, live)
 	elif net == null:
-		hud.show_results(rows, func(): _restart(), func(): _quit_to_menu(), "Try again" if not event.is_empty() else "Race again", rank, watch, reward)
+		hud.show_results(rows, func(): _restart(), func(): _quit_to_menu(), "Try again" if not event.is_empty() else "Race again", rank, watch, reward, live)
 	elif Net.is_host():
-		hud.show_results(rows, func(): net.back_to_lobby(), func(): _quit_to_menu(), "Back to lobby", rank, watch)
+		hud.show_results(rows, func(): net.back_to_lobby(), func(): _quit_to_menu(), "Back to lobby", rank, watch, {}, live)
 	else:
-		hud.show_results(rows, Callable(), func(): _quit_to_menu(), "Race again", rank, watch)
+		hud.show_results(rows, Callable(), func(): _quit_to_menu(), "Race again", rank, watch, {}, live)
 	if net != null and hud.replay_button != null:
 		hud.replay_button.disabled = true      # until every car is home (see _physics_process)
+
+
+func _fastest_lap() -> Entrant:
+	var fastest: Entrant = null
+	for e in entrants:
+		if e.best_lap > 0.0 and (fastest == null or e.best_lap < fastest.best_lap):
+			fastest = e
+	return fastest
+
+
+## The classification as it stands (cars still racing show where they are).
+func result_rows() -> Array:
+	var rows: Array = []
+	var ordered := entrants.duplicate()
+	ordered.sort_custom(_by_position)
+	var winner: Entrant = ordered[0]
+	var fastest := _fastest_lap()
+	for i in ordered.size():
+		var e: Entrant = ordered[i]
+		var gap := ""
+		if e.dnf:
+			gap = "DNF"
+		elif e.eliminated:
+			gap = "Out, lap %d" % (e.lap + 1)
+		elif e == winner:
+			gap = Hud.fmt_time(e.finish_time + e.pen_pending) if e.finished else "Lap %d/%d" % [mini(e.lap + 1, total_laps), total_laps]
+		elif e.finished and winner.finished:
+			gap = "+%.3f" % ((e.finish_time + e.pen_pending) - (winner.finish_time + winner.pen_pending))
+		else:
+			var laps_down: int = winner.lap - e.lap if winner.finished else 0
+			gap = ("+%d lap%s" % [laps_down, "" if laps_down == 1 else "s"]) if laps_down >= 1 else ("Lap %d/%d" % [mini(e.lap + 1, total_laps), total_laps])
+		if e.pen_pending > 0.0 and not e.dnf:
+			gap += "  (+%ds)" % int(round(e.pen_pending))
+		rows.append({"pos": i + 1, "name": e.name, "team": e.team, "gap": gap,
+			"best": Hud.fmt_time(e.best_lap) if e.best_lap > 0.0 else "-", "player": e.is_player,
+			"color": e.car.spec["color"], "fastest": e == fastest})
+	return rows
+
+
+## Race stats for every driver (the results screen's second tab).
+func stats_rows() -> Array:
+	var rows: Array = []
+	var ordered := entrants.duplicate()
+	ordered.sort_custom(_by_position)
+	var fastest := _fastest_lap()
+	for i in ordered.size():
+		var e: Entrant = ordered[i]
+		var status := ""
+		if e.dnf:
+			status = "DNF"
+		elif e.eliminated:
+			status = "OUT"
+		rows.append({"pos": i + 1, "name": e.name, "team": e.team, "color": e.car.spec["color"], "player": e.is_player,
+			"status": status, "reason": e.dnf_reason, "grid": e.grid, "best": Hud.fmt_time(e.best_lap) if e.best_lap > 0.0 else "-",
+			"best_fast": e == fastest, "top": e.top_speed, "stints": e.stints.duplicate(), "stops": e.stops,
+			"pen": e.pen_total, "led": e.laps_led, "laps": e.lap_log.duplicate(true)})
+	return rows
+
+
+func live_results() -> Dictionary:
+	if net == null or Net.is_host():
+		_update_positions()
+	return {"rows": result_rows(), "stats": stats_rows()}
 
 
 ## Credits (and career stars) for this finish, once per race.
@@ -1239,9 +1343,15 @@ func _by_position(a: Entrant, b: Entrant) -> bool:
 		return b.eliminated
 	if a.eliminated:
 		return a.finish_time > b.finish_time
-	# Finished cars by finishing time, then everyone else by distance covered.
+	# Retired: behind everyone still running, the furthest first.
+	if a.dnf != b.dnf:
+		return b.dnf
+	if a.dnf:
+		return a.progress > b.progress
+	# Finished cars by finishing time (plus penalties not served), then
+	# everyone else by distance covered.
 	if a.finished and b.finished:
-		return a.finish_time < b.finish_time
+		return a.finish_time + a.pen_pending < b.finish_time + b.pen_pending
 	if a.finished != b.finished:
 		return a.finished
 	return a.progress > b.progress
@@ -1276,20 +1386,24 @@ func _traffic() -> void:
 		var drv: AIDriver = e.ai
 		if drv == null and e.is_player:
 			drv = autopilot
-		if drv == null or e.pit_phase > 0 or e.eliminated:
+		if drv == null or e.pit_phase > 0 or e.eliminated or e.dnf:
 			continue
 		var my_s: float = track.cum[e.idx]
 		var my_lat := track.lateral(e.car.global_position, e.idx)
 		var v := e.car.forward_speed()
 		var line_here: float = track.line_offset[(e.idx + 6) % n]
 		var lead: Entrant = null
+		var blue: Entrant = null
 		var lead_gap := 999.0
 		var lead_lat := 0.0
 		var beside: Array[float] = []        # lateral positions of cars alongside
 		for o in entrants:
-			if o == e or o.ghost > 0.0 or o.eliminated or o.pit_phase > 0:
+			if o == e or o.ghost > 0.0 or o.eliminated or o.pit_phase > 0 or not o.car.visible:
 				continue
 			var gap := fposmod(track.cum[o.idx] - my_s + L * 0.5, L) - L * 0.5
+			# Blue flags: a car lapping us, close behind: move over and let it by.
+			if gap < 0.0 and gap > -45.0 and float(o.progress) - float(e.progress) > L * 0.5 and not e.finished:
+				blue = o
 			# Mirrors: a faster car coming up behind counts as alongside sooner.
 			var mirror := CAR_LEN * 1.4 + maxf(o.car.forward_speed() - v, 0.0) * 0.8
 			if gap < -mirror or gap > 80.0:
@@ -1321,7 +1435,9 @@ func _traffic() -> void:
 			# waits for the exit).
 			var bend := maxf(absf(track.curv[e.idx]), absf(track.curv[(e.idx + 12) % n]))
 			var mid_corner := bend > 1.0 / 220.0 and absf(drv.lane_offset) < 0.8
-			if lead_gap < 45.0 and (v > o_v + 0.5 or o_v < 15.0) and not mid_corner:
+			# (Under yellow flags or the VSC: no overtaking, except past a crawling car.)
+			var flags: bool = control != null and control.no_passing(e.idx) and o_v > 15.0
+			if lead_gap < 45.0 and (v > o_v + 0.5 or o_v < 15.0) and not mid_corner and not flags:
 				var room_right := track.road_half - lead_lat
 				var room_left := track.road_half + lead_lat
 				var sides := [1.0, -1.0] if room_right > room_left else [-1.0, 1.0]
@@ -1339,6 +1455,12 @@ func _traffic() -> void:
 			returning = false
 		if returning and lead == null:
 			target = line_here                         # back to the racing line
+		if blue != null:
+			# Off the line to the side away from the faster car, easing off a touch.
+			var b_lat := track.lateral(blue.car.global_position, blue.idx)
+			var away := -signf(b_lat - my_lat) if absf(b_lat - my_lat) > 0.3 else -signf(line_here + 0.01)
+			target = clampf(line_here + away * 3.2, -lim, lim)
+			cap = minf(cap, maxf(v * 0.97, 15.0))
 		# Never steer into a car alongside: keep SIDE_CLEAR from each.
 		for b in beside:
 			if absf(target - b) < SIDE_CLEAR:
@@ -1347,6 +1469,8 @@ func _traffic() -> void:
 					away = 1.0
 				target = b + away * SIDE_CLEAR
 		target = clampf(target, -lim, lim)
+		if control != null and not e.finished:
+			cap = minf(cap, control.ai_cap(e))
 		drv.speed_cap = maxf(cap, 4.0)
 		var want_offset := target - line_here
 		drv.lane_offset = move_toward(drv.lane_offset, want_offset, 0.09)
@@ -1382,23 +1506,67 @@ func _update_hud() -> void:
 		for e in entrants:
 			dots.append([e.car.global_position, e.car.spec["color"], e.is_player])
 		hud.update_map(dots)
+		if control != null:
+			hud.minimap.set_flags(control.yellow)
 	if mode == "race" and _tick % 12 == 0:
-		var ordered := entrants.duplicate()
-		ordered.sort_custom(_by_position)
-		var rows: Array = []
-		var me := player.position - 1
-		for i in range(ordered.size()):
-			var e: Entrant = ordered[i]
-			if i < 2 or absf(i - me) <= 1:
-				var gap := ""
-				if e.pit_phase > 0:
-					gap = "PIT"
-				elif i > 0:
-					var ahead: Entrant = ordered[i - 1]
-					var v := maxf(e.car.forward_speed(), 15.0)
-					gap = "+%.1f" % ((ahead.progress - e.progress) / v)
-				rows.append({"pos": i + 1, "name": e.name, "gap": gap, "player": e.is_player, "color": e.car.spec["color"]})
-		hud.update_position(player.position, entrants.size(), rows)
+		hud.update_tower(player.position, entrants.size(), tower_rows())
+
+
+## Everyone in race order, for the timing tower: interval to the car ahead
+## and gap to the leader (from the timing lines: steady, like real timing),
+## tyres, and what's going on (in the pits, penalties, retired).
+func tower_rows() -> Array:
+	var ordered := entrants.duplicate()
+	ordered.sort_custom(func(a, b): return a.position < b.position if a.position != b.position else _by_position(a, b))
+	var fastest: Entrant = null
+	for e in ordered:
+		if e.best_lap > 0.0 and (fastest == null or e.best_lap < fastest.best_lap):
+			fastest = e
+	var rows: Array = []
+	var leader: Entrant = ordered[0] if not ordered.is_empty() else null
+	for i in ordered.size():
+		var e: Entrant = ordered[i]
+		var status := ""
+		if e.dnf:
+			status = "DNF"
+		elif e.eliminated:
+			status = "OUT"
+		elif e.pit_phase > 0:
+			status = "PIT"
+		elif e.finished:
+			status = "FIN"
+		elif e == fastest and e.lap >= 2:
+			status = "FL"
+		var iv := "Leader" if i == 0 else gap_text(ordered[i - 1], e)
+		var ld := ("Lap %d" % mini(e.lap + 1, total_laps)) if i == 0 else gap_text(leader, e)
+		if e.dnf or e.eliminated:
+			iv = ""
+			ld = ""
+		rows.append({"pos": i + 1, "name": e.name, "color": e.car.spec["color"], "player": e.is_player,
+			"compound": e.compound if weekend != null else "", "int": iv, "ldr": ld, "status": status,
+			"pen": e.pen_pending})
+	return rows
+
+
+## Seconds from car a (ahead) to car b, from when each crossed the last
+## timing line b has crossed (24 a lap). < 0: b is that many laps down.
+func timing_gap(a: Entrant, b: Entrant) -> float:
+	if a.finished and b.finished and not a.dnf and not b.dnf:
+		return (b.finish_time + b.pen_pending) - (a.finish_time + a.pen_pending)
+	var kb := b.marks.size() - 1
+	if kb >= 0 and a.marks.size() > kb:
+		var down := (a.marks.size() - 1 - kb) / MINIS
+		if down >= 1:
+			return -float(down)
+		return maxf(b.marks[kb] - a.marks[kb], 0.0)
+	return maxf(a.progress - b.progress, 0.0) / maxf(b.car.forward_speed(), 15.0)
+
+
+func gap_text(a: Entrant, b: Entrant) -> String:
+	var g := timing_gap(a, b)
+	if g < 0.0:
+		return "+%d LAP%s" % [int(-g), "" if g > -1.5 else "S"]
+	return "+%.1f" % g if g < 100.0 else "+%d" % int(g)
 
 
 # ------------------------------------------------------------ ghost car

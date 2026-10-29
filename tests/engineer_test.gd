@@ -55,7 +55,7 @@ func _run() -> void:
 	for f in 480:
 		await physics_frame
 		victim.ai.speed_cap = 0.0
-		if eng._flag == "yellow":
+		if eng._flag == "yellow" or eng._flag == "double":
 			yellow = true
 			break
 	_check(yellow and race.hud._flag.visible, "a stopped car ahead brings out the yellow flag")

@@ -16,6 +16,7 @@ var show_panel := true
 var line_color := UIStyle.PAPER
 var line_width := 3.5
 var _minis := {}                # minisector index -> colour, painted over the outline
+var _flags := PackedByteArray()  # marshal sectors under yellow (race control): 0, 1, 2
 var _mini_count := 24
 
 
@@ -64,15 +65,25 @@ func set_mini(m: int, count: int, colour: Color) -> void:
 	queue_redraw()
 
 
+## Marshal sectors under yellow flags (1 yellow, 2 double): painted yellow.
+func set_flags(levels: PackedByteArray) -> void:
+	if levels == _flags:
+		return
+	_flags = levels.duplicate()
+	queue_redraw()
+
+
 func clear_minis() -> void:
 	_minis.clear()
 	queue_redraw()
 
 
-func _mini_line(m: int) -> PackedVector2Array:
+func _mini_line(m: int, count := -1) -> PackedVector2Array:
+	if count < 0:
+		count = _mini_count
 	var n := _points.size()
-	var a := n * m / _mini_count
-	var b := mini(n * (m + 1) / _mini_count, n)
+	var a := n * m / count
+	var b := mini(n * (m + 1) / count, n)
 	var out := PackedVector2Array()
 	var step := maxi(1, n / 400)
 	for i in range(a, b, step):
@@ -98,6 +109,9 @@ func _draw() -> void:
 		var c: Color = _minis[m]
 		if c.a > 0.2:
 			draw_polyline(_mini_line(m), c, line_width + 1.0, true)
+	for k in _flags.size():
+		if _flags[k] > 0:
+			draw_polyline(_mini_line(k, _flags.size()), Color("ffd21f"), line_width + (3.0 if _flags[k] == 2 else 1.5), true)
 	var n := Vector2(-_start_dir.y, _start_dir.x) * 6.0
 	draw_line(_start - n, _start + n, UIStyle.APEX, 3.0, true)
 	var me: Array = []

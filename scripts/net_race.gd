@@ -85,11 +85,13 @@ func all_ready(delta: float) -> bool:
 
 # ------------------------------------------------------------ state vectors
 
-## A car's state plus its tyres and pit stop: compound, wear, pit phase,
-## the compound it's boxing for.
+## A car's state plus its tyres and pit stop (compound, wear, pit phase,
+## the compound it's boxing for) and race control (penalty to serve,
+## penalties in all, track limits strikes, stops).
 static func entrant_state(e) -> PackedFloat32Array:
 	var s := car_state(e.car)
-	s.append_array(PackedFloat32Array([float(Tyres.COMPOUNDS.find(e.compound)), e.wear, float(e.pit_phase), float(Tyres.COMPOUNDS.find(e.next_compound))]))
+	s.append_array(PackedFloat32Array([float(Tyres.COMPOUNDS.find(e.compound)), e.wear, float(e.pit_phase), float(Tyres.COMPOUNDS.find(e.next_compound)),
+		e.pen_pending, e.pen_total, float(e.tl_strikes), float(e.stops)]))
 	return s
 
 
@@ -158,8 +160,10 @@ func physics_tick(delta: float) -> void:
 			_std_t = 0.25
 			var rows: Array = []
 			for e in race.entrants:
-				rows.append([e.slot, e.lap, e.progress, 1 if e.finished else 0, e.finish_time, e.best_lap, e.last_lap, e.position])
-			Net.send(0, {"t": "std", "rows": rows})
+				rows.append([e.slot, e.lap, e.progress, 1 if e.finished else 0, e.finish_time, e.best_lap, e.last_lap, e.position,
+					1 if e.dnf else 0, e.dnf_reason, 1 if e.car.visible else 0])
+			var vsc: int = race.control.vsc_state() if race.control != null else 0
+			Net.send(0, {"t": "std", "rows": rows, "vsc": vsc})
 	else:
 		# Follow the host's clock and start lights.
 		if _host_time_at > 0.0 and race.state != 0:
@@ -312,6 +316,16 @@ func _drive_remote_lead(e, at: float, lead_max: float) -> void:
 				e.pit_box = -1.0
 			if race.weekend != null:
 				race.weekend.remote_pit(e, was, phase)
+			if phase == 3 and was == 2:
+				e.pitted_lap = true
+				e.stints.append(e.compound)
+	if sb.size() >= 24:
+		e.pen_pending = sb[20]
+		e.pen_total = sb[21]
+		e.tl_strikes = int(sb[22])
+		e.stops = int(sb[23])
+		if e.stops == 0:
+			e.stints = [e.compound]            # (the tyre it started on)
 	var v := c.forward_speed()
 	for w in c.wheels:
 		w.steer_angle = c.steering if w.use_as_steering else 0.0
@@ -373,6 +387,16 @@ func _on_message(from: int, m: Dictionary) -> void:
 			if Net.is_host():
 				return
 			_apply_standings(m["rows"])
+			if race.control != null and int(m.get("vsc", 0)) != race.control.vsc_state():
+				race.control.set_vsc(int(m.get("vsc", 0)))
+		"rc":
+			# Race control from another phone; the host passes it on.
+			if int(m.get("o", 0)) == Net.my_id:
+				return
+			if Net.is_host():
+				Net.send(0, m)
+			if race.control != null:
+				race.control.remote_message(String(m.get("m", "")))
 		"to_lobby":
 			ended = true
 			race.go_to_lobby()
@@ -395,6 +419,11 @@ func _apply_standings(rows: Array) -> void:
 		e.finish_time = float(r[4])
 		e.best_lap = float(r[5])
 		e.last_lap = float(r[6])
+		if r.size() >= 11:
+			e.dnf = int(r[8]) == 1
+			e.dnf_reason = String(r[9])
+			if int(r[10]) == 0 and e.car.visible:
+				e.car.visible = false
 
 
 func _on_peer_left(id: int) -> void:
@@ -429,6 +458,13 @@ func _on_closed(reason: String) -> void:
 	ended = true
 	race.hud.show_banner(reason, UIStyle.YELLOW, 4.0)
 	get_tree().create_timer(2.5).timeout.connect(func(): race.leave_to_menu())
+
+
+## A race control message from this phone, to everyone else.
+func send_rc(text: String) -> void:
+	if ended:
+		return
+	Net.send(0 if Net.is_host() else 1, {"t": "rc", "m": text, "o": Net.my_id})
 
 
 ## Host: everyone back to the lobby for the next race.

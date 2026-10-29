@@ -31,7 +31,9 @@ func _run() -> void:
 		if t % 12 == 0:
 			for e in race.entrants:
 				var tr: Array = trail.get(e.car, [])
-				tr.append("t%.1f lat %+.1f %.0f km/h steer %+.2f grass %d lane %+.1f cap %.0f" % [race.race_time, race.track.lateral(e.car.global_position, e.idx), e.car.speed_kmh(), e.car.steer_input, e.car.wheels_on_grass, e.ai.lane_offset if e.ai != null else 0.0, e.ai.speed_cap if e.ai != null else 0.0])
+				var fw: Vector3 = e.car.global_basis.z
+				var hd := rad_to_deg(Vector2(race.track.htangents[e.idx].x, race.track.htangents[e.idx].z).angle_to(Vector2(fw.x, fw.z)))
+				tr.append("t%.1f lat %+.1f %.0f km/h steer %+.2f thr %.2f brk %.2f head %+.0f yaw %+.2f curv %.4f grass %d lane %+.1f cap %.0f" % [race.race_time, race.track.lateral(e.car.global_position, e.idx), e.car.speed_kmh(), e.car.steer_input, e.car.throttle, e.car.brake_input, hd, e.car.angular_velocity.y, race.track.curv[e.idx], e.car.wheels_on_grass, e.ai.lane_offset if e.ai != null else 0.0, e.ai.speed_cap if e.ai != null else 0.0])
 				if tr.size() > 90:
 					tr.pop_front()
 				trail[e.car] = tr

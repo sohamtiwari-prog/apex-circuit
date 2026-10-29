@@ -72,6 +72,7 @@ const _DEFAULTS := {
 		"weather": "dry",           # dry, wet, changing
 		"vibration": true,          # phone buzzes on contact, kerbs, grass
 		"engineer": true,           # race engineer radio messages
+		"race_control": true,       # flags, penalties, VSC, retirements (scripts/race_control.gd)
 	},
 	"best_laps": {},                  # "track|car" -> milliseconds
 	"best_sectors": {},               # "track|car" -> [ms, ms, ms], best of each sector

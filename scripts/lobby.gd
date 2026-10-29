@@ -90,7 +90,7 @@ func _settings() -> Dictionary:
 func _default_settings() -> Dictionary:
 	return {"track": String(save.get_setting("track")), "laps": int(save.get_setting("laps")),
 		"grid": 20, "difficulty": String(save.get_setting("difficulty")), "tod": String(save.get_setting("time_of_day")),
-		"pits": "on", "weather": "dry"}
+		"pits": "on", "weather": "dry", "rules": "on"}
 
 
 func _my_name() -> String:
@@ -411,8 +411,9 @@ func _build_lobby_view() -> void:
 	var chips := HBoxContainer.new()
 	chips.add_theme_constant_override("separation", 8)
 	_settings_box.add_child(chips)
-	_chip(chips, "laps", [[3, "3 laps"], [5, "5 laps"], [10, "10 laps"], [1, "1 lap"]])
+	_chip(chips, "laps", [[3, "3 laps"], [5, "5 laps"], [10, "10 laps"], [15, "15 laps"], [20, "20 laps"], [30, "30 laps"], [1, "1 lap"]])
 	_chip(chips, "grid", [[20, "20 cars"], [12, "12 cars"], [6, "6 cars"]])
+	_chip(chips, "rules", [["on", "Flags & penalties"], ["off", "No penalties"]])
 	var chips2 := HBoxContainer.new()
 	chips2.add_theme_constant_override("separation", 8)
 	_settings_box.add_child(chips2)

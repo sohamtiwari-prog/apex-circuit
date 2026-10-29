@@ -124,7 +124,9 @@ weather (dry, rain on the way, wet: the same for everyone, rain arriving at
 the same point of the race). With pit stops on, every player and bot has
 tyres that wear, the pit board on the tyre panel, and stops in the pit lane
 with their team's crew; you see your friends' stops (their crew, PIT in
-the tower, their new tyres) on your phone too.
+the tower, their new tyres) on your phone too. **Flags & penalties** (on or
+off) brings race control: yellow flags, penalties, the VSC and bot
+breakdowns, the same on every phone; each phone judges its own driver.
 
 ## Controls
 
@@ -202,7 +204,11 @@ now for what's coming at your current speed.
   usually 2.2-3 s, now and then a slow one when a wheel nut sticks. Then
   out along the lane and back onto the track. Cars queue behind a
   team-mate already in the box, and the timing tower shows PIT for cars
-  in the pit lane.
+  in the pit lane. The pit board also shows where you'd rejoin and what
+  the stop costs (much less under a VSC). Tapping Reset during a stop
+  never leaves you stranded: on the way in the crew wheel the car into
+  its box and the stop goes on; on the way out it's put at the pit exit.
+  A car that sits still in the pit lane for 3 s is pushed on the same way.
 
 ## Racing features
 
@@ -210,8 +216,36 @@ now for what's coming at your current speed.
   time with the gaps to the cars ahead and behind, fastest laps, places
   gained or lost, a car right behind you, tyres going off, rain coming,
   the last lap and your result.
-- **Flags:** yellow when a car has stopped on the track ahead (green once
-  it's clear), blue when the leaders come up to lap you.
+- **Race control** (Flags & penalties, on by default, in quick races and
+  with friends):
+  - **Yellow flags** by marshal sector (16 a lap, lit on the map): a car
+    stopped or crawling shows a yellow there and in the sector before, a
+    double yellow if it's on the track. No overtaking; bots lift.
+  - **Time penalties**, 5 s each: track limits (all four wheels past the
+    kerb: three warnings, the third with the black-and-white flag, then a
+    penalty every time), overtaking under yellow or the VSC (unless you
+    give the place back within 10 s), going over the VSC limit, and
+    running into the back of someone. Served at your next pit stop (held
+    in the box before the crew start), otherwise added to your race time.
+  - **Virtual Safety Car** while marshals clear a stopped car or debris:
+    a speed limit of about half race speed, no overtaking, "VSC ending"
+    before the green. The cheap time to pit, and the bots know it.
+  - **Retirements:** now and then a bot breaks down (gearbox, power unit,
+    hydraulics...), pulls off and parks; it's out (DNF).
+  - Race control messages appear at the top of the screen.
+- **Flags:** yellow / double yellow and the VSC on the flag panel (green
+  once it's clear), blue when the leaders come up to lap you (bots being
+  lapped move over).
+- **Timing tower:** the whole field or the cars around you, each with its
+  tyre, the interval to the car ahead or the gap to the leader (tap the
+  tower's header), PIT, DNF, unserved penalties and the fastest lap.
+  Gaps come from 24 timing lines a lap, like real timing: steady, not
+  guessed from speed.
+- **Results and race stats:** the classification keeps updating as the
+  others finish (penalties applied). The Race stats tab shows every
+  driver's grid slot and places gained, best lap, top speed, tyre stints,
+  penalties and laps led; tap a driver for every lap time, tyre and stop.
+- **Race length:** 1, 3, 5, 10, 15, 20 or 30 laps.
 - **Vibration:** the phone buzzes for contact with other cars and the
   barriers (harder hits buzz longer), and rumbles over kerbs and grass.
   Both can be switched off in the pause menu.
@@ -390,6 +424,7 @@ scripts/
   garage.gd / garage_screen.gd          Performance Rating, car stats
   championship.gd / championship_screen.gd  seasons, points, standings
   weekend.gd         qualifying, tyre wear, pit stops, weather
+  race_control.gd    yellow flags, penalties, the VSC, retirements
   race_engineer.gd   radio messages, flags, vibration
   daily.gd           the daily challenge
   profile_screen.gd  driver profile and trophy cabinet
@@ -418,6 +453,9 @@ tests/
   career_test.gd     garage, career events, a championship season
   weekend_test.gd    qualifying, tyre wear, pit stops, changing weather
   pit_test.gd        the pit lane on three circuits: entry, team box, crew, exit
+  pit_stuck_test.gd  awkward stops never leave you stuck (late, offline, spins, resets, jams)
+  race_control_test.gd  breakdowns and the VSC, penalties, the tower, live results and stats
+  bot_probe.gd       bot behaviour over a race: resets, twitches, offs, stops
   contact_test.gd    racing contact with drivers at the wheel; brushing the barrier
   net_contact_test.gd  multiplayer contact through the network code at 10-150 ms
   recovery_probe.gd  a full-grid race: every car put back on track, and why
