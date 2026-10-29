@@ -1147,6 +1147,7 @@ func _build_walls() -> void:
 	var n := points.size()
 	var step := 3
 	var body := StaticBody3D.new()
+	body.set_meta("barrier", true)
 	add_child(body)
 	for side in [-1.0, 1.0]:
 		for i in range(0, n, step):

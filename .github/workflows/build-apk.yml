@@ -95,6 +95,16 @@ jobs:
       - name: Pit lane (entry road, team boxes, crew, exit) on three circuits
         run: bash .github/run_test.sh res://tests/pit_test.gd
 
+      - name: Racing contact with drivers at the wheel, and brushing barriers
+        run: bash .github/run_test.sh res://tests/contact_test.gd
+
+      - name: Multiplayer contact through the network code (10 to 150 ms)
+        run: |
+          for l in 0.01 0.06 0.15; do
+            timeout 600 ~/godot/godot --headless --fixed-fps 120 --script res://tests/net_contact_test.gd -- latency=$l | grep -E "model|PASS|FAIL|ERROR"
+            test ${PIPESTATUS[0]} -eq 0 || exit 1
+          done
+
       - name: Race engineer, flags and vibration
         run: bash .github/run_test.sh res://tests/engineer_test.gd
 

@@ -124,7 +124,12 @@ var ev_type := ""
 var tt_targets: Array = []
 var _elim_lap := 0
 var last_reward := {}                  # what the results screen showed (tests)
-var weekend: Weekend                   # tyres, pits, weather, qualifying (single player)
+var weekend: Weekend                   # tyres, pits, weather, qualifying
+var _net_cfg := {}                     # multiplayer: the host's race settings
+
+
+func net_settings() -> Dictionary:
+	return _net_cfg
 var engineer: RaceEngineer             # radio, flags, vibration
 
 
@@ -228,6 +233,7 @@ func _ready() -> void:
 	if mode == "time_trial":
 		hud.set_ideal(save.ideal_lap(lap_key, MINIS))
 	if not net_info.is_empty():
+		_net_cfg = net_info["settings"]
 		hud.net_mode = true
 		net = NetRace.new()
 		add_child(net)
@@ -236,7 +242,7 @@ func _ready() -> void:
 		hud.chat_requested.connect(func(i: int): Net.chat(i))
 		Net.chat_received.connect(_on_chat)
 
-	if net == null:
+	if net == null or String(net_info["settings"].get("pits", "on")) == "on":
 		weekend = Weekend.new()
 		add_child(weekend)
 		weekend.setup(self)
@@ -336,6 +342,7 @@ func _spawn_net_grid(info: Dictionary) -> void:
 		add_child(c)
 		e.car = c
 		e.team = String(c.spec.get("team_name", c.spec["name"]))
+		e.team_idx = int(g["team"])
 		if g["kind"] == "player":
 			e.net_id = int(g["id"])
 		if g["kind"] == "player" and e.net_id == Net.my_id:
@@ -488,9 +495,14 @@ func _restart() -> void:
 	_update_positions()
 
 
+var reset_log: Array[String] = []     # why cars were put back on track (tests)
+
 func _reset_to_track(e: Entrant, manual: bool) -> void:
 	if not manual:
 		recoveries += 1
+	var rl := track.lateral(e.car.global_position, e.idx)
+	reset_log.append("%s%s at %.0f m (lap %d), %.1f m %s, %.0f km/h, pit %d, upright %.2f, %s" % [e.name, " (you)" if e.is_player else "",
+		track.cum[e.idx], e.lap + 1, absf(rl), "right" if rl > 0.0 else "left", e.car.speed_kmh(), e.pit_phase, e.car.global_basis.y.y, "manual" if manual else "auto"])
 	var idx := track.nearest_index(e.car.global_position, -1)
 	_place(e, track.pose_at(idx, e.car.spawn_height(), track.line_offset[idx]))
 	e.car.controls_enabled = state == State.RACING
@@ -849,6 +861,12 @@ func _update_entrant(e: Entrant, delta: float) -> void:
 	if e.idx > n * 0.9 and e.lap == 0 and e.next_checkpoint == 1:
 		e.progress -= track.total_length        # still behind the line at the start
 
+	# Continuous collision only for a hard, fast hit square-on to a barrier
+	# (so nothing tunnels through a thin wall at 300 km/h). Not for glances:
+	# Godot's CCD stops the car dead at the first touch.
+	if not e.remote:
+		var vlat := absf(e.car.linear_velocity.dot(track.rights[e.idx]))
+		e.car.continuous_cd = vlat > 18.0
 	# Beyond the barriers (or under the track): back on after a second.
 	if not e.remote and state == State.RACING and not e.finished:
 		var pos := e.car.global_position
@@ -1298,8 +1316,12 @@ func _traffic() -> void:
 			cap = sqrt(o_v * o_v + 2.0 * FOLLOW_DECEL * maxf(room, 0.0)) - FOLLOW_DECEL * 0.35
 			if room < 1.0:
 				cap = minf(cap, o_v - 2.0)
-			# Faster than them, or they're slow: look for a way past.
-			if lead_gap < 45.0 and (v > o_v + 0.5 or o_v < 15.0):
+			# Faster than them, or they're slow: look for a way past (not by
+			# swapping sides mid-corner: a move starts on the way in, or
+			# waits for the exit).
+			var bend := maxf(absf(track.curv[e.idx]), absf(track.curv[(e.idx + 12) % n]))
+			var mid_corner := bend > 1.0 / 220.0 and absf(drv.lane_offset) < 0.8
+			if lead_gap < 45.0 and (v > o_v + 0.5 or o_v < 15.0) and not mid_corner:
 				var room_right := track.road_half - lead_lat
 				var room_left := track.road_half + lead_lat
 				var sides := [1.0, -1.0] if room_right > room_left else [-1.0, 1.0]

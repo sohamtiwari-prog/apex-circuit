@@ -54,7 +54,8 @@ func _run() -> void:
 		_check(await _wait(func(): return lobby._players().size() == 2, 40.0), "host: the friend appears in the lobby")
 		_check(await _wait(func(): return chats.size() > 0, 10.0), "host: receives the friend's quick chat (%s)" % str(chats))
 		await _wait(func(): return false, 3.0)
-		lobby._settings()["laps"] = 1
+		lobby._settings()["laps"] = 2
+		lobby._settings()["pits"] = "on"
 		lobby._settings()["track"] = "styria"
 		lobby._settings()["grid"] = 20
 		lobby._broadcast_lobby()
@@ -111,9 +112,28 @@ func _run() -> void:
 	var last_sim: float = race.net._sim
 	var last_pos := start_pos
 	var frames := 0
-	while not race._results_shown and Time.get_ticks_msec() - go_time < 200000:
+	# Contact quality for this phone's own car: touches, spins, trips off.
+	var touches := [0]
+	race.car_contact.connect(func(a, b, _v):
+		if a == race.car or b == race.car:
+			touches[0] += 1)
+	var spins := 0
+	var boxed := false
+	var saw_other_pit := false
+	var saw_other_crew := false
+	var spinning := false
+	var offs := 0
+	var off_now := false
+	while not race._results_shown and Time.get_ticks_msec() - go_time < 330000:
 		await process_frame          # what you see: once per drawn frame
 		frames += 1
+		# Both players box for hard tyres early in the race (stop at the end of lap 1).
+		if not boxed and Time.get_ticks_msec() - go_time > 6000 and race.weekend != null:
+			race.weekend.set_box("hard")
+			boxed = true
+		if other.pit_phase == 2:
+			saw_other_pit = true
+			saw_other_crew = saw_other_crew or (race.weekend != null and race.weekend.crew.has(other))
 		var p: Vector3 = other.car.global_position
 		var step := p.distance_to(last_pos)
 		# How far from where its own speed says it should be this tick.
@@ -131,13 +151,28 @@ func _run() -> void:
 		max_jump = maxf(max_jump, err)
 		path += step
 		last_pos = p
+		var me = race.player
+		if not me.finished and me.pit_phase == 0:
+			var trk = race.track
+			var yaw_rel: float = absf(race.car.angular_velocity.y - race.car.forward_speed() * trk.curv[me.idx])
+			if yaw_rel > 1.6 and not spinning:
+				spins += 1
+			spinning = yaw_rel > 1.0
+			var wide: bool = absf(trk.lateral(race.car.global_position, me.idx)) > trk.road_half + Track.KERB_W + 2.5
+			if wide and not off_now:
+				offs += 1
+			off_now = wide
 		var secs := (Time.get_ticks_msec() - go_time) / 1000.0
 		if frames % 300 == 0:
 			print("    t=%4.1fs me P%d %.0f m %.0f km/h | other P%d" % [secs, race.player.position, race.player.progress, race.player.car.speed_kmh(), other.position])
 	_check(path > 2000.0, "%s: the other player's car drives on this phone (%.0f m driven)" % [role, path])
+	print("    contact: %d touches on this phone's car, %d spins, %d trips off the track" % [touches[0], spins, offs])
+	_check(spins == 0 and offs <= 1, "%s: touching other cars doesn't spin you or throw you off (%d touches, %d spins, %d offs)" % [role, touches[0], spins, offs])
 	print("    big jumps by time (s: frames): ", big_when, "   other car stuck/reset events seen: ", other.stuck)
 	_check(big <= ticks / 100, "%s: and moves smoothly (%d of %d frames off by > 0.5 m; worst %.2f m)" % [role, big, ticks, max_jump])
 	_check(race._results_shown, "%s: finishes and sees the results" % role)
+	_check(race.weekend != null and race.player.stops == 1 and race.player.compound == "hard", "%s: your pit stop with friends: in, new hard tyres, out (%d stop, %s)" % [role, race.player.stops, race.player.compound])
+	_check(saw_other_pit and saw_other_crew and other.compound == "hard", "%s: sees the other player's stop: crew and new hard tyres (%s)" % [role, other.compound])
 	var seen := {}
 	for e in race.entrants:
 		seen[e.position] = true

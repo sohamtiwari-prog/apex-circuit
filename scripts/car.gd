@@ -91,6 +91,13 @@ var _brake_bias := 0.6
 var _cal_speeds := PackedFloat32Array()
 var _cal_angles: Array = []          # per calibration speed: angle for grip share 0, 0.05 .. 1
 var fixed_steer := INF               # radians (+ = left); calibration tools only
+## Barrier hits: a wall can turn the car by at most this much yaw rate (it
+## glances off and keeps roughly pointing along the wall, instead of the
+## nose being knocked round into a spin), and can't tip it over.
+const WALL_YAW := 0.7
+var _free_ang := Vector3.ZERO           # angular velocity before the last barrier contact
+var wall_hits := 0                      # barrier contacts begun (tests)
+var _on_wall := false
 
 static var _cal_data := {}
 static var _cal_loaded := false
@@ -167,7 +174,14 @@ func _ready() -> void:
 	var yaw_i := mass * a * b * float(spec.get("yaw_inertia", 0.85))
 	inertia = Vector3(mass * a * b * 0.8, yaw_i, mass * (half_track * half_track) * 0.55)
 	can_sleep = false
-	continuous_cd = true          # no tunnelling through barriers at 300+ km/h
+	# No continuous collision detection: Godot's CCD stops a car at the first
+	# touch by scaling its whole velocity down (a 2-degree brush with the
+	# barrier at 216 km/h cost half the speed in one step). The barriers are
+	# thick enough that nothing tunnels through without it (0.7 m per step
+	# at 300 km/h against 2.6 m of wall).
+	continuous_cd = false
+	contact_monitor = true
+	max_contacts_reported = 4
 	# Layer 1: the track and barriers. Layer 2: cars.
 	collision_layer = 2
 	collision_mask = 1                # cars touch each other via CarContacts, not the solver
@@ -205,6 +219,27 @@ func set_ghost(on: bool) -> void:
 	collision_layer = 0 if on else 2
 	collision_mask = 1
 	is_ghost = on
+
+
+func _wall_guard() -> void:
+	if freeze or remote:
+		return
+	var wall := false
+	for b in get_colliding_bodies():
+		if b.has_meta("barrier"):
+			wall = true
+			break
+	if wall:
+		if not _on_wall:
+			wall_hits += 1
+		var w := angular_velocity
+		w.y = clampf(w.y, _free_ang.y - WALL_YAW, _free_ang.y + WALL_YAW)
+		w.x = clampf(w.x, _free_ang.x - 0.5, _free_ang.x + 0.5)
+		w.z = clampf(w.z, _free_ang.z - 0.5, _free_ang.z + 0.5)
+		angular_velocity = w
+	else:
+		_free_ang = angular_velocity
+	_on_wall = wall
 
 
 func forward_speed() -> float:
@@ -328,6 +363,7 @@ func _update_gearbox(v: float, delta: float, want_reverse: bool) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_wall_guard()
 	var v := forward_speed()
 	var thr := throttle if controls_enabled else 0.0
 	var brk := brake_input if controls_enabled else 0.0

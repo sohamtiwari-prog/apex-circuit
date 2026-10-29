@@ -89,7 +89,8 @@ func _settings() -> Dictionary:
 
 func _default_settings() -> Dictionary:
 	return {"track": String(save.get_setting("track")), "laps": int(save.get_setting("laps")),
-		"grid": 20, "difficulty": String(save.get_setting("difficulty")), "tod": String(save.get_setting("time_of_day"))}
+		"grid": 20, "difficulty": String(save.get_setting("difficulty")), "tod": String(save.get_setting("time_of_day")),
+		"pits": "on", "weather": "dry"}
 
 
 func _my_name() -> String:
@@ -417,6 +418,11 @@ func _build_lobby_view() -> void:
 	_settings_box.add_child(chips2)
 	_chip(chips2, "difficulty", [["medium", "Medium bots"], ["hard", "Hard bots"], ["easy", "Easy bots"]])
 	_chip(chips2, "tod", [["auto", "Track's own time"], ["day", "Daytime"], ["sunset", "Sunset"], ["night", "Night"]])
+	var chips3 := HBoxContainer.new()
+	chips3.add_theme_constant_override("separation", 8)
+	_settings_box.add_child(chips3)
+	_chip(chips3, "pits", [["on", "Tyre wear & pit stops"], ["off", "No tyre wear"]])
+	_chip(chips3, "weather", [["dry", "Dry"], ["changing", "Rain on the way"], ["wet", "Wet"]])
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	rv.add_child(sp)
@@ -638,7 +644,9 @@ func _start_race() -> void:
 				"team": (bot / 2) % CarSpecs.TEAMS.size() if host_car == "gp26" else bot + 1,
 				"skill": clampf(base_skill + rng.randf_range(-0.02, 0.02) - slot * 0.0015, 0.75, 1.0)})
 			bot += 1
-	var info := {"settings": st, "grid": grid}
+	var go := st.duplicate()
+	go["rain_from"] = rng.randf_range(0.2, 0.5)
+	var info := {"settings": go, "grid": grid}
 	Net.start_info = info
 	Net.send(0, {"t": "start", "info": info})
 	get_tree().change_scene_to_file("res://scenes/race.tscn")

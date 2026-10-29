@@ -17,6 +17,9 @@ const DAMPING := 1.1          # >1: no bounce at all
 const HITTER_SHARE := 0.6
 const FRICTION := 0.12
 const SPIN := 0.35            # share of the contact torque applied
+## Multiplayer: the other car's position is a prediction (good to a few tens
+## of centimetres), so the contact point is less certain: less turning.
+const NET_SPIN := 0.1
 
 
 
@@ -73,57 +76,99 @@ static func step(cars: Array, delta: float, touching: Dictionary) -> Array:
 			var b: RaceCar = cars[j]
 			if a.global_position.distance_squared_to(b.global_position) > 64.0:
 				continue
-			var ca: Array = caps[i]
-			var cb: Array = caps[j]
-			var pts := _closest(ca[0], ca[1], cb[0], cb[1])
-			var pa: Vector3 = pts[0]
-			var pb: Vector3 = pts[1]
-			var d := pb - pa
-			var dist := d.length()
-			var overlap: float = float(ca[2]) + float(cb[2]) - dist
-			if overlap <= 0.0:
-				continue
-			var n := d / dist if dist > 1e-4 else Vector3(a.global_basis.x.x, 0, a.global_basis.x.z).normalized()
-			var point := (pa + pb) * 0.5
-			point.y = (a.global_position.y + b.global_position.y) * 0.5
-			var va := a.linear_velocity + a.angular_velocity.cross(point - a.global_position)
-			var vb := b.linear_velocity + b.angular_velocity.cross(point - b.global_position)
-			var rel := vb - va
-			var vn := rel.dot(n)                       # < 0: closing
-			var mu := a.mass * b.mass / (a.mass + b.mass)
-			var w := TAU * STIFF_HZ
-			var force := mu * (w * w * overlap - 2.0 * DAMPING * w * vn)
-			if force <= 0.0:
+			var hit := _pair(a, b, caps[i], caps[j], b.linear_velocity, b.angular_velocity, true, delta)
+			if hit.is_empty():
 				continue
 			var key := "%d:%d" % [a.get_instance_id(), b.get_instance_id()]
 			now[key] = true
 			if not touching.has(key):
-				began.append([a, b, maxf(-vn, 0.0)])
-			# Who's doing the hitting: the one moving harder into the other.
-			var a_in := a.linear_velocity.dot(n)
-			var b_in := -b.linear_velocity.dot(n)
-			var share_a := 0.5
-			if absf(a_in - b_in) > 0.5:
-				share_a = HITTER_SHARE if a_in > b_in else 1.0 - HITTER_SHARE
-			# Impulses sized so the relative change is what the spring asks
-			# for, split by share (not by mass, so it can be uneven).
-			var j_rel := force * delta / mu
-			var ja := n * (-j_rel * share_a * a.mass)
-			var jb := n * (j_rel * (1.0 - share_a) * b.mass)
-			# Low body friction along the contact.
-			var tang := rel - n * vn
-			var tl := tang.length()
-			if tl > 0.01:
-				var tf := tang / tl * minf(FRICTION * force * delta, mu * tl * 0.3)
-				ja += tf
-				jb -= tf
-			a.apply_central_impulse(ja)
-			b.apply_central_impulse(jb)
-			a.apply_torque_impulse((point - a.global_position).cross(ja) * SPIN)
-			b.apply_torque_impulse((point - b.global_position).cross(jb) * SPIN)
+				began.append([a, b, float(hit[0])])
 	touching.clear()
 	touching.merge(now)
 	return began
+
+
+## Multiplayer: cars simulated here against cars driven by other phones.
+## Only this phone's car is pushed, by exactly its share of what the
+## two-car contact would give it; the other phone pushes its own car by its
+## share, so between them it's the same contact as two cars in one game.
+## The other car's share is added to `kicks` (car -> velocity change): its
+## state here is ~0.1 s old, so until news of that push arrives, its copy
+## here is moved as if it had been pushed (or this car would keep being
+## pushed by a copy that isn't getting out of the way).
+static func step_against(locals: Array, others: Array, delta: float, touching: Dictionary, kicks: Dictionary = {}) -> Array:
+	var began: Array = []
+	var now := {}
+	var ocaps: Array = []
+	for o in others:
+		ocaps.append(capsule(o))
+	for a in locals:
+		var ca := capsule(a)
+		for j in others.size():
+			var b: RaceCar = others[j]
+			if (a as RaceCar).global_position.distance_squared_to(b.global_position) > 64.0:
+				continue
+			var hit := _pair(a, b, ca, ocaps[j], b.remote_vel, Vector3.ZERO, false, delta, NET_SPIN)
+			if hit.is_empty():
+				continue
+			kicks[b] = kicks.get(b, Vector3.ZERO) + (hit[1] as Vector3) / b.mass
+			var key := "%d:%d" % [a.get_instance_id(), b.get_instance_id()]
+			now[key] = true
+			if not touching.has(key):
+				began.append([a, b, float(hit[0])])
+	touching.clear()
+	touching.merge(now)
+	return began
+
+
+## The contact between a and b (capsules ca, cb; b moving at vel_b / ang_b).
+## Pushes a, and b too if push_b. Returns [closing speed, b's impulse] or []
+## if apart.
+static func _pair(a: RaceCar, b: RaceCar, ca: Array, cb: Array, vel_b: Vector3, ang_b: Vector3, push_b: bool, delta: float, spin := SPIN) -> Array:
+	var pts := _closest(ca[0], ca[1], cb[0], cb[1])
+	var pa: Vector3 = pts[0]
+	var pb: Vector3 = pts[1]
+	var d := pb - pa
+	var dist := d.length()
+	var overlap: float = float(ca[2]) + float(cb[2]) - dist
+	if overlap <= 0.0:
+		return []
+	var n := d / dist if dist > 1e-4 else Vector3(a.global_basis.x.x, 0, a.global_basis.x.z).normalized()
+	var point := (pa + pb) * 0.5
+	point.y = (a.global_position.y + b.global_position.y) * 0.5
+	var va := a.linear_velocity + a.angular_velocity.cross(point - a.global_position)
+	var vb := vel_b + ang_b.cross(point - b.global_position)
+	var rel := vb - va
+	var vn := rel.dot(n)                       # < 0: closing
+	var mu := a.mass * b.mass / (a.mass + b.mass)
+	var w := TAU * STIFF_HZ
+	var force := mu * (w * w * overlap - 2.0 * DAMPING * w * vn)
+	if force <= 0.0:
+		return []
+	# Who's doing the hitting: the one moving harder into the other.
+	var a_in := a.linear_velocity.dot(n)
+	var b_in := -vel_b.dot(n)
+	var share_a := 0.5
+	if absf(a_in - b_in) > 0.5:
+		share_a = HITTER_SHARE if a_in > b_in else 1.0 - HITTER_SHARE
+	# Impulses sized so the relative change is what the spring asks
+	# for, split by share (not by mass, so it can be uneven).
+	var j_rel := force * delta / mu
+	var ja := n * (-j_rel * share_a * a.mass)
+	var jb := n * (j_rel * (1.0 - share_a) * b.mass)
+	# Low body friction along the contact.
+	var tang := rel - n * vn
+	var tl := tang.length()
+	if tl > 0.01:
+		var tf := tang / tl * minf(FRICTION * force * delta, mu * tl * 0.3)
+		ja += tf
+		jb -= tf
+	a.apply_central_impulse(ja)
+	a.apply_torque_impulse((point - a.global_position).cross(ja) * spin)
+	if push_b:
+		b.apply_central_impulse(jb)
+		b.apply_torque_impulse((point - b.global_position).cross(jb) * spin)
+	return [maxf(-vn, 0.0), jb]
 
 
 ## Slipstream: close behind another car on a straight, its wake cuts your

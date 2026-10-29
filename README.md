@@ -119,6 +119,12 @@ to wake.
 
 **In the lobby and the race:** quick chat (Let's go! / GG / Nice move! /
 Sorry! / Rematch?) and each friend's ping in the lobby (green under 150 ms).
+The host also picks **Tyre wear & pit stops** (or no tyre wear) and the
+weather (dry, rain on the way, wet: the same for everyone, rain arriving at
+the same point of the race). With pit stops on, every player and bot has
+tyres that wear, the pit board on the tyre panel, and stops in the pit lane
+with their team's crew; you see your friends' stops (their crew, PIT in
+the tower, their new tyres) on your phone too.
 
 ## Controls
 
@@ -263,6 +269,19 @@ someone at 12 m/s and they gain about 5 m/s while you lose about 6.5,
 instead of them shooting off and you stopping dead. Low body friction and a
 reduced turning effect mean rubbing wheels or a nudge doesn't spin anyone.
 
+With friends, each phone simulates its own car and sees the others through
+the network, about a tenth of a second late. Their cars are drawn (and
+touched) where they are now: interpolated from their states, then carried
+forward along their path by that delay. Each phone gives its own car its
+share of a contact and, until news of the other car's share arrives, moves
+the other car's copy as if it had been pushed too, so a touch feels the
+same as it does against a bot (tests/net_contact_test.gd replays squeezes,
+taps and slipstreaming through the network code at 10 to 150 ms).
+
+Barriers glance: brush one at 216 km/h and you lose a few km/h, and the hit
+can't knock the car round into a spin (at most a little extra yaw). Only a
+hard, square-on hit stops a car.
+
 ## Real elevation and landscape
 
 Every real circuit has its true height profile, measured from F1 car-position
@@ -399,6 +418,9 @@ tests/
   career_test.gd     garage, career events, a championship season
   weekend_test.gd    qualifying, tyre wear, pit stops, changing weather
   pit_test.gd        the pit lane on three circuits: entry, team box, crew, exit
+  contact_test.gd    racing contact with drivers at the wheel; brushing the barrier
+  net_contact_test.gd  multiplayer contact through the network code at 10-150 ms
+  recovery_probe.gd  a full-grid race: every car put back on track, and why
   engineer_test.gd   radio lap reports, yellow/blue flags, vibration
   perf_test.gd       simulation cost per grid size
   edge_test.gd       no invisible walls: leaving and rejoining the track

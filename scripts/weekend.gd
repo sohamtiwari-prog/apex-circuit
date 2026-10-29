@@ -70,9 +70,14 @@ func setup(r: Node) -> void:
 		qualifying = r.mode == "race" and bool(save.get_setting("qualifying"))
 	else:
 		qualifying = bool(ev.get("qualifying", false))
+	var mp: Dictionary = r.net_settings() if r.net != null else {}
+	if not mp.is_empty():
+		# With friends: the host's weather for everyone, rain at the same point.
+		weather = String(mp.get("weather", "dry"))
+		qualifying = false
 	wetness = 1.0 if weather == "wet" else 0.0
 	if weather == "changing":
-		_rain_from = _rng.randf_range(0.2, 0.5)
+		_rain_from = float(mp.get("rain_from", _rng.randf_range(0.2, 0.5)))
 	player_compound = String(ev.get("tyres", save.get_setting("tyres")))
 	if not Tyres.COMPOUNDS.has(player_compound):
 		player_compound = "medium"
@@ -135,9 +140,11 @@ func reset() -> void:
 func pre_drive() -> void:
 	var n := track.size()
 	for e in race.entrants:
-		if e.pit_phase == 0:
+		if e.pit_phase == 0 or e.remote:
 			continue
 		var drv: AIDriver = e.ai if e.ai != null else e.pit_driver
+		if drv == null:
+			continue
 		if track.has_pit_lane:
 			if not drv.path_lat.is_valid():
 				drv.path_lat = _pit_lat.bind(e)
@@ -223,6 +230,10 @@ func physics(delta: float) -> void:
 			wetness = minf(wetness + delta / 45.0, 1.0)
 	for e in race.entrants:
 		if e.remote:
+			# Another phone's car in its box: our copy of its crew at work.
+			if crew.has(e):
+				var pc: PitCrew = crew[e]
+				pc.progress = minf(pc.progress + delta / 2.6, 0.97)
 			continue
 		var c: RaceCar = e.car
 		var v := absf(c.forward_speed())
@@ -354,6 +365,8 @@ func _pit_lane(e, delta: float, v: float) -> void:
 				drv.speed_cap = 999.0
 				if e.is_player:
 					e.pit_driver = null
+					if race.autopilot != null:
+						race.autopilot.idx = e.idx      # (tests: it last knew where the car was a lap ago)
 					var lost: float = race.race_time - e.pit_t0
 					race.engineer.say("Good stop, %.1f seconds stationary. Back out in P%d." % [e.pit_need, int(e.position)], 5.0)
 					race.hud.show_banner("Rejoined: P%d" % int(e.position), UIStyle.PAPER, 2.0)
@@ -361,6 +374,18 @@ func _pit_lane(e, delta: float, v: float) -> void:
 
 
 var crew := {}                         # entrant -> PitCrew at work
+
+
+## Multiplayer: another phone's car changed pit phase (from its state).
+func remote_pit(e, was: int, now: int) -> void:
+	if now == 2 and not crew.has(e):
+		var pc := PitCrew.new()
+		race.add_child(pc)
+		pc.setup(e.car, track, e.team_idx, Tyres.COLOR.get(e.next_compound, Color.WHITE))
+		crew[e] = pc
+	elif was == 2 and now != 2 and crew.has(e):
+		(crew[e] as PitCrew).release()
+		crew.erase(e)
 
 
 func _start_service(e) -> void:

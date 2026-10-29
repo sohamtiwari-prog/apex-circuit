@@ -75,11 +75,20 @@ func update(car: RaceCar, track: Track) -> void:
 		car.brake_input = 1.0
 		return
 	if err > 0.3:
-		car.throttle = clampf(err / 2.0, 0.35, 1.0)
+		# Feed the power in as the lock comes off: full throttle on full
+		# lock pushes the front straight on (or the rear round).
+		var lock := absf(car.steer_input)
+		var room_t := clampf(1.3 - lock, 0.3, 1.0) if absf(v) > 8.0 else 1.0
+		car.throttle = clampf(err / 2.0, minf(0.35, room_t), room_t)
 		car.brake_input = 0.0
 	elif err < -0.8:
 		car.throttle = 0.0
-		car.brake_input = clampf(-err / 3.0, 0.15, 1.0)
+		# Share the tyres between braking and turning (trail braking): hard
+		# on the brakes at full lock would ask for more grip than there is
+		# and the car would plough straight on.
+		var turn := absf(car.steer_input)
+		var room := clampf(1.3 - turn, 0.45, 1.0)
+		car.brake_input = clampf(-err / 3.0, 0.15, room)
 	else:
 		car.throttle = 0.3
 		car.brake_input = 0.0
