@@ -81,6 +81,11 @@ func _retirement_and_vsc() -> void:
 	ok = await _until(race, func(): return rc.vsc or rc._retiring.get(victim, [0])[0] == 1, 15.0)
 	await _frames(240)
 	_check(absf(victim.car.forward_speed()) < 1.5, "it parks (%.1f m/s)" % victim.car.forward_speed())
+	# A stopped car brings out the Safety Car or the VSC (a roll); the SC has
+	# its own test (safety_car_test), so here it's called in for the VSC.
+	_check(rc.vsc or rc.sc_phase > 0, "the VSC or the Safety Car is out")
+	if rc.sc_phase > 0:
+		rc.sc.reset()
 	if not rc.vsc:
 		rc.deploy_vsc("test")
 	_check(rc.vsc, "the VSC is out")
