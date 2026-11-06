@@ -23,6 +23,7 @@ func _run() -> void:
 	var st: Dictionary = save.data["settings"]
 	st["mode"] = "race"; st["laps"] = 3; st["opponents"] = 11; st["track"] = "kestrel_park"; st["car"] = "gp26"
 	st["qualifying"] = false; st["weather"] = "dry"
+	st["race_control"] = false    # (flags only: no VSC or Safety Car for the stopped car here)
 	var race: Node = (load("res://scenes/race.tscn") as PackedScene).instantiate()
 	root.add_child(race)
 	await physics_frame
