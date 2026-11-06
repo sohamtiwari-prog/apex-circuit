@@ -58,6 +58,7 @@ func _one(tid: String, scen: String) -> void:
 	st["mode"] = "race"; st["laps"] = 5; st["opponents"] = 11 if scen == "crowd" else 5
 	st["track"] = tid; st["car"] = "gp26"
 	st["qualifying"] = false; st["weather"] = "dry"; st["team"] = 3
+	st["race_control"] = false     # no random breakdowns / Safety Car (own tests)
 	var race: Node = (load("res://scenes/race.tscn") as PackedScene).instantiate()
 	root.add_child(race)
 	await physics_frame
