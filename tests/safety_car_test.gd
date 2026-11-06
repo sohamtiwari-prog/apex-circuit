@@ -59,14 +59,14 @@ func _order(race: Node) -> Array:
 
 ## Overtakes between two looks: pairs (both still out, neither pitted in
 ## between) that swapped.
-func _swaps(before: Array, after: Array, stops0: Dictionary) -> Array[String]:
+func _swaps(before: Array, after: Array, stops0: Dictionary, crawled := {}) -> Array[String]:
 	var out: Array[String] = []
 	for i in before.size():
 		for j in range(i + 1, before.size()):
 			var a = before[i]
 			var b = before[j]
-			if not after.has(a) or not after.has(b) or a.stops != stops0[a] or b.stops != stops0[b]:
-				continue
+			if not after.has(a) or not after.has(b) or a.stops != stops0[a] or b.stops != stops0[b] or crawled.has(a):
+				continue                   # (a crawling car may be passed)
 			if after.find(b) < after.find(a):
 				out.append("%s past %s" % [b.name, a.name])
 	return out
@@ -150,12 +150,29 @@ func _vsc_slow_you() -> void:
 	race.autopilot.skill = 0.75
 	await _until(func(): return race.race_time > 35.0, 90.0)
 	rc.deploy_vsc("test")
+	# (A pass already half done when it comes out is let go: like the
+	# real VSC, a few seconds to settle.)
+	await _until(func(): return false, 3.0)
 	var before := _order(race)
 	var stops0 := {}
 	for e in race.entrants:
 		stops0[e] = e.stops
-	await _until(func(): return not rc.vsc, 60.0)
-	var swaps := _swaps(before, _order(race), stops0)
+	# Watch who's ahead of whom every half second (for the record if it fails).
+	var log: Array[String] = []
+	var prev := before
+	var slow := {}                 # cars that crawled at some point (may be passed)
+	while rc.vsc:
+		await _until(func(): return not rc.vsc, 0.5)
+		for e in race.entrants:
+			if absf(e.car.forward_speed()) < 15.0:
+				slow[e] = true
+		var now := _order(race)
+		for sw in _swaps(prev, now, stops0):
+			log.append("t%.1f %s" % [race.race_time, sw])
+		prev = now
+	for l in log:
+		print("    ", l)
+	var swaps := _swaps(before, _order(race), stops0, slow)
 	_check(swaps.is_empty(), "VSC: nobody overtakes anybody, not even a slow you %s" % str(swaps))
 	race.queue_free()
 	await process_frame
