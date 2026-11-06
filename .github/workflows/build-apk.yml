@@ -109,6 +109,19 @@ jobs:
       - name: Driving your own pit stop (limiter, box, crew, speeding)
         run: bash .github/run_test.sh res://tests/manual_pit_test.gd
 
+      - name: Pit stops the way thumbs drive them (never flies, spins, resets or rolls back)
+        run: |
+          set -o pipefail
+          timeout 2400 ~/godot/godot --headless --fixed-fps 120 --script res://tests/pit_thumbs_test.gd -- styria,red_sea line,hot,short,gas_held,hands_off,no_assists 2>&1 | grep -E "^    |reset:|PASS|FAIL|SCRIPT ERROR|CHECK"
+
+      - name: Corner numbers like the real circuits (race control's "turn 7")
+        run: bash .github/run_test.sh res://tests/corners_test.gd
+
+      - name: Track limits in a race (all four wheels, rare for cars on the line)
+        run: |
+          set -o pipefail
+          timeout 1500 ~/godot/godot --headless --fixed-fps 120 --script res://tests/track_limits_audit.gd -- styria,lakeside 2>&1 | grep -E "strikes|^      [A-Z]|PASS|FAIL|SCRIPT ERROR|CHECK"
+
       - name: Racing contact with drivers at the wheel, and brushing barriers
         run: bash .github/run_test.sh res://tests/contact_test.gd
 
@@ -193,6 +206,28 @@ jobs:
           ls -la build
           cp build/apex-circuit.apk "build/ApexCircuit-v${VERSION_NAME}.apk"
 
+      - name: Export the browser version (iPhone, iPad, computers)
+        run: |
+          VERSION_NAME="0.1.${{ github.run_number }}"
+          sed -i "s/^config\/version=.*/config\/version=\"${VERSION_NAME}\"/" project.godot
+          mkdir -p build/web
+          ~/godot/godot --headless --export-release "Web" build/web/index.html > export_web.log 2>&1 || true
+          grep -v -e 'Parameter "m" is null' -e 'mesh_storage.h' -e '^$' -e 'savepack' export_web.log | tail -30
+          if [ ! -s build/web/index.wasm ] || [ ! -s build/web/index.pck ]; then
+            grep -iE "error|invalid|missing|could not|failed" export_web.log | head -20 | sed 's/^/::error title=web export::/'
+            exit 1
+          fi
+          # iOS rounds the home-screen icon itself: a full-bleed one.
+          cp web/icon_180.png build/web/index.apple-touch-icon.png
+          ls -la build/web
+
+      - name: The browser version starts (headless Chromium)
+        run: |
+          pip install --quiet playwright==1.47.0 && python3 -m playwright install --with-deps chromium > /dev/null
+          (cd build/web && python3 -m http.server 8765 > /dev/null 2>&1 &)
+          sleep 1
+          timeout 300 python3 .github/web_smoke.py http://127.0.0.1:8765/index.html
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
@@ -217,6 +252,7 @@ jobs:
           cp "build/ApexCircuit-v${V}.apk" site/ApexCircuit.apk
           SIZE=$(python3 -c "import os;print('%.1f' % (os.path.getsize('site/ApexCircuit.apk')/1e6))")
           sed -e "s/__VERSION__/${V}/g" -e "s/__SIZE__/${SIZE}/g" -e "s/__DATE__/$(date -u +'%d %b %Y')/g" .github/pages/index.html > site/index.html
+          cp -r build/web site/play
           touch site/.nojekyll
 
       - name: Publish download page

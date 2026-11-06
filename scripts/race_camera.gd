@@ -7,6 +7,8 @@ var target: RaceCar
 var mode := 0
 var _modes: Array = []          # [{name, pos?, pitch?, cockpit?}]
 var _dir := Vector3.ZERO
+var _up := Vector3.ZERO           # onboard cameras: smoothed chassis up
+var _sy := 0.0                    # onboard cameras: smoothed height
 
 
 func _ready() -> void:
@@ -27,6 +29,7 @@ func set_target(car: RaceCar) -> void:
 func set_mode(m: int) -> void:
 	mode = posmod(m, maxi(_modes.size(), 1))
 	_dir = Vector3.ZERO
+	_up = Vector3.ZERO
 	_update_cockpit()
 
 
@@ -41,6 +44,7 @@ func mode_name() -> String:
 
 func snap() -> void:
 	_dir = Vector3.ZERO
+	_up = Vector3.ZERO
 
 
 func _update_cockpit() -> void:
@@ -75,10 +79,26 @@ func _physics_process(delta: float) -> void:
 		global_position = t.origin - _dir * dist + Vector3.UP * height + _shake(spd, delta)
 		look_at(t.origin + _dir * 4.0 + Vector3.UP * 0.6, Vector3.UP)
 	else:
+		# Onboard: like a driver's head, not bolted to the chassis. Heading
+		# follows the car exactly; the chassis' pitch and roll come through
+		# smoothed (and at two thirds), and the suspension's bounce is
+		# filtered out, so the view doesn't buzz with every ripple.
 		var pitch := deg_to_rad(float(m.get("pitch", 0.0)))
 		var local_basis := Basis(Vector3.UP, PI) * Basis(Vector3.RIGHT, pitch)
-		global_transform = t * Transform3D(local_basis, m["pos"])
-		global_position += _shake(spd, delta) * 0.5
+		if _up == Vector3.ZERO:
+			_up = t.basis.y
+			_sy = t.origin.y
+		_up = _up.lerp(t.basis.y, 1.0 - exp(-7.0 * delta)).normalized()
+		var up := Vector3.UP.lerp(_up, 0.65).normalized()
+		var f := t.basis.z
+		f = (f - up * f.dot(up)).normalized()
+		var body := Basis(up.cross(f), up, f)
+		# Height: follows the road (and hills) but not the bounce.
+		_sy = lerpf(_sy + target.linear_velocity.y * delta, t.origin.y, 1.0 - exp(-9.0 * delta))
+		var origin := Vector3(t.origin.x, _sy, t.origin.z)
+		global_transform = Transform3D(body * local_basis, origin + body * Vector3(m["pos"]))
+		if target.wheels_on_grass > 0:
+			global_position += _shake(spd, delta) * 0.35
 
 
 var _shake_t := 0.0

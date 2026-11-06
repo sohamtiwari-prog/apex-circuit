@@ -24,7 +24,9 @@ func _ready() -> void:
 	material_override = mat
 
 
-func update_guide(car: RaceCar, track: Track, profile: PackedFloat32Array, idx: int, delta: float, to_pits := false) -> void:
+## `route` / `route_speed` (optional): your own pit stop, the way in and the
+## speeds along it (Weekend.route_lat / route_speed).
+func update_guide(car: RaceCar, track: Track, profile: PackedFloat32Array, idx: int, delta: float, route: Callable = Callable(), route_speed: Callable = Callable()) -> void:
 	_timer -= delta
 	if _timer > 0.0:
 		return
@@ -45,18 +47,15 @@ func update_guide(car: RaceCar, track: Track, profile: PackedFloat32Array, idx: 
 		# (Lifted along the road's own normal: the surface tilts with the camber.)
 		var a: Vector3 = track.line_points[i] + track.ups[i] * 0.07
 		var b: Vector3 = track.line_points[j] + track.ups[j] * 0.07
-		if to_pits and track.has_pit_lane:
-			var ps := track.pit_ps(i)
-			var ps2 := track.pit_ps(j)
-			if ps > -160.0 and ps < track.pit_total():
-				# Into the pit lane: ease across from the line to the entry road.
-				var w := clampf((ps + 160.0) / 120.0, 0.0, 1.0)
-				var lat := lerpf(track.line_offset[i], track.pit_side * track.pit_lane_lat(maxf(ps, 0.0)), w)
-				var lat2 := lerpf(track.line_offset[j], track.pit_side * track.pit_lane_lat(maxf(ps2, 0.0)), clampf((ps2 + 160.0) / 120.0, 0.0, 1.0))
-				a = track.points[i] + track.rights[i] * lat + track.ups[i] * 0.07
-				b = track.points[j] + track.rights[j] * lat2 + track.ups[j] * 0.07
-				if ps > track.PIT_ENTRY_LEN - 40.0:
-					target = minf(target, Weekend.PIT_SPEED)
+		if route.is_valid():
+			# Into the pit lane, down it to your box, and out.
+			var la: float = route.call(i)
+			var lb: float = route.call(j)
+			if not is_nan(la):
+				a = track.points[i] + track.rights[i] * la + track.ups[i] * 0.07
+				target = minf(target, float(route_speed.call(track.pit_ps(i))))
+			if not is_nan(lb):
+				b = track.points[j] + track.rights[j] * lb + track.ups[j] * 0.07
 		var need := (v * v - target * target) / (2.0 * d)
 		var cap: float = float(car.spec["ai_brake"]) + float(car.spec["brake_aero"]) * 0.8 * v * v
 		var col := UIStyle.GREEN

@@ -27,6 +27,7 @@ var throttle := 0.0
 var brake_input := 0.0
 var steer_input := 0.0
 var controls_enabled := true
+var no_reverse := false            # pit lane: the brake holds the car, never backs it up
 var traction_control := true
 var abs_enabled := true
 var steering := 0.0               # current road-wheel angle, rad, + = left
@@ -363,6 +364,13 @@ func _update_gearbox(v: float, delta: float, want_reverse: bool) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if freeze:
+		# Held still (crew in the box, grid, qualifying): no forces at all. A
+		# frozen body still adds up every force pushed at it and lets it all
+		# go the moment it's released (seconds of tyre and spring forces:
+		# the car shot into the air and spun leaving the pit box).
+		rpm = move_toward(rpm, _idle, 6000.0 * delta)
+		return
 	_wall_guard()
 	var v := forward_speed()
 	var thr := throttle if controls_enabled else 0.0
@@ -374,7 +382,7 @@ func _physics_process(delta: float) -> void:
 	_steer = move_toward(_steer, clampf(str_in, -1.0, 1.0), rate * delta)
 	steering = -steer_angle(_steer, v) if fixed_steer == INF else fixed_steer
 
-	var want_reverse := controls_enabled and brk > 0.05 and v < 1.5 and thr < 0.05
+	var want_reverse := controls_enabled and brk > 0.05 and v < 1.5 and thr < 0.05 and not no_reverse
 	_update_gearbox(v, delta, want_reverse)
 
 	var drive := 0.0

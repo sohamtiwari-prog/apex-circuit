@@ -17,6 +17,10 @@ run/main_scene="res://scenes/hub.tscn"
 config/features=PackedStringArray("4.3", "Mobile")
 config/icon="res://icon.svg"
 
+[audio]
+
+general/default_playback_type.web=0
+
 [autoload]
 
 Save="*res://scripts/save_manager.gd"
@@ -42,6 +46,8 @@ common/max_physics_steps_per_frame=12
 [rendering]
 
 renderer/rendering_method="mobile"
+renderer/rendering_method.web="gl_compatibility"
+textures/vram_compression/import_s3tc_bptc=true
 textures/vram_compression/import_etc2_astc=true
 anti_aliasing/quality/msaa_3d=1
 lights_and_shadows/directional_shadow/size=2048

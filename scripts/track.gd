@@ -266,6 +266,64 @@ func track_index(pos: Vector3, hint: int) -> int:
 	return best
 
 
+var _corners: Array = []            # [[first sample, last sample], ...] in lap order
+static var CORNER_R := 180.0          # (tests/corners_test.gd)
+static var CORNER_MIN := 16.0
+static var CORNER_MERGE := 40.0
+
+## The corners, numbered like the real circuits: every stretch tighter than
+## a 250 m radius (a chicane is two), from the start line on.
+func corners() -> Array:
+	if not _corners.is_empty() or points.is_empty():
+		return _corners
+	var n := points.size()
+	var w := int(12.0 / SPACING)
+	var sm := PackedFloat32Array()
+	sm.resize(n)
+	for i in n:
+		var s := 0.0
+		for k in range(-w, w + 1):
+			s += curv[(i + k + n) % n]
+		sm[i] = s / float(2 * w + 1)
+	var runs: Array = []
+	var i := 0
+	while i < n:
+		if absf(sm[i]) > 1.0 / CORNER_R:
+			var sgn := signf(sm[i])
+			var j := i
+			while j + 1 < n and absf(sm[j + 1]) > 1.0 / (CORNER_R * 1.25) and signf(sm[j + 1]) == sgn:
+				j += 1
+			if (j - i + 1) * SPACING >= CORNER_MIN:
+				# (Same way again straight after: one corner, e.g. a double apex.)
+				if not runs.is_empty() and signf(sm[runs[-1][0]]) == sgn and (i - int(runs[-1][1])) * SPACING < CORNER_MERGE:
+					runs[-1][1] = j
+				else:
+					runs.append([i, j])
+			i = j + 1
+		else:
+			i += 1
+	_corners = runs
+	return _corners
+
+
+## "turn 7", or "the run to turn 8" on a straight.
+func corner_name(idx: int) -> String:
+	var cs := corners()
+	if cs.is_empty():
+		return "sector %d" % (idx * 3 / maxi(points.size(), 1) + 1)
+	var n := points.size()
+	for k in cs.size():
+		var a: int = cs[k][0]
+		var b: int = cs[k][1]
+		# The corner itself, its braking zone and its exit.
+		if idx >= a - int(40.0 / SPACING) and idx <= b + int(60.0 / SPACING):
+			return "turn %d" % (k + 1)
+	for k in cs.size():
+		if int(cs[k][0]) > idx:
+			return "the run to turn %d" % (k + 1)
+	return "the run to turn 1"
+
+
 ## Signed lateral offset from the centerline (+ = right of travel).
 func lateral(pos: Vector3, idx: int) -> float:
 	var p: Vector3 = points[idx]
@@ -1565,6 +1623,12 @@ func pit_ps_at(s: float) -> float:
 
 func pit_ps(i: int) -> float:
 	return pit_ps_at(cum[(i % points.size() + points.size()) % points.size()])
+
+
+## pit_ps for a position (to the centimetre, not the nearest sample).
+func pit_ps_of(p: Vector3, i: int) -> float:
+	var k := (i % points.size() + points.size()) % points.size()
+	return pit_ps_at(cum[k] + (p - points[k]).dot(tangents[k]))
 
 
 ## Unsigned lateral of the middle of the lane cars drive along.

@@ -389,6 +389,58 @@ func manual(e) -> bool:
 	return e.is_player and race.autopilot == null and String(race.save.get_setting("pit_mode")) != "auto"
 
 
+## Your box (metres down the pit lane).
+func box_for(e) -> float:
+	if e.pit_box > 0.0:
+		return e.pit_box
+	return float(track.pit_boxes.get(posmod(e.team_idx, 10), track.PIT_ENTRY_LEN + 60.0))
+
+
+## Driving your own stop: on the way to the pits (stop called, coming up to
+## the entry), in the lane, or on the way out. The racing line, the steering
+## and brake assists follow the way in instead of the racing line.
+func routing(e) -> bool:
+	if not track.has_pit_lane or not manual(e) or race.mode != "race" or e.finished or e.dnf:
+		return false
+	if e.pit_phase > 0:
+		return true
+	var ps := track.pit_ps(e.idx)
+	return e.pit_req and ps > -400.0 and ps < track.PIT_ENTRY_LEN
+
+
+## Where the way in is at sample i (metres right of the centre line), or NAN
+## if that sample is off it (the racing line, before the entry / after the exit).
+func route_lat(e, i: int) -> float:
+	var ps := track.pit_ps(i)
+	if ps < -160.0 or ps > track.pit_total():
+		return NAN
+	var w := clampf((ps + 160.0) / 120.0, 0.0, 1.0) if e.pit_phase == 0 else 1.0
+	var lane := track.pit_lane_lat(maxf(ps, 0.0))
+	# Into your box (and back out of it), not just down the fast lane.
+	if e.pit_phase <= 1 and e.pit_req:
+		var to_box := absf(ps - box_for(e))
+		lane = lerpf(lane, track.pit_box_lat(), clampf(1.0 - (to_box - 6.0) / 22.0, 0.0, 1.0))
+	return lerpf(track.line_offset[i], track.pit_side * lane, w)
+
+
+## How fast you can be going at this point on the way in: the limit at the
+## speed line, and stopped at your box.
+func route_speed(e, ps: float) -> float:
+	var cap := 999.0
+	var line_at := track.PIT_ENTRY_LEN
+	if ps < line_at and e.pit_phase <= 1:
+		cap = sqrt(PIT_SPEED * PIT_SPEED * 0.85 + 2.0 * 6.0 * maxf(line_at - 4.0 - ps, 0.0))
+	elif ps < track.PIT_ENTRY_LEN + track.PIT_STRAIGHT_LEN:
+		cap = PIT_SPEED
+	if e.pit_phase <= 1 and e.pit_req:
+		var d := box_for(e) - ps
+		# (Unless you've stayed out in the fast lane, driving past.)
+		var off_box := absf(absf(track.lateral(e.car.global_position, e.idx)) - track.pit_box_lat())
+		if d > -3.0 and not (d < 25.0 and off_box > 4.5):
+			cap = minf(cap, sqrt(2.0 * 4.0 * maxf(d - 0.4, 0.0)))
+	return cap
+
+
 ## A pit stop through the real pit lane (see the header).
 func _pit_lane(e, delta: float, v: float) -> void:
 	if manual(e):
@@ -453,7 +505,7 @@ func _pit_lane(e, delta: float, v: float) -> void:
 ## waiting; they hold the car, change the tyres (and you serve any penalty)
 ## and let you go; the limiter goes off at the end of the lane.
 func _pit_lane_manual(e, delta: float, v: float) -> void:
-	var ps := track.pit_ps(e.idx)
+	var ps := track.pit_ps_of(e.car.global_position, e.idx)
 	var total := track.pit_total()
 	var lane_end: float = track.PIT_ENTRY_LEN + track.PIT_STRAIGHT_LEN
 	var c: RaceCar = e.car
@@ -488,7 +540,7 @@ func _pit_lane_manual(e, delta: float, v: float) -> void:
 				race.hud.set_pit_guide("YOUR BOX  %d m" % int(d), UIStyle.YELLOW)
 			elif d > -10.0:
 				race.hud.set_pit_guide("STOP!" if v > 1.0 else "STOPPED", UIStyle.GREEN if absf(d) < 4.0 else UIStyle.RED)
-			if absf(d) < 4.5 and v < 1.2 and off_box < 4.0:
+			if absf(d) < 7.0 and v < 1.5 and off_box < 4.0:
 				# (Stopped a little short or long: the crew roll it into place.)
 				_box_marker(e, false)
 				_start_service(e)

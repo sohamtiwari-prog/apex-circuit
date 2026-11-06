@@ -58,6 +58,19 @@ light on the horizon); any track can be raced by day, at sunset or at night
 New versions install **over** the old one and keep your progress, because
 every build is signed with the same key (`android_signing/`).
 
+### iPhone, iPad and computers
+
+Every build is also a browser version, at
+<https://sohamtiwari-prog.github.io/apex-circuit/play/> (a "Play in the
+browser" button on the download page). In Safari, **Share → Add to Home
+Screen** puts it on the home screen, full screen like an app. Tilt steering
+uses the phone's motion sensor (iOS asks to allow motion on your first tap);
+with no sensor (a laptop) it switches to drag steering, and the keyboard
+works too. Online races work between the browser and the Android app on the
+same version; Wi-Fi games need the app (a browser can't use the local
+network). Progress is kept in that browser. (An App Store / TestFlight build
+would need Apple's paid developer programme and a Mac.)
+
 ## Game modes
 
 - **Race:** up to 20 cars (choose 20, 12 or 6 in the menu), standing start
@@ -227,8 +240,9 @@ now for what's coming at your current speed.
     stopped or crawling shows a yellow there and in the sector before, a
     double yellow if it's on the track. No overtaking; bots lift.
   - **Time penalties**, 5 s each: track limits (all four wheels past the
-    kerb: three warnings, the third with the black-and-white flag, then a
-    penalty every time), overtaking under yellow or the VSC (unless you
+    kerb, each wheel measured against its own bit of track: three
+    warnings, the third with the black-and-white flag, then a penalty every
+    time; messages name the corner, numbered like the real circuit), overtaking under yellow or the VSC (unless you
     give the place back within 10 s), going over the VSC limit, and
     running into the back of someone hard enough to spin them or put them
     off (the stewards look at what it did: a tap is no further action).
@@ -261,8 +275,17 @@ now for what's coming at your current speed.
 - **Race length:** 1, 3, 5, 10, 15, 20 or 30 laps.
 - **Your own pit stops** (Pit stops: you drive; or Automatic): turn into
   the pit entry, the limiter comes on at the speed line (over 80 km/h
-  there is a penalty), your box is lit up on the ground and a guide counts
-  you in; stop there, the crew hold the car and change the tyres, then go.
+  there is a penalty, and it brakes you down to the limit), your box is lit
+  up on the ground and a guide counts you in; stop there, the crew hold the
+  car and change the tyres, then go. With the assists on they take you in:
+  the steering assist follows the pit lane into your box and the brake
+  assist slows you for the speed line and stops you on your marks. In the
+  lane the brake holds the car (never reverses it). Tested the way thumbs
+  drive (on/off pedals, late turn-ins, too fast, short of the box, throttle
+  held all through the stop: `tests/pit_thumbs_test.gd`).
+- **Running order board:** tap the timing tower for the whole field at
+  once, two columns at the top: every driver's name, tyres, stops and gap
+  (tap again for gaps to the leader, again to close).
 - **Racing line:** the ideal line on the road ahead, coloured green / yellow
   / red for throttle, lift and brake; when you've called a stop it leads
   into the pit lane.

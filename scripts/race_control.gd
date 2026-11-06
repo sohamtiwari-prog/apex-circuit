@@ -50,6 +50,7 @@ var _vsc_left := 0.0
 var _vsc_limit := {}               # car model -> m/s
 var _slow := {}                    # entrant -> seconds crawling
 var _off := {}                     # entrant -> seconds past track limits (this excursion)
+var tl_log: Array[String] = []     # every strike (tests)
 var _order := {}                   # player entrant -> {other: was ahead}
 var _owe := {}                     # player entrant -> {other: [deadline, why]}
 var _over := {}                    # entrant -> seconds over the VSC limit this VSC
@@ -258,7 +259,7 @@ func _stopped_cars(dt: float) -> void:
 			_stopped_on_track[o] = float(_stopped_on_track.get(o, 0.0)) + dt
 			if float(_stopped_on_track[o]) > 6.0:
 				_stopped_on_track.erase(o)
-				deploy_sc("car stopped on the track at turn %d" % (sector_of(o.idx) + 1))
+				deploy_sc("car stopped on the track at %s" % track.corner_name(o.idx))
 		else:
 			_stopped_on_track.erase(o)
 
@@ -313,16 +314,28 @@ func _track_limits(e, dt: float) -> void:
 		_off[e] = 0.0
 		return
 	var lat := absf(track.lateral(e.car.global_position, e.idx))
-	var beyond: bool = lat > track.road_half + Track.KERB_W + 1.2
-	if beyond and track.has_pit_lane and track.in_pit_area(e.car.global_position, 2.0):
-		beyond = false                       # the pit entry and exit roads
+	# All four wheels past the kerb (each wheel measured against its own
+	# bit of track: a car sliding sideways, or at an angle over the kerb,
+	# isn't off just because its middle is).
+	var beyond: bool = lat > track.road_half + Track.KERB_W
+	if beyond:
+		var edge := track.road_half + Track.KERB_W + 0.2
+		for w in e.car.wheels:
+			var wp: Vector3 = (w as Node3D).global_position
+			var wi := track.track_index(wp, e.idx)
+			if absf(track.lateral(wp, wi)) < edge:
+				beyond = false
+				break
+	if beyond and track.has_pit_lane and (track.in_pit_area(e.car.global_position, 2.0) or e.pit_req and track.pit_ps(e.idx) > -60.0 and track.pit_ps(e.idx) < track.PIT_ENTRY_LEN):
+		beyond = false                       # the pit entry and exit roads (and heading for them)
 	var was := float(_off.get(e, 0.0))
 	if beyond:
 		_off[e] = was + dt
 		if was < 0.3 and was + dt >= 0.3:
 			e.tl_strikes += 1
+			tl_log.append("%s at %s (%.0f m), %.1f m out, %.0f km/h" % [_who(e), track.corner_name(e.idx), track.cum[e.idx], lat - track.road_half, e.car.speed_kmh()])
 			var n: int = e.tl_strikes
-			var turn := "turn %d" % (sector_of(e.idx) + 1)
+			var turn := track.corner_name(e.idx)
 			if n < TL_WARNINGS:
 				_say(e, "%s: track limits at %s. Warning %d." % [_who(e), turn, n], false)
 			elif n == TL_WARNINGS:
@@ -391,7 +404,7 @@ func _on_contact(a: RaceCar, b: RaceCar, closing: float) -> void:
 		return
 	# Debris: a hard hit sometimes brings out the VSC.
 	if authority and closing > 12.0 and penalties and _rng.randf() < 0.35:
-		deploy_vsc("debris at turn %d" % (sector_of(ea.idx) + 1))
+		deploy_vsc("debris at %s" % track.corner_name(ea.idx))
 	if not penalties:
 		return
 	for pair in [[ea, eb], [eb, ea]]:
@@ -511,7 +524,7 @@ func _update_retirements(dt: float) -> void:
 					st[1] = 0.0
 					drv.speed_cap = 0.0
 					var roll := _rng.randf()
-					var why := "%s stopped at turn %d" % [_who(e), sector_of(e.idx) + 1]
+					var why := "%s stopped at %s" % [_who(e), track.corner_name(e.idx)]
 					if roll < 0.4:
 						deploy_sc(why)
 					if roll < 0.8 and sc_phase == 0:

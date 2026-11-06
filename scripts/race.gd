@@ -134,6 +134,7 @@ var tyre_fx: TyreFX
 var _graphics_high := true
 var line_guide: LineGuide
 var input_driver: AIDriver           # tests: drives "by hand" (not the autopilot)
+var thumbs: Callable                 # tests: raw [steer, gas, brake] in place of the touch controls (assists still apply)
 var _still := 0.0                 # player: seconds stuck with the throttle on
 var recoveries := 0               # automatic car recoveries (stats/tests)
 const STEER_ASSIST_BLEND := 0.35
@@ -689,8 +690,17 @@ func _read_input() -> void:
 	var t: TouchControls = hud.touch
 	var steer := 0.0
 	var control := String(save.get_setting("control_mode"))
+	if control == "tilt" and not WebBridge.has_tilt() and race_time > 1.0:
+		# A browser with no tilt sensor (a laptop, or motion not allowed):
+		# steer by dragging instead.
+		control = "drag"
+		if t.mode != "drag":
+			t.mode = "drag"
+			t._layout()
+			t.queue_redraw()
+			hud.show_banner("No tilt sensor here: drag on the left to steer", UIStyle.YELLOW, 4.0)
 	if control == "tilt":
-		var acc := Input.get_accelerometer()
+		var acc := WebBridge.accelerometer()
 		# In landscape, gravity along the screen's x axis = steering-wheel roll.
 		# Full lock at roughly 30 degrees of tilt.
 		var s := acc.x / (GRAVITY * 0.5) * float(save.get_setting("tilt_sensitivity"))
@@ -705,6 +715,9 @@ func _read_input() -> void:
 		steer = t.steer
 	var gas: float = t.gas
 	var brk: float = t.brake
+	if thumbs.is_valid():
+		var raw: Array = thumbs.call()
+		steer = raw[0]; gas = raw[1]; brk = raw[2]
 
 	# Keyboard, for testing on a computer.
 	if Input.is_physical_key_pressed(KEY_LEFT) or Input.is_physical_key_pressed(KEY_A):
@@ -721,12 +734,16 @@ func _read_input() -> void:
 	# yourself, so it never holds you back from using the whole track (or
 	# leaving it). No invisible walls. Moderate = half the help.
 	var steer_help: float = save.assist_level("steer_assist")
+	# Driving your own pit stop: the assists take you in, not round the lap.
+	var to_pits: bool = weekend != null and weekend.routing(player)
+	var route := (func(i: int) -> float: return weekend.route_lat(player, i)) if to_pits else Callable()
+	car.no_reverse = to_pits and player.pit_phase >= 1
 	if steer_help > 0.0:
 		if _assist_driver == null:
 			_assist_driver = AIDriver.new()
 		var share := STEER_ASSIST_BLEND * steer_help * clampf(1.0 - absf(steer) * 1.4, 0.0, 1.0)
 		if share > 0.0:
-			var fix := clampf(_assist_driver.line_steer(car, track, player.idx) - steer, -0.4, 0.4)
+			var fix := clampf(_assist_driver.line_steer(car, track, player.idx, route) - steer, -0.4, 0.4)
 			# Moderate never steers against you (it only adds to your turn);
 			# Full may pull you back towards the line, which beginners need.
 			if steer_help < 1.0 and absf(steer) > 0.06 and signf(fix) != signf(steer):
@@ -751,14 +768,23 @@ func _read_input() -> void:
 		var planned: float = lerpf(_assist_profile[ahead], minf(_assist_profile[ahead], _assist_centre[ahead]), clampf(off_line / 3.0, 0.0, 1.0))
 		var target: float = planned * (1.04 if full else 1.12)
 		var margin := 1.0 if full else 2.5
+		if to_pits:
+			# Down to the limit at the speed line, and stopped on your marks.
+			var ps := track.pit_ps_of(car.global_position, player.idx)
+			target = minf(target, weekend.route_speed(player, ps + maxf(v, 0.0) * 0.15))
+			margin = 0.3 if full else 1.5
 		if v > target + margin:
-			var assist := clampf((v - target) / (6.0 if full else 10.0), 0.0, 1.0 if full else 0.6)
+			var assist := clampf((v - target) / ((2.0 if to_pits else 6.0) if full else 10.0), 0.0, 1.0 if full else 0.6)
 			brk = maxf(brk, assist)
 			gas = minf(gas, 1.0 - assist)
+		if to_pits and full and target < 0.3 and player.pit_phase == 1:
+			brk = 1.0                      # on your marks: held there for the crew
+			gas = 0.0
 
 	# Wedged against a wall with the throttle down: recover automatically
 	# when assists are on (otherwise the RESET button is there).
-	if steer_help > 0.0 and state == State.RACING and gas > 0.5 and absf(car.forward_speed()) < 1.0:
+	# (Not in the pit lane: held in the box, or queueing for it, isn't stuck.)
+	if steer_help > 0.0 and state == State.RACING and gas > 0.5 and absf(car.forward_speed()) < 1.0 and car.controls_enabled and not car.freeze and player.pit_phase == 0:
 		_wedged += get_physics_process_delta_time()
 		if _wedged > 3.0:
 			_wedged = 0.0
@@ -787,6 +813,11 @@ func _physics_process(delta: float) -> void:
 	if player.get_meta("limiter", false) and autopilot == null and not (weekend != null and weekend.player_in_pit()):
 		# Pit limiter: holds you at 80 km/h however hard you press.
 		car.throttle = minf(car.throttle, clampf((Weekend.PIT_SPEED - 0.6 - car.forward_speed()) * 0.5, 0.0, 1.0))
+		# Came in too fast: it brings you down to the limit (the penalty's
+		# already been given at the line).
+		var over := car.forward_speed() - Weekend.PIT_SPEED
+		if over > 0.5:
+			car.brake_input = maxf(car.brake_input, clampf(over / 4.0, 0.2, 0.8))
 
 	_car_contacts(delta)
 	match state:
@@ -847,8 +878,12 @@ func _physics_process(delta: float) -> void:
 		if _assist_profile.size() != track.size():
 			_assist_profile = track.speed_profile(car.spec)
 		# (Leading into the pits only on the way to the entry, or in the lane.)
-		var to_pits: bool = weekend != null and weekend.manual(player) and ((player.pit_req and track.has_pit_lane and track.pit_ps(player.idx) < track.PIT_ENTRY_LEN) or player.pit_phase == 1)
-		line_guide.update_guide(car, track, _assist_profile, player.idx, delta, to_pits)
+		if weekend != null and weekend.routing(player):
+			line_guide.update_guide(car, track, _assist_profile, player.idx, delta,
+				func(i: int) -> float: return weekend.route_lat(player, i),
+				func(ps: float) -> float: return weekend.route_speed(player, ps))
+		else:
+			line_guide.update_guide(car, track, _assist_profile, player.idx, delta)
 
 	if _tick % 2 == 1:
 		_slipstream()
@@ -964,7 +999,7 @@ func _update_entrant(e: Entrant, delta: float) -> void:
 			_reset_to_track(e, false)
 	elif e.is_player:
 		# Sitting still against something with the throttle on: point at Reset.
-		if state == State.RACING and not e.finished and e.car.linear_velocity.length() < 1.5 and e.car.throttle > 0.3:
+		if state == State.RACING and not e.finished and e.pit_phase == 0 and e.car.controls_enabled and e.car.linear_velocity.length() < 1.5 and e.car.throttle > 0.3:
 			_still += delta
 			if _still > 4.0:
 				_still = -6.0
@@ -1580,7 +1615,7 @@ func tower_rows() -> Array:
 			ld = ""
 		rows.append({"pos": i + 1, "name": e.name, "color": e.car.spec["color"], "player": e.is_player,
 			"compound": e.compound if weekend != null else "", "int": iv, "ldr": ld, "status": status,
-			"pen": e.pen_pending})
+			"pen": e.pen_pending, "stops": e.stops})
 	return rows
 
 

@@ -181,8 +181,16 @@ func _build_connect_view() -> void:
 	cols.add_theme_constant_override("separation", 18)
 	root.add_child(cols)
 
-	# Same Wi-Fi / hotspot.
+	# Same Wi-Fi / hotspot (the app only: a browser can't reach the local network).
+	if OS.has_feature("web"):
+		_section(cols, "Same Wi-Fi or hotspot", "Wi-Fi games need the Android app. In the browser (iPhone, iPad, laptop), play Online: it works with friends on Android too, on the same version.")
 	var lan := _section(cols, "Same Wi-Fi or hotspot", "Everyone on one Wi-Fi network, or connected to the host's phone hotspot. No internet needed.")
+	if OS.has_feature("web"):
+		var box: Node = lan
+		while box != null and not (box is PanelContainer):
+			box = box.get_parent()
+		if box != null:
+			(box as Control).visible = false
 	var host_lan := UIStyle.button("Host a game here", func():
 		if Net.host_lan(_my_name()):
 			_enter_as_host(), true, 26)

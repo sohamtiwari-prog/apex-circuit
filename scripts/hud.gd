@@ -187,8 +187,8 @@ var _tower_pos := 1
 var _tower_total := 1
 
 
-## Tap on the tower header: around you (interval) -> whole field (interval)
-## -> whole field (gap to the leader) -> around you.
+## Tap on the tower: around you (interval) -> the whole field on a board
+## (interval) -> the board with gaps to the leader -> around you.
 func cycle_tower() -> void:
 	if not tower_full:
 		tower_full = true
@@ -205,8 +205,12 @@ func cycle_tower() -> void:
 
 func _show_tower_mode() -> void:
 	if _tower_mode_lbl != null:
-		_tower_mode_lbl.text = ("ALL" if tower_full else "NEAR") + "  ·  " + ("GAP TO LEADER" if tower_leader else "INTERVAL") + "   (tap)"
-	var big := not tower_full
+		_tower_mode_lbl.text = ("TAP: CLOSE" if tower_leader else "TAP: GAP TO LEADER") if tower_full else "TAP: WHOLE FIELD"
+	if _board != null:
+		_board.visible = tower_full and gauge.visible
+	if _rows_box != null:
+		_rows_box.visible = not tower_full
+	var big := true
 	for sl in _tower_slots:
 		var fs := 20 if big else 17
 		for key in ["pos", "name", "gap"]:
@@ -269,12 +273,145 @@ func _make_tower_slot() -> Dictionary:
 		"tyre": tyre, "status": status, "pen": pen, "gap": gap, "me": null}
 
 
+# ------------------------------------------------------------ the whole field
+
+var _board: PanelContainer
+var _board_title: Label
+var _board_cols: Array = []          # two VBoxes
+var _board_slots: Array = []         # [{row, sb, pos, bar, name, tyre, stops, gap, me}]
+
+## Everyone at once: two columns at the top of the screen, each car with
+## its driver, tyres (and stops made) and gap. Tap to close.
+func _build_board() -> void:
+	_board = PanelContainer.new()
+	var sb := UIStyle.panel(Color(UIStyle.INK, 0.84), false, UIStyle.APEX, 6)
+	sb.set_content_margin_all(12)
+	_board.add_theme_stylebox_override("panel", sb)
+	_board.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_board.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_board.offset_top = 64
+	_board.visible = false
+	gauge.get_parent().add_child(_board)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_board.add_child(v)
+	_board_title = UIStyle.label("", 16, UIStyle.FOG, "bold", true)
+	v.add_child(_board_title)
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 14)
+	cols.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(cols)
+	for c in 2:
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 2)
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cols.add_child(col)
+		_board_cols.append(col)
+	var tap := Button.new()
+	tap.flat = true
+	tap.focus_mode = Control.FOCUS_NONE
+	tap.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var clear := StyleBoxEmpty.new()
+	for st in ["normal", "hover", "pressed", "focus"]:
+		tap.add_theme_stylebox_override(st, clear)
+	tap.pressed.connect(cycle_tower)
+	_board.add_child(tap)
+
+
+func _board_slot(col: VBoxContainer) -> Dictionary:
+	var row := PanelContainer.new()
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.85))
+	sb.content_margin_top = 0
+	sb.content_margin_bottom = 0
+	sb.content_margin_left = 6
+	sb.content_margin_right = 8
+	row.add_theme_stylebox_override("panel", sb)
+	row.custom_minimum_size = Vector2(318, 25)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(row)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(h)
+	var p := UIStyle.label("", 17, UIStyle.PAPER, "extrabold", true)
+	p.custom_minimum_size = Vector2(24, 0)
+	p.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	h.add_child(p)
+	var bar := ColorRect.new()
+	bar.custom_minimum_size = Vector2(4, 16)
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(bar)
+	var name := UIStyle.label("", 17, UIStyle.PAPER, "bold")
+	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name.clip_text = true
+	h.add_child(name)
+	var tyre := TyreBadge.new()
+	tyre.custom_minimum_size = Vector2(18, 18)
+	tyre.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	tyre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(tyre)
+	var stops := UIStyle.label("", 13, UIStyle.FOG, "semibold")
+	stops.custom_minimum_size = Vector2(44, 0)
+	h.add_child(stops)
+	var gap := UIStyle.label("", 17, UIStyle.FOG, "semibold", true)
+	gap.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	gap.custom_minimum_size = Vector2(70, 0)
+	h.add_child(gap)
+	return {"row": row, "sb": sb, "pos": p, "bar": bar, "name": name, "tyre": tyre, "stops": stops, "gap": gap, "me": null}
+
+
+func _update_board(rows: Array) -> void:
+	if _board == null:
+		_build_board()
+	_board.visible = tower_full and gauge.visible
+	if not _board.visible:
+		return
+	_board_title.text = "RUNNING ORDER  ·  " + ("GAP TO THE LEADER" if tower_leader else "INTERVAL TO THE CAR AHEAD") + "  ·  tap to " + ("close" if tower_leader else "show gaps to the leader")
+	var per_col := int(ceil(rows.size() / 2.0))
+	while _board_slots.size() < rows.size():
+		var k := _board_slots.size()
+		_board_slots.append(_board_slot(_board_cols[0 if k < per_col else 1]))
+	for k in _board_slots.size():
+		var sl: Dictionary = _board_slots[k]
+		var on := k < rows.size()
+		(sl["row"] as Control).visible = on
+		if not on:
+			continue
+		var r: Dictionary = rows[k]
+		var mine: bool = r["player"]
+		if sl["me"] != mine:
+			sl["me"] = mine
+			(sl["sb"] as StyleBoxFlat).bg_color = Color(UIStyle.APEX, 0.95) if mine else Color(UIStyle.TARMAC, 0.85)
+			var ink := UIStyle.INK if mine else UIStyle.PAPER
+			(sl["pos"] as Label).add_theme_color_override("font_color", ink)
+			(sl["name"] as Label).add_theme_color_override("font_color", ink)
+			(sl["gap"] as Label).add_theme_color_override("font_color", Color(ink, 0.85) if mine else UIStyle.FOG)
+			(sl["stops"] as Label).add_theme_color_override("font_color", Color(ink, 0.7) if mine else UIStyle.FOG)
+		(sl["pos"] as Label).text = str(r["pos"])
+		(sl["bar"] as ColorRect).color = r.get("color", UIStyle.FOG)
+		(sl["name"] as Label).text = ("YOU  " if mine else "") + String(r["name"])
+		var tb: TyreBadge = sl["tyre"]
+		tb.visible = String(r.get("compound", "")) != ""
+		tb.compound = String(r.get("compound", "medium"))
+		var n := int(r.get("stops", 0))
+		var st := String(r.get("status", ""))
+		(sl["stops"] as Label).text = st if st in ["PIT", "DNF", "OUT", "FIN"] else ("%d stop%s" % [n, "" if n == 1 else "s"] if n > 0 else "")
+		var pen := float(r.get("pen", 0.0))
+		(sl["gap"] as Label).text = String(r["ldr"] if tower_leader else r["int"]) + (("  +%ds" % int(round(pen))) if pen > 0.0 else "")
+	_board.reset_size()
+	_board.offset_left = -_board.size.x * 0.5
+	_board.offset_right = _board.size.x * 0.5
+
+
 ## The live order. rows (everyone, in order): {pos, name, color, player,
-## compound, int, ldr, status, pen, fastest}. Rows are reused (no flicker).
+## compound, int, ldr, status, pen, stops}. Rows are reused (no flicker).
 func update_tower(pos: int, total: int, rows: Array) -> void:
 	_tower_rows = rows
 	_tower_pos = pos
 	_tower_total = total
+	_update_board(rows)
 	_pos_big.text = "P%d" % pos
 	_pos_of.text = "/%d" % total
 	var me := clampi(pos - 1, 0, maxi(rows.size() - 1, 0))
@@ -284,7 +421,7 @@ func update_tower(pos: int, total: int, rows: Array) -> void:
 	# Which rows: everyone if they fit, else the front and the cars around you.
 	var show: Array[int] = []
 	var vp_h := get_viewport().get_visible_rect().size.y if is_inside_tree() else 720.0
-	var fit := int((vp_h - 14.0 - 70.0 - 150.0) / 25.0) if tower_full else 7
+	var fit := 7                       # (the whole field is on the board)
 	if rows.size() <= fit:
 		for i in rows.size():
 			show.append(i)
@@ -899,13 +1036,14 @@ func set_ideal_delta(delta: float, ideal_time: float) -> void:
 			_ideal_lbl.visible = false
 		return
 	if _ideal_lbl == null:
-		_ideal_lbl = UIStyle.outlined(UIStyle.label("", 24, UIStyle.PURPLE, "extrabold", true), 5)
-		_ideal_lbl.set_anchors_preset(Control.PRESET_CENTER_TOP)
-		_ideal_lbl.grow_horizontal = Control.GROW_DIRECTION_BOTH
-		_ideal_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_ideal_lbl.offset_top = 130
-		_ideal_lbl.offset_left = -260
-		_ideal_lbl.offset_right = 260
+		# (Under the lap timer, top right: the middle stays clear.)
+		_ideal_lbl = UIStyle.outlined(UIStyle.label("", 22, UIStyle.PURPLE, "extrabold", true), 5)
+		_ideal_lbl.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		_ideal_lbl.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		_ideal_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_ideal_lbl.offset_top = 228
+		_ideal_lbl.offset_left = -420
+		_ideal_lbl.offset_right = -28
 		_ideal_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		gauge.get_parent().add_child(_ideal_lbl)
 	_ideal_lbl.text = "IDEAL %s   %s%.2f" % [fmt_time(ideal_time) if ideal_time > 0.0 else "", "+" if delta >= 0.0 else "-", absf(delta)]
@@ -942,33 +1080,52 @@ var _pen_why: Label
 var _pen_time := 0.0
 
 ## Your time penalty: one card in the middle of the screen for a few seconds.
+## Your penalty: a compact strip at the top (out of the way of the road),
+## like the broadcast graphic: "+5s" in a red block, the reason beside it.
 func show_penalty(secs: int, why: String) -> void:
 	if _pen_card == null:
 		_pen_card = PanelContainer.new()
-		_pen_card.add_theme_stylebox_override("panel", UIStyle.panel(Color(0.55, 0.04, 0.06, 0.94), true, UIStyle.PAPER))
+		var sb := UIStyle.panel(Color(UIStyle.INK, 0.9), true, UIStyle.RED, 4)
+		sb.content_margin_left = 0
+		sb.content_margin_top = 0
+		sb.content_margin_bottom = 0
+		_pen_card.add_theme_stylebox_override("panel", sb)
 		_pen_card.set_anchors_preset(Control.PRESET_CENTER_TOP)
 		_pen_card.grow_horizontal = Control.GROW_DIRECTION_BOTH
-		_pen_card.offset_top = 300
+		_pen_card.offset_top = 122
 		_pen_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		gauge.get_parent().add_child(_pen_card)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_pen_card.add_child(row)
+		var block := PanelContainer.new()
+		var bs := UIStyle.panel(UIStyle.RED, true, Color(0, 0, 0, 0), 3)
+		bs.content_margin_left = 12
+		bs.content_margin_right = 12
+		block.add_theme_stylebox_override("panel", bs)
+		block.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(block)
+		_pen_big = UIStyle.label("", 30, UIStyle.PAPER, "extrabold", true)
+		_pen_big.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		block.add_child(_pen_big)
 		var v := VBoxContainer.new()
-		v.add_theme_constant_override("separation", -4)
+		v.add_theme_constant_override("separation", -6)
 		v.alignment = BoxContainer.ALIGNMENT_CENTER
 		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_pen_card.add_child(v)
-		_pen_big = UIStyle.label("", 40, UIStyle.PAPER, "extrabold", true)
-		_pen_big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		v.add_child(_pen_big)
-		_pen_why = UIStyle.label("", 20, UIStyle.PAPER, "bold")
-		_pen_why.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		row.add_child(v)
+		var head := UIStyle.label("TIME PENALTY", 18, UIStyle.PAPER, "extrabold", true)
+		v.add_child(head)
+		_pen_why = UIStyle.label("", 15, UIStyle.FOG, "semibold")
 		v.add_child(_pen_why)
-	_pen_big.text = "+%d s TIME PENALTY" % secs
-	_pen_why.text = why.capitalize() if why.length() < 3 else why[0].to_upper() + why.substr(1) + "  ·  served at your next stop"
+	_pen_big.text = "+%ds" % secs
+	_pen_why.text = (why[0].to_upper() + why.substr(1) if why.length() > 0 else "") + "  ·  served at your next stop"
 	_pen_card.visible = gauge.visible
 	_pen_card.reset_size()
 	_pen_card.offset_left = -_pen_card.size.x * 0.5
 	_pen_card.offset_right = _pen_card.size.x * 0.5
-	_pen_time = 3.5
+	_pen_card.modulate.a = 1.0
+	_pen_time = 4.0
 
 
 # ------------------------------------------------------------ action button
@@ -1732,6 +1889,7 @@ func _process(delta: float) -> void:
 	_results_tick(delta)
 	if _pen_time > 0.0:
 		_pen_time -= delta
+		_pen_card.modulate.a = clampf(_pen_time / 0.4, 0.0, 1.0)      # (fades out)
 		if _pen_time <= 0.0:
 			_pen_card.visible = false
 	if _rc_time > 0.0:

@@ -163,9 +163,11 @@ static func _pair(a: RaceCar, b: RaceCar, ca: Array, cb: Array, vel_b: Vector3, 
 		var tf := tang / tl * minf(FRICTION * force * delta, mu * tl * 0.3)
 		ja += tf
 		jb -= tf
-	a.apply_central_impulse(ja)
-	a.apply_torque_impulse((point - a.global_position).cross(ja) * spin)
-	if push_b:
+	# (Never a frozen car: it would store the push and let it go on release.)
+	if not a.freeze:
+		a.apply_central_impulse(ja)
+		a.apply_torque_impulse((point - a.global_position).cross(ja) * spin)
+	if push_b and not b.freeze:
 		b.apply_central_impulse(jb)
 		b.apply_torque_impulse((point - b.global_position).cross(jb) * spin)
 	return [maxf(-vn, 0.0), jb]

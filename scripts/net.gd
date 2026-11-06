@@ -86,6 +86,9 @@ func is_host() -> bool:
 
 func host_lan(name: String) -> bool:
 	leave()
+	if OS.has_feature("web"):
+		failed.emit("Wi-Fi games need the Android app. In a browser, play Online.")
+		return false
 	_enet = ENetMultiplayerPeer.new()
 	if _enet.create_server(GAME_PORT, 19) != OK:
 		_enet = null
@@ -109,6 +112,9 @@ func host_lan(name: String) -> bool:
 
 func join_lan(ip: String) -> void:
 	leave()
+	if OS.has_feature("web"):
+		failed.emit("Wi-Fi games need the Android app. In a browser, play Online.")
+		return
 	_enet = ENetMultiplayerPeer.new()
 	if _enet.create_client(ip.strip_edges(), GAME_PORT) != OK:
 		_enet = null
@@ -132,6 +138,8 @@ func local_ip() -> String:
 ## Mobile-data addresses (often 10.x on Indian carriers) are left out: a
 ## friend on the Wi-Fi can never reach them.
 func lan_addresses() -> Array[String]:
+	if OS.has_feature("web"):
+		return []
 	return pick_lan(IP.get_local_interfaces())
 
 
@@ -175,6 +183,8 @@ static func pick_lan(ifaces: Array) -> Array[String]:
 ## Start listening for hosts on the same Wi-Fi (games_found is emitted).
 func start_discovery() -> void:
 	stop_discovery()
+	if OS.has_feature("web"):
+		return                         # (a browser can't use the local network)
 	_listen = PacketPeerUDP.new()
 	_listen.set_broadcast_enabled(true)
 	if _listen.bind(BEACON_PORT) != OK:

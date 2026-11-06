@@ -19,12 +19,18 @@ var _profile := PackedFloat32Array()
 
 
 ## Steering input (-1..1) that follows the racing line; does not touch the car.
-func line_steer(car: RaceCar, track: Track, at_idx: int) -> float:
+## `lat_at` (optional): the path to follow instead of the racing line,
+## metres right of the centre line at a sample (NAN: the racing line there).
+func line_steer(car: RaceCar, track: Track, at_idx: int, lat_at: Callable = Callable()) -> float:
 	var n := track.size()
 	var v := car.forward_speed()
 	var look := clampf(5.0 + absf(v) * 0.32, 6.0, 34.0)
 	var ti := (at_idx + int(look / Track.SPACING)) % n
 	var tgt: Vector3 = track.line_points[ti]
+	if lat_at.is_valid():
+		var lat: float = lat_at.call(ti)
+		if not is_nan(lat):
+			tgt = track.points[ti] + track.rights[ti] * lat
 	var fwd := car.global_basis.z
 	fwd.y = 0.0
 	var to := tgt - car.global_position
