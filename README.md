@@ -68,7 +68,9 @@ uses the phone's motion sensor (iOS asks to allow motion on your first tap);
 with no sensor (a laptop) it switches to drag steering, and the keyboard
 works too. Online races work between the browser and the Android app on the
 same version; Wi-Fi games need the app (a browser can't use the local
-network). Progress is kept in that browser. (An App Store / TestFlight build
+network). Progress is kept in that browser. (In the browser the cars'
+numbers and sponsor lettering are left off: with a grid of cars' worth of
+3D text, WebGL stopped drawing the 3D world.) (An App Store / TestFlight build
 would need Apple's paid developer programme and a Mac.)
 
 ## Game modes

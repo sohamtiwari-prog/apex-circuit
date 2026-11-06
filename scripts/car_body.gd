@@ -207,6 +207,10 @@ func _decal(text: String, pos: Vector3, rot: Vector3, px: float, col: Color, siz
 	l.double_sided = false
 	l.visibility_range_end = 32.0
 	add_child(l)
+	# (Not in the browser: with a grid of cars' worth of these 3D labels,
+	# WebGL stopped drawing the whole 3D world. The livery stays; the
+	# lettering goes.)
+	l.visible = not OS.has_feature("web")
 	return l
 
 

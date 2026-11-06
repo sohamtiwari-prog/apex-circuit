@@ -113,9 +113,22 @@ func _one(tid: String, sty: String) -> void:
 			steer = 0.0
 		return [clampf(steer, -1.0, 1.0), gas, brk]
 	race.autopilot = null
-	# Through the first lap, then box.
-	while me.lap < 1:
+	# Off the grid, then put 600 m before the pit entry at speed (quicker
+	# than a whole lap; tests/pit_stuck_test.gd does the same), and box.
+	while race.race_time < 3.0:
 		await physics_frame
+	var n: int = tr.size()
+	var i0 := 0
+	for i in n:
+		if absf(tr.pit_ps(i) + 600.0) < 2.0:
+			i0 = i
+			break
+	var xf: Transform3D = tr.pose_at(i0, car.spawn_height(), tr.line_offset[i0])
+	race._place(me, xf)
+	car.linear_velocity = xf.basis.z * 60.0
+	car.controls_enabled = true
+	me.lap = 1
+	hand.idx = i0
 	wk.set_box("hard")
 	armed[0] = true
 	var stops0: int = me.stops
@@ -131,7 +144,7 @@ func _one(tid: String, sty: String) -> void:
 	var worst_still := 0.0
 	var resets0: int = race.reset_log.size()
 	var lim_pen0: int = race.control.messages.filter(func(m): return "speeding in the pit lane" in m).size()
-	while t < 120 * 260:
+	while t < 120 * 150:
 		await physics_frame
 		t += 1
 		phase_seen = maxi(phase_seen, me.pit_phase)

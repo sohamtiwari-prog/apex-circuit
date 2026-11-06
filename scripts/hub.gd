@@ -11,6 +11,16 @@ var _tiles := {}
 func _ready() -> void:
 	save = get_node("/root/Save")
 	save.pending_event = {}
+	# (Browser checks: index.html?race=<track> starts a quick race.)
+	if WebBridge.is_web():
+		var q := String(JavaScriptBridge.eval("location.search", true))
+		if q.contains("race="):
+			var st: Dictionary = save.data["settings"]
+			st["mode"] = "race"; st["track"] = q.get_slice("race=", 1).get_slice("&", 0); st["qualifying"] = false
+			if q.contains("saver"):
+				st["graphics"] = "saver"
+			get_tree().change_scene_to_file.call_deferred("res://scenes/race.tscn")
+			return
 	DisplayServer.screen_set_keep_on(true)
 	room = Showroom.new()
 	add_child(room)
