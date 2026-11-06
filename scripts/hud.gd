@@ -391,7 +391,7 @@ func _update_board(rows: Array) -> void:
 			(sl["stops"] as Label).add_theme_color_override("font_color", Color(ink, 0.7) if mine else UIStyle.FOG)
 		(sl["pos"] as Label).text = str(r["pos"])
 		(sl["bar"] as ColorRect).color = r.get("color", UIStyle.FOG)
-		(sl["name"] as Label).text = ("YOU  " if mine else "") + String(r["name"])
+		(sl["name"] as Label).text = "YOU" if mine else String(r["name"])
 		var tb: TyreBadge = sl["tyre"]
 		tb.visible = String(r.get("compound", "")) != ""
 		tb.compound = String(r.get("compound", "medium"))
@@ -1121,6 +1121,8 @@ func show_penalty(secs: int, why: String) -> void:
 	_pen_big.text = "+%ds" % secs
 	_pen_why.text = (why[0].to_upper() + why.substr(1) if why.length() > 0 else "") + "  ·  served at your next stop"
 	_pen_card.visible = gauge.visible
+	# (Under the running order board when that's open.)
+	_pen_card.offset_top = (_board.offset_top + _board.size.y + 10.0) if _board != null and _board.visible else 122.0
 	_pen_card.reset_size()
 	_pen_card.offset_left = -_pen_card.size.x * 0.5
 	_pen_card.offset_right = _pen_card.size.x * 0.5

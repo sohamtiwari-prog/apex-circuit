@@ -91,7 +91,8 @@ func _one(tid: String, sty: String) -> void:
 				cap = sqrt(ls * ls + 2.0 * 5.0 * maxf(tr.PIT_ENTRY_LEN - 10.0 - ps, 0.0))
 			if stop and me.pit_phase == 1 and me.pit_box > 0.0:
 				var d: float = me.pit_box - box_shift - ps
-				cap = minf(cap, sqrt(2.0 * 5.0 * maxf(d - 1.0, 0.0)))
+				if d > -2.0:                   # (overshot it: drive on, like a person would)
+					cap = minf(cap, sqrt(2.0 * 5.0 * maxf(d - 1.0, 0.0)))
 		hand.speed_cap = cap
 		hand.update(car, tr)
 		var steer: float = car.steer_input
@@ -153,7 +154,9 @@ func _one(tid: String, sty: String) -> void:
 		if OS.has_environment("PIT_DEBUG") and near_pits and (t % 30 == 0 or absf(car.linear_velocity.y) > 4.0):
 			print("      dbg t=%.2f ph %d ps %.1f box %.1f lat %.2f y %.2f vy %.1f v %.1f frz %s ctl %s ghost %s thr %.1f brk %.1f up %.2f" % [t / 120.0, me.pit_phase, ps, me.pit_box, tr.lateral(car.global_position, me.idx), car.global_position.y, car.linear_velocity.y, car.forward_speed(), car.freeze, car.controls_enabled, car.is_ghost, car.throttle, car.brake_input, car.global_basis.y.y])
 		if near_pits and not car.freeze:
-			max_vy = maxf(max_vy, absf(car.linear_velocity.y))
+			# (Up and down relative to the road: Lone Star's hill isn't flying.)
+			var tg: Vector3 = tr.tangents[me.idx]
+			max_vy = maxf(max_vy, absf(car.linear_velocity.y - car.linear_velocity.dot(tg) * tg.y))
 			# Spinning: the car pointing well away from where it's going.
 			var hv := Vector3(car.linear_velocity.x, 0.0, car.linear_velocity.z)
 			var hf := Vector3(car.global_basis.z.x, 0.0, car.global_basis.z.z)

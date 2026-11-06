@@ -112,7 +112,7 @@ jobs:
       - name: Pit stops the way thumbs drive them (never flies, spins, resets or rolls back)
         run: |
           set -o pipefail
-          timeout 2400 ~/godot/godot --headless --fixed-fps 120 --script res://tests/pit_thumbs_test.gd -- styria,red_sea line,short,gas_held,hands_off,no_assists 2>&1 | grep -E "^    |reset:|PASS|FAIL|SCRIPT ERROR|CHECK"
+          timeout 2400 ~/godot/godot --headless --fixed-fps 120 --script res://tests/pit_thumbs_test.gd -- styria,red_sea,lone_star all 2>&1 | grep -E "^    |reset:|PASS|FAIL|SCRIPT ERROR|CHECK"
 
       - name: Corner numbers like the real circuits (race control's "turn 7")
         run: bash .github/run_test.sh res://tests/corners_test.gd

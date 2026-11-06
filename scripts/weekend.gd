@@ -540,7 +540,8 @@ func _pit_lane_manual(e, delta: float, v: float) -> void:
 				race.hud.set_pit_guide("YOUR BOX  %d m" % int(d), UIStyle.YELLOW)
 			elif d > -10.0:
 				race.hud.set_pit_guide("STOP!" if v > 1.0 else "STOPPED", UIStyle.GREEN if absf(d) < 4.0 else UIStyle.RED)
-			if absf(d) < 7.0 and v < 1.5 and off_box < 4.0:
+			# (A little short or a few metres past it: the crew come to you.)
+			if d < 7.0 and d >= -10.0 and v < 1.5 and off_box < 4.0:
 				# (Stopped a little short or long: the crew roll it into place.)
 				_box_marker(e, false)
 				_start_service(e)
