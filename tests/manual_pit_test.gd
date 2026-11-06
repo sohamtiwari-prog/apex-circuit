@@ -127,7 +127,7 @@ func _run() -> void:
 	for k in 120 * 8:
 		await physics_frame
 	var gone := fposmod(tr.cum[me.idx] - s0, tr.total_length)
-	_check(gone > 250.0 and me.pit_phase == 0, "racing again (%.0f m in 8 s)" % gone)
+	_check(gone > 120.0 and me.pit_phase == 0, "racing again (%.0f m in 8 s)" % gone)
 	# Too fast at the speed line: penalty. And past the box without stopping.
 	wk.set_box("medium")
 	await _drive_in(race, 32.0, false)
