@@ -830,6 +830,9 @@ func set_flag(kind: String, text := "") -> void:
 		"vsc":
 			_flag_swatch.color = Color("ffd21f")
 			_flag_lbl.text = text if text != "" else "VIRTUAL SAFETY CAR"
+		"sc":
+			_flag_swatch.color = Color("ffd21f")
+			_flag_lbl.text = text if text != "" else "SAFETY CAR"
 		"chequered":
 			_flag_swatch.color = UIStyle.PAPER
 			_flag_lbl.text = text if text != "" else "CHEQUERED FLAG"
@@ -871,8 +874,8 @@ func _build_race_control(root: Control) -> void:
 
 
 func show_race_control(text: String, mine := false) -> void:
-	if _rc == null:
-		return
+	if _rc == null or (_rc_lines.has(text) and _rc_time > 0.0):
+		return                       # (already up)
 	_rc_lines.append(text)
 	while _rc_lines.size() > 2:
 		_rc_lines.pop_front()
@@ -883,6 +886,89 @@ func show_race_control(text: String, mine := false) -> void:
 	_rc.offset_left = -_rc.size.x * 0.5
 	_rc.offset_right = _rc.size.x * 0.5
 	_rc_time = 6.0
+
+
+# ------------------------------------------------------------ ideal lap
+
+var _ideal_lbl: Label
+
+## Your time against the ideal-lap ghost (NAN: hidden).
+func set_ideal_delta(delta: float, ideal_time: float) -> void:
+	if is_nan(delta):
+		if _ideal_lbl != null:
+			_ideal_lbl.visible = false
+		return
+	if _ideal_lbl == null:
+		_ideal_lbl = UIStyle.outlined(UIStyle.label("", 24, UIStyle.PURPLE, "extrabold", true), 5)
+		_ideal_lbl.set_anchors_preset(Control.PRESET_CENTER_TOP)
+		_ideal_lbl.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_ideal_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_ideal_lbl.offset_top = 130
+		_ideal_lbl.offset_left = -260
+		_ideal_lbl.offset_right = 260
+		_ideal_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		gauge.get_parent().add_child(_ideal_lbl)
+	_ideal_lbl.text = "IDEAL %s   %s%.2f" % [fmt_time(ideal_time) if ideal_time > 0.0 else "", "+" if delta >= 0.0 else "-", absf(delta)]
+	_ideal_lbl.add_theme_color_override("font_color", UIStyle.GREEN if delta < 0.0 else (UIStyle.PURPLE if delta < 1.0 else UIStyle.PAPER))
+	_ideal_lbl.visible = gauge.visible
+
+
+# ------------------------------------------------------------ pit guide
+
+var _pit_guide: Label
+
+## Driving your own stop: distance to your box, then STOP.
+func set_pit_guide(text: String, color: Color) -> void:
+	if _pit_guide == null:
+		_pit_guide = UIStyle.outlined(UIStyle.label("", 40, UIStyle.YELLOW, "extrabold", true), 6)
+		_pit_guide.set_anchors_preset(Control.PRESET_CENTER_TOP)
+		_pit_guide.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_pit_guide.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_pit_guide.offset_top = 410
+		_pit_guide.offset_left = -300
+		_pit_guide.offset_right = 300
+		_pit_guide.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		gauge.get_parent().add_child(_pit_guide)
+	_pit_guide.text = text
+	_pit_guide.add_theme_color_override("font_color", color)
+	_pit_guide.visible = text != "" and gauge.visible
+
+
+# ------------------------------------------------------------ penalty card
+
+var _pen_card: PanelContainer
+var _pen_big: Label
+var _pen_why: Label
+var _pen_time := 0.0
+
+## Your time penalty: one card in the middle of the screen for a few seconds.
+func show_penalty(secs: int, why: String) -> void:
+	if _pen_card == null:
+		_pen_card = PanelContainer.new()
+		_pen_card.add_theme_stylebox_override("panel", UIStyle.panel(Color(0.55, 0.04, 0.06, 0.94), true, UIStyle.PAPER))
+		_pen_card.set_anchors_preset(Control.PRESET_CENTER_TOP)
+		_pen_card.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_pen_card.offset_top = 300
+		_pen_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		gauge.get_parent().add_child(_pen_card)
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", -4)
+		v.alignment = BoxContainer.ALIGNMENT_CENTER
+		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_pen_card.add_child(v)
+		_pen_big = UIStyle.label("", 40, UIStyle.PAPER, "extrabold", true)
+		_pen_big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(_pen_big)
+		_pen_why = UIStyle.label("", 20, UIStyle.PAPER, "bold")
+		_pen_why.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(_pen_why)
+	_pen_big.text = "+%d s TIME PENALTY" % secs
+	_pen_why.text = why.capitalize() if why.length() < 3 else why[0].to_upper() + why.substr(1) + "  ·  served at your next stop"
+	_pen_card.visible = gauge.visible
+	_pen_card.reset_size()
+	_pen_card.offset_left = -_pen_card.size.x * 0.5
+	_pen_card.offset_right = _pen_card.size.x * 0.5
+	_pen_time = 3.5
 
 
 # ------------------------------------------------------------ action button
@@ -1169,7 +1255,9 @@ func _build_pause_menu(root: Control) -> void:
 	_setting(v, "tc", "Traction control", func(): _toggle("traction_control"))
 	_setting(v, "abs", "ABS", func(): _toggle("abs"))
 	_setting(v, "line", "Racing line", func(): _toggle("racing_line"))
-	_setting(v, "ghost", "Ghost car (time trial)", func(): _toggle("ghost"))
+	_setting(v, "ghost", "Ghost car: your best (time trial)", func(): _toggle("ghost"))
+	_setting(v, "ideal_ghost", "Ghost car: the ideal lap", func(): _toggle("ideal_ghost"))
+	_setting(v, "pit_mode", "Pit stops", func(): save.set_setting("pit_mode", "auto" if save.get_setting("pit_mode") == "manual" else "manual"))
 	_setting(v, "vibration", "Vibration", func(): _toggle("vibration"))
 	_setting(v, "engineer", "Race engineer radio", func(): _toggle("engineer"))
 	_setting(v, "graphics", "Graphics", func():
@@ -1240,6 +1328,8 @@ func _refresh_menu() -> void:
 	(_menu_buttons["abs"] as Label).text = on_off.call("abs")
 	(_menu_buttons["line"] as Label).text = on_off.call("racing_line")
 	(_menu_buttons["ghost"] as Label).text = on_off.call("ghost")
+	(_menu_buttons["ideal_ghost"] as Label).text = on_off.call("ideal_ghost")
+	(_menu_buttons["pit_mode"] as Label).text = "You drive" if save.get_setting("pit_mode") != "auto" else "Automatic"
 	(_menu_buttons["vibration"] as Label).text = on_off.call("vibration")
 	(_menu_buttons["engineer"] as Label).text = on_off.call("engineer")
 	(_menu_buttons["graphics"] as Label).text = "Battery saver" if save.get_setting("graphics") == "saver" else "High"
@@ -1640,6 +1730,10 @@ func _process(delta: float) -> void:
 			warn.visible = false
 	_pit_ui_tick(delta)
 	_results_tick(delta)
+	if _pen_time > 0.0:
+		_pen_time -= delta
+		if _pen_time <= 0.0:
+			_pen_card.visible = false
 	if _rc_time > 0.0:
 		_rc_time -= delta
 		if _rc_time <= 0.0:

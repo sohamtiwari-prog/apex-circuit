@@ -151,7 +151,12 @@ func physics_tick(delta: float) -> void:
 			var cars := {}
 			for e in race.entrants:
 				cars[e.slot] = entrant_state(e)
-			Net.send(0, {"t": "s", "nt": net_time(), "time": race.race_time, "st": race.state, "lt": race.lights_time, "cars": cars}, false)
+			var snap := {"t": "s", "nt": net_time(), "time": race.race_time, "st": race.state, "lt": race.lights_time, "cars": cars}
+			if race.control != null and race.control.sc_phase > 0:
+				snap["sc"] = race.control.sc.net_state()
+			elif race.control != null:
+				snap["sc"] = [0, 0]
+			Net.send(0, snap, false)
 		else:
 			Net.send(1, {"t": "c", "nt": net_time(), "s": entrant_state(race.player)}, false)
 	if Net.is_host():
@@ -172,6 +177,8 @@ func physics_tick(delta: float) -> void:
 	for e in race.entrants:
 		if e.remote:
 			_drive_remote(e, at)
+	if race.control != null and not Net.is_host():
+		race.control.sc.net_draw(self, at)
 	_contacts()
 
 
@@ -379,6 +386,8 @@ func _on_message(from: int, m: Dictionary) -> void:
 			for slot in cars:
 				if int(slot) != me:
 					_push(int(slot), cars[slot], float(m["nt"]))
+			if m.has("sc") and race.control != null:
+				race.control.sc.net_update(m["sc"], float(m["nt"]), self)
 			if race.state == 0:
 				race.lights_time = float(m["lt"])
 				if _host_state != 0:

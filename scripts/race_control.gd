@@ -54,12 +54,19 @@ var _order := {}                   # player entrant -> {other: was ahead}
 var _owe := {}                     # player entrant -> {other: [deadline, why]}
 var _over := {}                    # entrant -> seconds over the VSC limit this VSC
 var _vsc_pen := {}                 # entrant -> already penalised this VSC
-var _hit_t := {}                   # entrant -> race time of its last collision penalty
+var _hit_t := {}                   # entrant -> race time of its last collision noted
+var _probe := {}                   # entrant (the car behind) -> incident being looked at
 var _fail := {}                    # entrant -> progress (m) where it breaks down
 var _retiring := {}                # entrant -> [stage, seconds, side]
 var _rng := RandomNumberGenerator.new()
 var _t := 0.0
 var _vsc_on_t := 0.0               # seconds since the VSC came out
+var sc: SafetyCar
+var sc_phase: int:
+	get:
+		return sc.phase if sc != null else 0
+var _sc_pass := {}                 # player entrant -> [was behind the Safety Car, owe deadline]
+var _stopped_on_track := {}        # entrant -> seconds stopped on the racing surface
 
 
 func setup(r: Node) -> void:
@@ -75,6 +82,9 @@ func setup(r: Node) -> void:
 		penalties = bool(r.save.get_setting("race_control"))
 		authority = true
 	r.car_contact.connect(_on_contact)
+	sc = SafetyCar.new()
+	add_child(sc)
+	sc.setup(self)
 
 
 ## A new race (also a restart): clear everything, pick who breaks down.
@@ -86,8 +96,10 @@ func reset() -> void:
 	vsc_count = 0
 	_vsc_left = 0.0
 	messages.clear()
-	for d in [_slow, _off, _order, _owe, _over, _vsc_pen, _hit_t, _fail, _retiring, _inc]:
+	for d in [_slow, _off, _order, _owe, _over, _vsc_pen, _hit_t, _fail, _retiring, _inc, _probe, _sc_pass, _stopped_on_track]:
 		d.clear()
+	if sc != null:
+		sc.reset()
 	if not (penalties and authority) or race.mode != "race" or race.ev_type in ["duel", "overtake", "eliminator", "time_trial"]:
 		return
 	# Mechanical failures: about one car in every 400 car-laps... rarely more than one.
@@ -136,11 +148,32 @@ func vsc_limit(c: RaceCar) -> float:
 	return _vsc_limit[key]
 
 
+## A speed limit applies: the VSC, or a Safety Car not out yet.
+func limit_on() -> bool:
+	return vsc or (sc != null and sc.limit_active())
+
+
+## Pit stops cost little now (everyone's slow).
+func cheap_stop() -> bool:
+	return (vsc and not vsc_ending) or sc_phase == 1 or sc_phase == 2
+
+
 ## Speed cap for a bot from the flags (999: none).
 func ai_cap(e) -> float:
 	var cap := 999.0
-	if vsc:
+	if limit_on():
 		cap = vsc_limit(e.car) - 1.0
+	elif sc_phase > 0:
+		# Behind the Safety Car: brisk enough to catch the queue (the
+		# following in race.gd keeps them in line behind it).
+		var prof := track.speed_profile(e.car.spec)
+		var k: int = (e.idx + 3) % prof.size()
+		cap = prof[k] * 0.8
+		if sc_phase == 3 and int(e.position) == 1:
+			# The leader takes them to the restart, then goes.
+			var to_go: float = sc._restart_at - float(e.progress)
+			if to_go > 220.0:
+				cap = minf(cap, prof[k] * 0.55)
 	var f := flag_at(e.idx)
 	if f > 0:
 		# Lift: a little under the usual speed (a double yellow: well under).
@@ -149,9 +182,14 @@ func ai_cap(e) -> float:
 	return cap
 
 
-## No overtaking: the VSC, or a yellow here.
+## VSC or Safety Car: everyone holds position.
+func hold_positions() -> bool:
+	return vsc or sc_phase > 0
+
+
+## No overtaking: the VSC, the Safety Car, or a yellow here.
 func no_passing(idx: int) -> bool:
-	return vsc or flag_at(idx) > 0
+	return vsc or sc_phase > 0 or flag_at(idx) > 0
 
 
 # ------------------------------------------------------------ per tick
@@ -169,11 +207,75 @@ func tick(dt: float) -> void:
 			continue
 		if penalties:
 			_track_limits(e, dt)
-			if vsc:
+			if limit_on():
 				_vsc_speed(e, dt)
 		if e.is_player and penalties:
 			_overtakes(e)
+			if sc != null and sc.out:
+				_behind_sc(e)
+	if not _probe.is_empty():
+		_investigate()
+	if authority and penalties:
+		_stopped_cars(dt)
 
+
+## Every physics tick (the Safety Car drives).
+func physics(dt: float) -> void:
+	if sc != null:
+		sc.physics(dt)
+		sc.flash(_t)
+
+
+## Stay behind the Safety Car: pass it and you have 6 s to drop back.
+func _behind_sc(p) -> void:
+	var L := track.total_length
+	var gap := fposmod(sc.s_pos() - float(track.cum[p.idx]) + L * 0.5, L) - L * 0.5
+	var st: Array = _sc_pass.get(p, [true, -1.0])
+	var behind := gap > 0.0
+	if absf(gap) < 80.0 and bool(st[0]) and not behind and p.pit_phase == 0:
+		st[1] = float(race.race_time) + 6.0
+		race.hud.show_warning("You passed the Safety Car: drop back behind it!", 4.0)
+	if behind:
+		st[1] = -1.0
+	elif float(st[1]) > 0.0 and float(race.race_time) > float(st[1]):
+		st[1] = -1.0
+		give(p, PEN, "overtaking the Safety Car")
+	st[0] = behind
+	_sc_pass[p] = st
+
+
+## A car stopped on the racing surface for more than 6 s (a crash, a
+## stall): out comes the Safety Car.
+func _stopped_cars(dt: float) -> void:
+	if sc_phase > 0 or vsc:
+		return
+	for o in race.entrants:
+		if o.finished or o.eliminated or o.pit_phase > 0 or not o.car.visible:
+			_stopped_on_track.erase(o)
+			continue
+		var on_road := absf(track.lateral(o.car.global_position, o.idx)) < track.road_half
+		if on_road and absf(o.car.forward_speed()) < 3.0 and float(race.race_time) > 15.0:
+			_stopped_on_track[o] = float(_stopped_on_track.get(o, 0.0)) + dt
+			if float(_stopped_on_track[o]) > 6.0:
+				_stopped_on_track.erase(o)
+				deploy_sc("car stopped on the track at turn %d" % (sector_of(o.idx) + 1))
+		else:
+			_stopped_on_track.erase(o)
+
+
+func deploy_sc(why: String) -> void:
+	if not authority or race.mode != "race" or sc_phase > 0 or vsc or sc.count >= 2:
+		return
+	var lead := 0.0
+	for e in race.entrants:
+		lead = maxf(lead, float(e.progress))
+	var left: float = track.total_length * float(race.total_laps) - lead
+	if left < track.total_length * 1.6 or float(race.race_time) < 20.0:
+		return                                  # (needs a lap and a half to run)
+	_over.clear()
+	_vsc_pen.clear()
+	_vsc_on_t = 0.0
+	sc.deploy(why)
 
 func _update_yellows(dt: float) -> void:
 	for k in SECTORS:
@@ -281,7 +383,7 @@ func _overtakes(p) -> void:
 
 
 func _on_contact(a: RaceCar, b: RaceCar, closing: float) -> void:
-	if closing < 9.0 or int(race.state) != 1 or race.mode != "race":
+	if closing < 4.0 or int(race.state) != 1 or race.mode != "race":
 		return
 	var ea = _entrant(a)
 	var eb = _entrant(b)
@@ -298,11 +400,37 @@ func _on_contact(a: RaceCar, b: RaceCar, closing: float) -> void:
 		if x.remote or x.pit_phase > 0 or y.pit_phase > 0:
 			continue
 		# x ran into the back of y: y just ahead along the track, x the faster.
+		# Like the stewards: noted, then judged on what it did to y over the
+		# next few seconds. A tap that y drives away from is a racing
+		# incident; spinning y round or putting it off is a penalty.
 		var gap := fposmod(track.cum[y.idx] - track.cum[x.idx], track.total_length)
-		if gap > 0.5 and gap < 7.0 and x.car.forward_speed() > y.car.forward_speed() + 4.0:
-			if float(race.race_time) - float(_hit_t.get(x, -99.0)) > 8.0:
+		if gap > 0.5 and gap < 7.0 and x.car.forward_speed() > y.car.forward_speed() + 3.0:
+			if float(race.race_time) - float(_hit_t.get(x, -99.0)) > 15.0 and not _probe.has(x):
 				_hit_t[x] = float(race.race_time)
-				give(x, PEN, "causing a collision with %s" % UIStyle.code(y.name))
+				_probe[x] = {"y": y, "due": _t + 3.0, "spun": 0.0, "off": false, "closing": closing}
+
+
+## The incidents under investigation: did the car that was hit spin
+## (turned 50 degrees from the track) or go off (past the kerb)?
+func _investigate() -> void:
+	for x in _probe.keys():
+		var p: Dictionary = _probe[x]
+		var y = p["y"]
+		if y.car.visible and not y.finished:
+			var fw: Vector3 = y.car.global_basis.z
+			var t: Vector3 = track.htangents[y.idx]
+			p["spun"] = maxf(float(p["spun"]), rad_to_deg(acos(clampf(Vector2(fw.x, fw.z).normalized().dot(Vector2(t.x, t.z).normalized()), -1.0, 1.0))))
+			if absf(track.lateral(y.car.global_position, y.idx)) > track.road_half + Track.KERB_W + 1.0:
+				p["off"] = true
+		if _t < float(p["due"]):
+			continue
+		_probe.erase(x)
+		if float(p["spun"]) > 50.0 or bool(p["off"]):
+			give(x, PEN, "causing a collision with %s" % UIStyle.code(y.name))
+		elif x.is_player or y.is_player:
+			var text := "Incident between %s and %s: no further action." % [_who(x).to_upper(), _who(y).to_upper()]
+			messages.append(text)
+			race.hud.show_race_control(text, false)
 
 
 func _entrant(c: RaceCar):
@@ -315,7 +443,7 @@ func _entrant(c: RaceCar):
 # ------------------------------------------------------------ VSC
 
 func deploy_vsc(why: String) -> void:
-	if vsc or not authority or vsc_count >= 3 or race.mode != "race":
+	if vsc or not authority or vsc_count >= 3 or race.mode != "race" or sc_phase > 0:
 		return
 	var lead := 0.0
 	for e in race.entrants:
@@ -382,12 +510,16 @@ func _update_retirements(dt: float) -> void:
 					st[0] = 1
 					st[1] = 0.0
 					drv.speed_cap = 0.0
-					if _rng.randf() < 0.7:
-						deploy_vsc("%s stopped at turn %d" % [_who(e), sector_of(e.idx) + 1])
+					var roll := _rng.randf()
+					var why := "%s stopped at turn %d" % [_who(e), sector_of(e.idx) + 1]
+					if roll < 0.4:
+						deploy_sc(why)
+					if roll < 0.8 and sc_phase == 0:
+						deploy_vsc(why)
 			1:
 				# Parked; marshals recover it (when the VSC ends, or after 30 s).
 				drv.speed_cap = 0.0
-				if (not vsc and float(st[1]) > 12.0) or float(st[1]) > 40.0:
+				if (not vsc and sc_phase == 0 and float(st[1]) > 12.0) or float(st[1]) > 60.0:
 					_retiring.erase(e)
 					e.car.visible = false
 					e.car.set_ghost(true)
@@ -420,9 +552,15 @@ func is_retiring(e) -> bool:
 func give(e, secs: float, why: String) -> void:
 	e.pen_pending += secs
 	e.pen_total += secs
-	_say(e, "%s: %d SECOND TIME PENALTY, %s." % [_who(e).to_upper(), int(secs), why], true)
+	var text := "%s: %d SECOND TIME PENALTY, %s." % [_who(e).to_upper(), int(secs), why]
+	messages.append(text)
 	if e.is_player:
-		race.engineer.say("We've got a %d second penalty: %s. We'll serve it at the stop, or it goes on the race time." % [int(secs), why], 5.0)
+		# Yours: one penalty card (not the message strip and the radio as well).
+		race.hud.show_penalty(int(secs), why)
+	else:
+		race.hud.show_race_control(text, false)
+	if race.net != null:
+		race.net.send_rc("%s: %d SECOND TIME PENALTY, %s." % [UIStyle.code(e.name).to_upper(), int(secs), why])
 
 
 ## A penalty was served at a pit stop (weekend.gd).

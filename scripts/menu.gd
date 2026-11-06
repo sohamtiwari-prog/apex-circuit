@@ -313,6 +313,12 @@ func _build_track_side(cols: Control) -> void:
 	_chip(chips3, "qualifying", [[false, "No qualifying"], [true, "Qualifying"]])
 	_chip(chips3, "tyres", [["medium", "Medium tyres"], ["soft", "Soft tyres"], ["hard", "Hard tyres"]])
 	_chip(chips3, "race_control", [[true, "Flags & penalties"], [false, "No penalties"]])
+	var chips4 := HBoxContainer.new()
+	chips4.add_theme_constant_override("separation", 8)
+	v.add_child(chips4)
+	_chip(chips4, "pit_mode", [["manual", "You drive the pits"], ["auto", "Auto pit stops"]])
+	_chip(chips4, "racing_line", [[false, "No racing line"], [true, "Racing line"]])
+	_chip(chips4, "ideal_ghost", [[false, "No ghost"], [true, "Ideal-lap ghost"]])
 
 	var go := UIStyle.button("Race", _start, true, 46)
 	go.custom_minimum_size = Vector2(0, 90)

@@ -11,7 +11,7 @@ extends RefCounted
 const POINTS := [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
 const CLASSES := [
 	{"id": "gp", "name": "Grand Prix World Championship", "cars": ["gp26"],
-		"rounds": ["desert", "ile_royale", "riviera", "silvermoor", "pannonia", "ardennes", "brianza", "marina", "entrelagos", "gulf"]},
+		"rounds": ["lakeside", "desert", "red_sea", "riviera", "ile_royale", "styria", "silvermoor", "ardennes", "pannonia", "duinen", "brianza", "caspian", "marina", "lone_star", "entrelagos", "gulf"]},
 	{"id": "hyper", "name": "Hypercar Masters", "cars": ["veloce", "toro_furia"],
 		"rounds": ["brianza", "ardennes", "silvermoor", "marina", "entrelagos", "gulf"]},
 	{"id": "super", "name": "Supercar Championship", "cars": ["vanta_gt", "toro_furia"],

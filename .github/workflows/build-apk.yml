@@ -103,6 +103,12 @@ jobs:
       - name: Race control (flags, penalties, VSC, retirements) and the timing screens
         run: bash .github/run_test.sh res://tests/race_control_test.gd
 
+      - name: Safety Car, and nobody overtakes under the VSC or Safety Car
+        run: bash .github/run_test.sh res://tests/safety_car_test.gd
+
+      - name: Driving your own pit stop (limiter, box, crew, speeding)
+        run: bash .github/run_test.sh res://tests/manual_pit_test.gd
+
       - name: Racing contact with drivers at the wheel, and brushing barriers
         run: bash .github/run_test.sh res://tests/contact_test.gd
 

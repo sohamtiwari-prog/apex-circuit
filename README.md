@@ -32,12 +32,17 @@ airfoil wings, lathed tyres). Names and teams are fictional.
 | **Pannonia Ring** | the Hungarian GP venue | 4.37 km |
 | **Marina Lights Street Circuit** | the Singapore night race | 4.93 km |
 | **Gulf Lights Circuit** | the Abu Dhabi GP venue (under lights) | 5.28 km |
+| **Lakeside Park Circuit** | the Australian GP venue | 5.28 km |
+| **Circuit Duinen** | the Dutch GP venue | 4.26 km |
+| **Caspian City Circuit** | the Azerbaijan street circuit | 5.97 km |
+| **Lone Star Circuit** | the United States GP venue | 5.51 km |
+| **Red Sea Street Circuit** | the Saudi Arabian night race | 6.18 km |
 | **Kestrel Park** | original club circuit | 2.06 km |
 
 Layouts are accurate to within ~1% of the official lengths, with real
 elevation (see below).
 
-**Night races:** Marina Lights and Gulf Lights race at night by default
+**Night races:** Marina Lights, Gulf Lights and Red Sea race at night by default
 (lighting towers all the way round, lit city windows, stars and a glow of
 light on the horizon); any track can be raced by day, at sunset or at night
 ("Track's own time" picks the venue's usual one).
@@ -225,11 +230,19 @@ now for what's coming at your current speed.
     kerb: three warnings, the third with the black-and-white flag, then a
     penalty every time), overtaking under yellow or the VSC (unless you
     give the place back within 10 s), going over the VSC limit, and
-    running into the back of someone. Served at your next pit stop (held
-    in the box before the crew start), otherwise added to your race time.
+    running into the back of someone hard enough to spin them or put them
+    off (the stewards look at what it did: a tap is no further action).
+    Pit lane speeding too. Served at your next pit stop (held in the box
+    before the crew start), otherwise added to your race time.
   - **Virtual Safety Car** while marshals clear a stopped car or debris:
     a speed limit of about half race speed, no overtaking, "VSC ending"
     before the green. The cheap time to pit, and the bots know it.
+  - **Safety Car:** for a car stopped on the track (and some breakdowns).
+    Until it's out everyone keeps to the VSC limit; it comes out of the pit
+    exit ahead of the leader and the field closes up behind it in single
+    file. Nobody overtakes (pass the Safety Car yourself and you must drop
+    back, or it's a penalty). "Safety Car in this lap": it peels into the
+    pits and racing resumes at the line.
   - **Retirements:** now and then a bot breaks down (gearbox, power unit,
     hydraulics...), pulls off and parks; it's out (DNF).
   - Race control messages appear at the top of the screen.
@@ -246,6 +259,16 @@ now for what's coming at your current speed.
   driver's grid slot and places gained, best lap, top speed, tyre stints,
   penalties and laps led; tap a driver for every lap time, tyre and stop.
 - **Race length:** 1, 3, 5, 10, 15, 20 or 30 laps.
+- **Your own pit stops** (Pit stops: you drive; or Automatic): turn into
+  the pit entry, the limiter comes on at the speed line (over 80 km/h
+  there is a penalty), your box is lit up on the ground and a guide counts
+  you in; stop there, the crew hold the car and change the tyres, then go.
+- **Racing line:** the ideal line on the road ahead, coloured green / yellow
+  / red for throttle, lift and brake; when you've called a stop it leads
+  into the pit lane.
+- **Ideal-lap ghost:** a purple ghost driving the ideal lap (the AI at full
+  pace on the racing line, recorded for every circuit and car by
+  `tests/make_ideal_laps.gd`), with your time against it as you go.
 - **Vibration:** the phone buzzes for contact with other cars and the
   barriers (harder hits buzz longer), and rumbles over kerbs and grass.
   Both can be switched off in the pause menu.
@@ -322,8 +345,9 @@ Every real circuit has its true height profile, measured from F1 car-position
 telemetry (about 25-30 qualifying laps per track, aligned to our centreline,
 pooled and smoothed): Ardennes 102 m from top to bottom (down to the
 compression, up the hill and the long straight to the highest corner), Styria
-63 m, Entrelagos 43 m, Riviera 42 m, Pannonia 35 m, Desert 16 m, Brianza
-12 m, Silvermoor 11 m, Gulf 11 m, Île-Royale 5 m, Marina 5 m. The same data put each lap's start on the real timing line.
+63 m, Entrelagos 43 m, Riviera 42 m, Pannonia 35 m, Lone Star 30 m, Caspian 27 m, Desert 16 m,
+Brianza 12 m, Silvermoor 11 m, Gulf 11 m, Duinen 9 m, Île-Royale 5 m,
+Marina 5 m, Lakeside 2 m, Red Sea 2 m. The same data put each lap's start on the real timing line.
 `tools/elevation_from_telemetry.py` does this; `tools/terrain.py` then builds
 each venue's landscape (`tracks/<id>.terrain`): level shelves by the track for
 verges, pits and stands, smooth hillsides between stretches at different

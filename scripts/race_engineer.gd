@@ -201,6 +201,16 @@ func _update_flags(p) -> void:
 	var double := false
 	var rc: RaceControl = race.control
 	if rc != null:
+		if rc.sc_phase > 0:
+			var lim := int(round(rc.vsc_limit(race.car) * 3.6))
+			match rc.sc_phase:
+				1:
+					_set_flag("sc", ("SAFETY CAR  ·  max %d km/h until it's out" % lim) if rc.limit_on() else "SAFETY CAR  ·  no overtaking, close up")
+				2:
+					_set_flag("sc", "SAFETY CAR IN THIS LAP")
+				_:
+					_set_flag("sc", "RESTART  ·  racing resumes at the line")
+			return
 		if rc.vsc:
 			var lim := int(round(rc.vsc_limit(race.car) * 3.6))
 			_set_flag("vsc", ("VSC ENDING  ·  max %d km/h" if rc.vsc_ending else "VIRTUAL SAFETY CAR  ·  max %d km/h") % lim)
@@ -233,7 +243,7 @@ func _update_flags(p) -> void:
 		_set_flag("yellow", "YELLOW FLAG: no overtaking")
 	elif blue:
 		_set_flag("blue")
-	elif _flag == "yellow" or _flag == "double" or _flag == "vsc":
+	elif _flag == "yellow" or _flag == "double" or _flag == "vsc" or _flag == "sc":
 		_set_flag("green")
 		get_tree().create_timer(2.0).timeout.connect(func():
 			if _flag == "green":

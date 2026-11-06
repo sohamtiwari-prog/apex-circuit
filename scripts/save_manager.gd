@@ -73,6 +73,8 @@ const _DEFAULTS := {
 		"vibration": true,          # phone buzzes on contact, kerbs, grass
 		"engineer": true,           # race engineer radio messages
 		"race_control": true,       # flags, penalties, VSC, retirements (scripts/race_control.gd)
+		"pit_mode": "manual",       # manual: you drive the pit lane; auto: the car drives itself
+		"ideal_ghost": false,       # the ideal-lap ghost car (races and time trial)
 	},
 	"best_laps": {},                  # "track|car" -> milliseconds
 	"best_sectors": {},               # "track|car" -> [ms, ms, ms], best of each sector

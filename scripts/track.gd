@@ -30,6 +30,11 @@ const CATALOG := [
 	{"id": "pannonia", "name": "Pannonia Ring", "desc": "Hungary · 4.37 km · twisty, hilly, hard to pass", "style": "park"},
 	{"id": "marina", "name": "Marina Lights Street Circuit", "desc": "Singapore · 4.93 km · night race in the city", "style": "city", "night": true},
 	{"id": "gulf", "name": "Gulf Lights Circuit", "desc": "Abu Dhabi · 5.28 km · under the lights", "style": "desert", "night": true},
+	{"id": "lakeside", "name": "Lakeside Park Circuit", "desc": "Australia · 5.28 km · fast sweeps round the lake", "style": "park"},
+	{"id": "duinen", "name": "Circuit Duinen", "desc": "Netherlands · 4.26 km · up and down the dunes", "style": "park"},
+	{"id": "caspian", "name": "Caspian City Circuit", "desc": "Azerbaijan · 5.97 km · old-town walls, endless straight", "style": "city"},
+	{"id": "lone_star", "name": "Lone Star Circuit", "desc": "USA · 5.51 km · up the hill to turn 1, then the esses", "style": "park"},
+	{"id": "red_sea", "name": "Red Sea Street Circuit", "desc": "Saudi Arabia · 6.18 km · fastest streets, under the lights", "style": "city", "night": true},
 	{"id": "kestrel_park", "name": "Kestrel Park", "desc": "Original club circuit · 2.06 km", "style": "park"},
 ]
 

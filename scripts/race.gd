@@ -101,6 +101,13 @@ var lap_valid := true
 # Ghost of the best lap (time trial): 20 samples/s of position + rotation.
 const GHOST_HZ := 20.0
 var _ghost_rec := PackedFloat32Array()
+var _last_lap_rec := PackedFloat32Array()   # the lap just finished (tools/make_ideal_laps)
+var lap_valid_last := true
+var _ideal := PackedFloat32Array()          # the ideal lap (data/ideal), 7 floats a sample
+var _ideal_hz := 20.0
+var _ideal_dist := PackedFloat32Array()     # metres into the lap at each sample
+var ideal_time := -1.0                      # its lap time
+var ideal_car: RaceCar
 var _ghost_play := PackedFloat32Array()
 var ghost_car: RaceCar
 var session_sectors := [INF, INF, INF]   # fastest of anyone this session
@@ -126,6 +133,7 @@ var _tilt := 0.0
 var tyre_fx: TyreFX
 var _graphics_high := true
 var line_guide: LineGuide
+var input_driver: AIDriver           # tests: drives "by hand" (not the autopilot)
 var _still := 0.0                 # player: seconds stuck with the throttle on
 var recoveries := 0               # automatic car recoveries (stats/tests)
 const STEER_ASSIST_BLEND := 0.35
@@ -435,6 +443,8 @@ func _place(e: Entrant, xform: Transform3D) -> void:
 		drv.idx = e.idx
 		drv.lane_offset = 0.0
 		drv.speed_cap = 999.0
+	if e.is_player and input_driver != null:
+		input_driver.idx = e.idx
 
 
 func _restart() -> void:
@@ -770,8 +780,13 @@ func _physics_process(delta: float) -> void:
 		weekend.drive_player()
 	elif autopilot != null:
 		autopilot.update(car, track)
+	elif input_driver != null:
+		input_driver.update(car, track)          # (tests: a stand-in for your thumbs)
 	else:
 		_read_input()
+	if player.get_meta("limiter", false) and autopilot == null and not (weekend != null and weekend.player_in_pit()):
+		# Pit limiter: holds you at 80 km/h however hard you press.
+		car.throttle = minf(car.throttle, clampf((Weekend.PIT_SPEED - 0.6 - car.forward_speed()) * 0.5, 0.0, 1.0))
 
 	_car_contacts(delta)
 	match state:
@@ -799,8 +814,10 @@ func _physics_process(delta: float) -> void:
 		_update_entrant(e, delta)
 	if weekend != null:
 		weekend.physics(delta)
-	if control != null and _tick % 12 == 0 and (state == State.RACING or state == State.FINISHED):
-		control.tick(12.0 / Engine.physics_ticks_per_second)
+	if control != null and (state == State.RACING or state == State.FINISHED):
+		control.physics(delta)
+		if _tick % 12 == 0:
+			control.tick(12.0 / Engine.physics_ticks_per_second)
 	engineer.tick(delta)
 	if (_tick % 6 == 0 or state == State.FINISHED) and (net == null or Net.is_host()):
 		_update_positions()
@@ -823,13 +840,15 @@ func _physics_process(delta: float) -> void:
 	if state != State.GRID:
 		save.add_distance(absf(car.forward_speed()) * delta)
 
-	if mode == "time_trial":
-		_update_ghost()
+	_update_ghost()
+	_update_ideal()
 
 	if line_guide != null and line_guide.visible:
 		if _assist_profile.size() != track.size():
 			_assist_profile = track.speed_profile(car.spec)
-		line_guide.update_guide(car, track, _assist_profile, player.idx, delta)
+		# (Leading into the pits only on the way to the entry, or in the lane.)
+		var to_pits: bool = weekend != null and weekend.manual(player) and ((player.pit_req and track.has_pit_lane and track.pit_ps(player.idx) < track.PIT_ENTRY_LEN) or player.pit_phase == 1)
+		line_guide.update_guide(car, track, _assist_profile, player.idx, delta, to_pits)
 
 	if _tick % 2 == 1:
 		_slipstream()
@@ -1146,6 +1165,8 @@ func _player_lap(lap_time: float) -> void:
 			hud.show_banner("Lap %d  %s   +%.3f" % [player.lap, Hud.fmt_time(lap_time), (ms - prev_best) / 1000.0], UIStyle.PAPER)
 	else:
 		hud.show_banner("Lap %d  %s   invalid (track limits)" % [player.lap, Hud.fmt_time(lap_time)], UIStyle.RED)
+	lap_valid_last = mode == "race" or lap_valid
+	_last_lap_rec = _ghost_rec
 	lap_valid = true
 	_ghost_rec = PackedFloat32Array()
 	if mode == "race" and player.lap == total_laps - 1:
@@ -1397,6 +1418,8 @@ func _traffic() -> void:
 		var lead_gap := 999.0
 		var lead_lat := 0.0
 		var beside: Array[float] = []        # lateral positions of cars alongside
+		var hold_gap := 999.0                # the car just ahead, anywhere across the track
+		var hold_v := 0.0
 		for o in entrants:
 			if o == e or o.ghost > 0.0 or o.eliminated or o.pit_phase > 0 or not o.car.visible:
 				continue
@@ -1408,6 +1431,9 @@ func _traffic() -> void:
 			var mirror := CAR_LEN * 1.4 + maxf(o.car.forward_speed() - v, 0.0) * 0.8
 			if gap < -mirror or gap > 80.0:
 				continue
+			if gap > 0.5 and gap < hold_gap and not o.finished and absf(o.car.forward_speed()) > 12.0:
+				hold_gap = gap
+				hold_v = o.car.forward_speed()
 			var o_lat := track.lateral(o.car.global_position, o.idx)
 			var dlat := o_lat - my_lat
 			# Ahead and in our path (even if only partly): the car to follow.
@@ -1471,6 +1497,16 @@ func _traffic() -> void:
 		target = clampf(target, -lim, lim)
 		if control != null and not e.finished:
 			cap = minf(cap, control.ai_cap(e))
+			# VSC / Safety Car: hold position. Never past the car ahead, on
+			# whichever side it is (so not past you either).
+			if control.sc.out:
+				# The Safety Car is the car to follow when it's the next one up.
+				var sg := fposmod(control.sc.s_pos() - my_s, L)
+				if sg > 0.5 and sg < hold_gap:
+					hold_gap = sg
+					hold_v = control.sc.speed()
+			if hold_gap < 900.0 and control.hold_positions():
+				cap = minf(cap, sqrt(hold_v * hold_v + 2.0 * FOLLOW_DECEL * maxf(hold_gap - CAR_LEN - 6.0, 0.0)) - FOLLOW_DECEL * 0.35)
 		drv.speed_cap = maxf(cap, 4.0)
 		var want_offset := target - line_here
 		drv.lane_offset = move_toward(drv.lane_offset, want_offset, 0.09)
@@ -1610,6 +1646,96 @@ func _make_ghost_car() -> void:
 		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
+## The ideal lap for this track and car: the AI at full pace on the racing
+## line (tests/make_ideal_laps.gd). Shown as a purple ghost each lap from
+## the line, with your time against it (setting "Ghost car: the ideal lap").
+func _load_ideal() -> void:
+	var path := "res://data/ideal/%s__%s.bin" % [track.track_id, car_id]
+	if not FileAccess.file_exists(path):
+		return
+	var f := FileAccess.open_compressed(path, FileAccess.READ, FileAccess.COMPRESSION_ZSTD)
+	if f == null:
+		return
+	var v: Variant = f.get_var()
+	if not (v is Dictionary) or not (v as Dictionary).has("xf"):
+		return
+	_ideal = v["xf"]
+	_ideal_hz = float(v.get("hz", GHOST_HZ))
+	ideal_time = float(v.get("time", -1.0))
+	# How far into the lap each sample is, for the time against it.
+	var count := _ideal.size() / 7
+	_ideal_dist.resize(count)
+	var hint := 0
+	var prev := 0.0
+	var L := track.total_length
+	for k in count:
+		var p := Vector3(_ideal[k * 7], _ideal[k * 7 + 1], _ideal[k * 7 + 2])
+		hint = track.track_index(p, hint) if k > 0 else track.nearest_index(p, -1)
+		var d: float = track.cum[hint]
+		if k < 20 and d > L * 0.5:
+			d -= L                             # (just before the line at the start)
+		if k > count - 20 and d < L * 0.5:
+			d += L                             # (just past it at the end)
+		prev = maxf(prev, d)
+		_ideal_dist[k] = prev
+
+
+func _update_ideal() -> void:
+	var show := bool(save.get_setting("ideal_ghost")) and state == State.RACING and not player.finished and replay != null and not replay.playing
+	if show and _ideal.is_empty() and ideal_time == -1.0:
+		ideal_time = -2.0                      # (looked once)
+		_load_ideal()
+	if not show or _ideal.size() < 14 * 7:
+		if ideal_car != null:
+			ideal_car.visible = false
+		hud.set_ideal_delta(NAN, ideal_time)
+		return
+	if ideal_car == null:
+		ideal_car = _ghost_body(Color(0.62, 0.3, 1.0), 0.55)
+	var lap_t := race_time - player.lap_start
+	var t := lap_t * _ideal_hz
+	var count := _ideal.size() / 7
+	var i := int(t)
+	if i + 1 >= count:
+		ideal_car.visible = false
+	else:
+		var f := t - i
+		var a := i * 7
+		var b := a + 7
+		var p := Vector3(_ideal[a], _ideal[a + 1], _ideal[a + 2]).lerp(Vector3(_ideal[b], _ideal[b + 1], _ideal[b + 2]), f)
+		var qa := Quaternion(_ideal[a + 3], _ideal[a + 4], _ideal[a + 5], _ideal[a + 6])
+		var qb := Quaternion(_ideal[b + 3], _ideal[b + 4], _ideal[b + 5], _ideal[b + 6])
+		ideal_car.global_transform = Transform3D(Basis(qa.slerp(qb, f)), p)
+		ideal_car.visible = p.distance_to(car.global_position) > 2.5
+	# Your time against it, at the point you've reached.
+	var d: float = track.cum[player.idx]
+	if lap_t < 6.0 and d > track.total_length * 0.5:
+		d -= track.total_length
+	var k := clampi(_ideal_dist.bsearch(d), 1, count - 1)
+	var d0 := _ideal_dist[k - 1]
+	var d1 := _ideal_dist[k]
+	var tg := (float(k - 1) + clampf((d - d0) / maxf(d1 - d0, 0.01), 0.0, 1.0)) / _ideal_hz
+	hud.set_ideal_delta(lap_t - tg if lap_t > 1.0 else NAN, ideal_time)
+
+
+## A see-through copy of your car for a ghost.
+func _ghost_body(color: Color, transparency: float) -> RaceCar:
+	var spec := CarSpecs.get_spec(car_id, int(save.get_setting("team")) if car_id == "gp26" else 0)
+	spec["color"] = color
+	var g := RaceCar.new()
+	g.setup(spec)
+	g.freeze = true
+	add_child(g)
+	g.set_physics_process(false)
+	g.collision_layer = 0
+	g.collision_mask = 0
+	for m in g.find_children("*", "GeometryInstance3D", true, false):
+		var gi := m as GeometryInstance3D
+		gi.transparency = transparency
+		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return g
+
+
 ## Records this lap and replays the best one, in step with the lap clock.
 func _update_ghost() -> void:
 	if state != State.RACING:
@@ -1620,6 +1746,8 @@ func _update_ghost() -> void:
 		var xf := car.global_transform
 		var q := xf.basis.get_rotation_quaternion()
 		_ghost_rec.append_array([xf.origin.x, xf.origin.y, xf.origin.z, q.x, q.y, q.z, q.w])
+	if mode != "time_trial":
+		return
 	# Replay.
 	var show := bool(save.get_setting("ghost")) and _ghost_play.size() > 14 * 7
 	if not show:
