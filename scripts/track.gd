@@ -1180,6 +1180,16 @@ func _derive_walls() -> void:
 				if dist_to_centerline(p, o + 2.0) >= o - 0.75:
 					break
 				o -= 0.5
+			# On the inside of a tight corner, well short of its centre: a
+			# barrier out near the middle of the bend folds over itself and
+			# a car could get through where it does (Lone Star, wide run-off).
+			var c := 0.0
+			for d in range(-8, 9):
+				var cv: float = curv[(i + d + n) % n]
+				if side * cv < 0.0:
+					c = maxf(c, absf(cv))
+			if c > 0.0:
+				o = minf(o, maxf(min_off, 0.6 / c))
 			coarse.append(maxf(o, min_off))
 		# Spread each pull-in to its neighbours, then smooth, so the barrier
 		# eases in and out instead of stepping.
