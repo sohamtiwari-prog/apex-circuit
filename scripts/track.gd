@@ -501,7 +501,7 @@ func _ground_color() -> Color:
 			return Color(0.36, 0.36, 0.38)
 		"forest":
 			return Color(0.15, 0.26, 0.1)
-	return Color(0.19, 0.31, 0.12)
+	return Color(0.2, 0.32, 0.11)
 
 
 func _build_ground() -> void:
@@ -514,12 +514,16 @@ func _build_ground() -> void:
 		"desert":
 			mat.set_shader_parameter("alt_color", base.lightened(0.04))
 			mat.set_shader_parameter("stripe_strength", 0.0)
+			mat.set_shader_parameter("blades", 0.35)
+			mat.set_shader_parameter("dryness", 0.0)
 			mat.set_shader_parameter("far_color", Color(0.82, 0.7, 0.52))
 			mat.set_shader_parameter("wild_color", Color(0.74, 0.58, 0.38))
 			mat.set_shader_parameter("wild_color2", Color(0.84, 0.7, 0.5))
 		"city":
 			mat.set_shader_parameter("alt_color", base)
 			mat.set_shader_parameter("stripe_strength", 0.0)
+			mat.set_shader_parameter("blades", 0.3)
+			mat.set_shader_parameter("dryness", 0.1)
 			mat.set_shader_parameter("far_color", base)
 			# Hillside town: terraces and gardens.
 			mat.set_shader_parameter("wild_color", Color(0.5, 0.47, 0.42))
@@ -530,7 +534,7 @@ func _build_ground() -> void:
 			mat.set_shader_parameter("wild_color", Color(0.08, 0.17, 0.06))
 			mat.set_shader_parameter("wild_color2", Color(0.17, 0.15, 0.08))
 		_:
-			mat.set_shader_parameter("alt_color", base.lightened(0.09))
+			mat.set_shader_parameter("alt_color", base.lightened(0.17).lerp(Color(0.36, 0.44, 0.16), 0.15))
 			mat.set_shader_parameter("far_color", base.lerp(Color(0.45, 0.55, 0.5), 0.35))
 			mat.set_shader_parameter("wild_color", Color(0.19, 0.33, 0.11))
 			mat.set_shader_parameter("wild_color2", Color(0.33, 0.39, 0.15))
@@ -1002,10 +1006,10 @@ func _build_road() -> void:
 	var faces := PackedVector3Array()
 
 	# Alpha = material code for the road shader.
-	var asphalt := Color(0.4, 0.4, 0.41, 1.0)
+	var asphalt := Color(0.33, 0.33, 0.345, 1.0)
 	var white := Color(0.93, 0.93, 0.93, 0.0)
 	var red := Color(0.82, 0.12, 0.09, 0.0)
-	var verge := _ground_color().lightened(0.2)
+	var verge := _ground_color().lightened(0.06)
 	verge.a = 0.0
 	if style == "city":
 		verge = Color(0.42, 0.42, 0.44, 0.0)
@@ -1013,8 +1017,8 @@ func _build_road() -> void:
 	var gravel := Color(0.78, 0.69, 0.52, 0.66)
 	if style == "desert":
 		gravel = Color(0.86, 0.74, 0.55, 0.66)
-	var runoff := Color(0.47, 0.48, 0.5, 0.33)
-	var green_paint := Color(0.16, 0.5, 0.3, 0.0)
+	var runoff := Color(0.3, 0.305, 0.315, 0.33)
+	var green_paint := Color(0.2, 0.38, 0.27, 0.0)       # (the run-off paint: muted, not lime)
 	var h := road_half
 	var outer := h + KERB_W
 	var low := GROUND_Y + 0.012
@@ -1305,12 +1309,12 @@ func _build_scenery() -> void:
 	var woods := FastNoiseLite.new()
 	woods.seed = points.size()
 	woods.frequency = 1.0 / 180.0
-	var wood_cut := -0.35 if style == "forest" else 0.18
+	var wood_cut := -0.35 if style == "forest" else 0.08
 	var band := 0
 	if style == "forest":
 		band = 6500
 	elif style == "park" and not terrain_h.is_empty():
-		band = 2600
+		band = 3400
 	var total := int((attempts + band) * detail)
 	for k in range(total):
 		var pos: Vector3
@@ -1350,6 +1354,41 @@ func _build_scenery() -> void:
 		tree_tops[cell] = maxf(float(tree_tops.get(cell, -INF)), pos.y + (13.0 if kind == "conifer" else 10.0) * sc)
 		var g := rng.randf()
 		tints[kind].append(Color(0.85 + 0.25 * g, 0.9 + 0.15 * g, 0.8 + 0.2 * rng.randf()))
+	# Hedgerows and tree lines across the land (field edges, lanes): rows of
+	# big trees close together, so the countryside reads as fields and woods
+	# rather than trees dotted about.
+	if style == "park" or style == "forest":
+		var rows := int(26 * detail) if style == "park" else int(14 * detail)
+		for r in rows:
+			var a := Vector2(rng.randf_range(lo.x, hi.x), rng.randf_range(lo.y, hi.y))
+			var ang := rng.randf() * TAU
+			var dir := Vector2(cos(ang), sin(ang))
+			var length := rng.randf_range(260.0, 900.0)
+			var t := 0.0
+			while t < length:
+				t += rng.randf_range(5.5, 9.0)
+				var bend := sin(t / 140.0 + r) * 18.0
+				var q := a + dir * t + Vector2(-dir.y, dir.x) * bend
+				var pos := Vector3(q.x, 0.0, q.y)
+				var wild := wildness(pos.x, pos.z)
+				if wild < 0.0:
+					if dist_to_centerline(pos, wall_offset + 14.0) < wall_offset + 7.0:
+						continue
+				elif wild <= 0.0:
+					continue
+				if is_water(pos.x, pos.z):
+					continue
+				pos.y = ground_height(pos.x, pos.z) - 0.25
+				if wild < 0.99 and _reserved(pos, 4.0):
+					continue
+				var kind := "broad" if rng.randf() < (0.85 if style == "park" else 0.4) else "conifer"
+				var sc := rng.randf_range(1.0, 1.6)
+				var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc * rng.randf_range(0.9, 1.2), sc))
+				kinds[kind].append(Transform3D(b, pos))
+				var cell := Vector2i(floori(pos.x / TREE_CELL), floori(pos.z / TREE_CELL))
+				tree_tops[cell] = maxf(float(tree_tops.get(cell, -INF)), pos.y + (13.0 if kind == "conifer" else 10.0) * sc)
+				var g := rng.randf()
+				tints[kind].append(Color(0.8 + 0.25 * g, 0.86 + 0.18 * g, 0.75 + 0.2 * rng.randf()))
 	for kind in kinds:
 		if kinds[kind].is_empty():
 			continue
@@ -1567,31 +1606,35 @@ func _build_city() -> void:
 	var have_ground := not terrain_h.is_empty()
 	var palette := [Color(0.93, 0.88, 0.78), Color(0.95, 0.8, 0.62), Color(0.86, 0.72, 0.6),
 		Color(0.9, 0.9, 0.88), Color(0.98, 0.86, 0.7), Color(0.8, 0.74, 0.7)]
-	for side in [-1.0, 1.0]:
-		var i := 0
-		while i < n:
-			var w := rng.randf_range(14.0, 30.0)
-			var depth := rng.randf_range(14.0, 26.0)
-			var h := rng.randf_range(12.0, 48.0)
-			var p: Vector3 = points[i] + rights[i] * side * (wall_offset + 2.5 + depth * 0.5)
-			var b := Basis.looking_at(-htangents[i], Vector3.UP)
-			var foot := Transform3D(b, p)
-			var beyond: Vector3 = points[i] + rights[i] * side * (wall_offset + depth + 30.0)
-			var seaside := is_water(beyond.x, beyond.z) or is_water(p.x, p.z)
-			if not seaside and footprint_clear(foot, Vector3(depth, h, w), wall_offset - road_half - KERB_W + 1.5) and not _reserved(p, maxf(w, depth) * 0.5):
-				# On a hillside: stand on the lowest corner, rise above the highest.
-				var g := INF
-				var gt := -INF
-				for c in [Vector3(-0.5, 0, -0.5), Vector3(0.5, 0, -0.5), Vector3(-0.5, 0, 0.5), Vector3(0.5, 0, 0.5)]:
-					var q: Vector3 = foot * Vector3(c.x * depth, 0, c.z * w)
-					var gh := ground_height(q.x, q.z) if have_ground else p.y + GROUND_Y
-					g = minf(g, minf(gh, p.y + GROUND_Y))
-					gt = maxf(gt, gh)
-				var tall := h + maxf(gt - g, 0.0)
-				xforms.append(Transform3D(Basis(b.x * depth, b.y * tall, b.z * w), Vector3(p.x, g - 0.5 + tall * 0.5, p.z)))
-				cols.append(palette[rng.randi() % palette.size()])
-				scenery_boxes.append({"xf": foot, "size": Vector3(depth, h, w)})
-			i += int(w / SPACING) + 1
+	# Rows of blocks: the front row right behind the barriers, then two more
+	# behind it (a city, not a single street), where the land allows.
+	for row in 3:
+		for side in [-1.0, 1.0]:
+			var i := row * 7
+			var back := 0.0 if row == 0 else 34.0 * row + rng.randf_range(-4.0, 4.0)
+			while i < n:
+				var w := rng.randf_range(14.0, 30.0)
+				var depth := rng.randf_range(14.0, 26.0)
+				var h := rng.randf_range(12.0, 48.0) * (1.0 + 0.15 * row)
+				var p: Vector3 = points[i] + rights[i] * side * (wall_offset + 2.5 + back + depth * 0.5)
+				var b := Basis.looking_at(-htangents[i], Vector3.UP)
+				var foot := Transform3D(b, p)
+				var beyond: Vector3 = points[i] + rights[i] * side * (wall_offset + back + depth + 30.0)
+				var seaside := is_water(beyond.x, beyond.z) or is_water(p.x, p.z)
+				if not seaside and footprint_clear(foot, Vector3(depth, h, w), wall_offset - road_half - KERB_W + 1.5) and not _reserved(p, maxf(w, depth) * 0.5):
+					# On a hillside: stand on the lowest corner, rise above the highest.
+					var g := INF
+					var gt := -INF
+					for c in [Vector3(-0.5, 0, -0.5), Vector3(0.5, 0, -0.5), Vector3(-0.5, 0, 0.5), Vector3(0.5, 0, 0.5)]:
+						var q: Vector3 = foot * Vector3(c.x * depth, 0, c.z * w)
+						var gh := ground_height(q.x, q.z) if have_ground else p.y + GROUND_Y
+						g = minf(g, minf(gh, p.y + GROUND_Y))
+						gt = maxf(gt, gh)
+					var tall := h + maxf(gt - g, 0.0)
+					xforms.append(Transform3D(Basis(b.x * depth, b.y * tall, b.z * w), Vector3(p.x, g - 0.5 + tall * 0.5, p.z)))
+					cols.append(palette[rng.randi() % palette.size()])
+					scenery_boxes.append({"xf": foot, "size": Vector3(depth, h, w)})
+				i += int(w / SPACING) + 1
 	var box := BoxMesh.new()
 	box.size = Vector3.ONE
 	var facade := ShaderMaterial.new()

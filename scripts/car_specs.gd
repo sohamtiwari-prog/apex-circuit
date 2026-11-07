@@ -113,7 +113,7 @@ static func _road_defaults(s: Dictionary) -> Dictionary:
 		"wheel_y": 0.1, "rest_length": 0.25, "travel": 0.2, "stiffness": 45.0,
 		"damp_comp": 2.6, "damp_relax": 3.6, "max_susp_force": 40000.0, "roll_influence": 0.06,
 		"radius_front": 0.34, "radius_rear": 0.35, "tyre_width_front": 0.26, "tyre_width_rear": 0.32,
-		"gear_count": 7, "shift_time": 0.12, "chase_dist": 6.2, "chase_height": 2.0,
+		"gear_count": 7, "shift_time": 0.12, "chase_dist": 5.8, "chase_height": 1.75, "chase_look": 7.0,
 		"cams": [
 			{"name": "Hood", "pos": Vector3(0, 0.62, 0.9), "pitch": -3.0},
 			{"name": "Bumper", "pos": Vector3(0, -0.02, 2.25), "pitch": 0.0},
@@ -194,8 +194,11 @@ static func gp26() -> Dictionary:
 			{"name": "T-cam", "pos": Vector3(0, 0.98, -0.05), "pitch": -5.0},
 			{"name": "Nose", "pos": Vector3(0, 0.3, 2.25), "pitch": -2.0},
 		],
-		"chase_dist": 7.0,
-		"chase_height": 2.0,
+		# Low and close behind (the TV / game chase view of a single-seater):
+		# the road fills the picture and rushes under you.
+		"chase_dist": 5.4,
+		"chase_height": 1.5,
+		"chase_look": 5.0,
 
 	}
 

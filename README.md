@@ -294,6 +294,14 @@ now for what's coming at your current speed.
 - **Ideal-lap ghost:** a purple ghost driving the ideal lap (the AI at full
   pace on the racing line, recorded for every circuit and car by
   `tests/make_ideal_laps.gd`), with your time against it as you go.
+- **Sense of speed:** the chase camera sits low and close behind the car;
+  the view widens with speed (68° standing, 85° flat out); the camera falls
+  back as the car accelerates and closes in under braking; a fine buzz at
+  high speed; other cars' engines change pitch as they pass (doppler).
+  **Speed blur** (High graphics, pause-menu switch): the trackside at the
+  edges of the picture streaks towards where you're heading, more the faster
+  you go; your own car, the cockpit and the middle of the view stay sharp
+  (`shaders/speed_blur.gdshader`).
 - **Vibration:** the phone buzzes for contact with other cars and the
   barriers (harder hits buzz longer), and rumbles over kerbs and grass.
   Both can be switched off in the pause menu.

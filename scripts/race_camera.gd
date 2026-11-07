@@ -9,14 +9,36 @@ var _modes: Array = []          # [{name, pos?, pitch?, cockpit?}]
 var _dir := Vector3.ZERO
 var _up := Vector3.ZERO           # onboard cameras: smoothed chassis up
 var _sy := 0.0                    # onboard cameras: smoothed height
+var _prev_spd := 0.0
+var _accel := 0.0                 # smoothed forward acceleration (m/s²)
+var _lag := 0.0                   # chase: how far the car has pulled away / closed in (m)
+var _blur: MeshInstance3D         # speed blur over the picture
+var _blur_mat: ShaderMaterial
+var speed_fx := true              # speed blur (graphics: off in battery saver)
 
 
 func _ready() -> void:
 	near = 0.1          # (0.05 cost depth precision: distant surfaces flickered on phones)
 	far = 2400.0
 	fov = 70.0
+	# Cars passing (or being passed) change pitch, like they do trackside.
+	doppler_tracking = Camera3D.DOPPLER_TRACKING_PHYSICS_STEP
 	# Run after the car each physics tick.
 	process_physics_priority = 10
+	# Speed blur: a quad over the whole picture (shaders/speed_blur.gdshader).
+	_blur = MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(1, 1)
+	_blur.mesh = q
+	_blur_mat = ShaderMaterial.new()
+	_blur_mat.shader = load("res://shaders/speed_blur.gdshader")
+	_blur_mat.render_priority = 100
+	_blur.material_override = _blur_mat
+	_blur.extra_cull_margin = 16384.0
+	_blur.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_blur.visible = false
+	add_child(_blur)
+	_blur.position = Vector3(0, 0, -1)
 
 
 func set_target(car: RaceCar) -> void:
@@ -64,8 +86,20 @@ func _physics_process(delta: float) -> void:
 	fwd = fwd.normalized()
 	var spd := absf(target.forward_speed())
 	var m: Dictionary = _modes[mode]
-	var base_fov := 72.0 if m.has("chase") else 78.0
-	fov = lerpf(fov, base_fov + clampf(spd * 0.15, 0.0, 12.0), 1.0 - exp(-3.0 * delta))
+	# Speed: the view widens as you go faster (most past 150 km/h), so the
+	# road and the trackside rush past at the edges.
+	var rush := clampf((spd - 25.0) / 65.0, 0.0, 1.0)
+	rush = rush * rush * (3.0 - 2.0 * rush)
+	var base_fov := 68.0 if m.has("chase") else 76.0
+	var wide := 17.0 if m.has("chase") else 12.0
+	fov = lerpf(fov, base_fov + wide * rush, 1.0 - exp(-2.5 * delta))
+	# Forward acceleration, smoothed: the car pulls away from the camera as
+	# it accelerates and the camera closes in under braking.
+	if delta > 0.0:
+		_accel = lerpf(_accel, (spd - _prev_spd) / delta, 1.0 - exp(-4.0 * delta))
+	_prev_spd = spd
+	_lag = lerpf(_lag, clampf(_accel * 0.045, -0.9, 0.75), 1.0 - exp(-3.0 * delta))
+	_update_blur(spd, m.has("chase"))
 
 	if m.has("chase"):
 		# Smooth only the viewing direction, never the distance, so the
@@ -74,10 +108,11 @@ func _physics_process(delta: float) -> void:
 			_dir = fwd
 		_dir = _dir.lerp(fwd, 1.0 - exp(-6.0 * delta)).normalized()
 		var k: float = m["chase"]
-		var dist: float = float(target.spec["chase_dist"]) * k
-		var height: float = float(target.spec["chase_height"]) * k
+		var dist: float = float(target.spec["chase_dist"]) * k + _lag
+		# A touch lower at speed: the road closer, rushing under you.
+		var height: float = float(target.spec["chase_height"]) * k * (1.0 - 0.1 * rush)
 		global_position = t.origin - _dir * dist + Vector3.UP * height + _shake(spd, delta)
-		look_at(t.origin + _dir * 4.0 + Vector3.UP * 0.6, Vector3.UP)
+		look_at(t.origin + _dir * float(target.spec.get("chase_look", 4.0)) + Vector3.UP * 0.6, Vector3.UP)
 	else:
 		# Onboard: like a driver's head, not bolted to the chassis. Heading
 		# follows the car exactly; the chassis' pitch and roll come through
@@ -103,12 +138,57 @@ func _physics_process(delta: float) -> void:
 
 var _shake_t := 0.0
 
+
+## The speed blur: none below about 140 km/h, full flat out; gentler
+## onboard (you're looking past the car, not at it).
+func _update_blur(spd: float, chase: bool) -> void:
+	var on := speed_fx and target != null
+	var amt := clampf((spd - 38.0) / 52.0, 0.0, 1.0)
+	amt = amt * amt * (1.0 if chase else 0.7)
+	_blur.visible = on and amt > 0.01
+	if not _blur.visible:
+		return
+	_blur_mat.set_shader_parameter("amount", amt)
+	var vsize := get_viewport().get_visible_rect().size
+	if chase:
+		# Your car stays sharp: the box it covers on screen.
+		var lo := Vector2(INF, INF)
+		var hi := Vector2(-INF, -INF)
+		var b := target.global_basis
+		for sx in [-1.15, 1.15]:
+			for sy in [-0.1, 1.15]:
+				for sz in [-2.8, 2.8]:
+					var p: Vector3 = target.global_position + b.x * sx + b.y * sy + b.z * sz
+					if is_position_behind(p):
+						continue
+					var s := unproject_position(p) / vsize
+					lo = lo.min(s)
+					hi = hi.max(s)
+		if hi.x > lo.x:
+			_blur_mat.set_shader_parameter("car_c", (lo + hi) * 0.5)
+			_blur_mat.set_shader_parameter("car_r", (hi - lo) * 0.62)
+		_blur_mat.set_shader_parameter("keep_band", Vector2(-1.0, 2.0))
+	else:
+		# Onboard: only the band at the horizon streaks, not the cockpit
+		# below or the halo above.
+		_blur_mat.set_shader_parameter("car_r", Vector2.ZERO)
+		_blur_mat.set_shader_parameter("keep_band", Vector2(0.3, 0.6))
+	# Streak towards where the road ahead is on screen.
+	var ahead: Vector3 = target.global_position + target.global_basis.z * 80.0 + Vector3.UP * 1.0
+	var vp := get_viewport()
+	if vp != null and not is_position_behind(ahead):
+		var s := unproject_position(ahead) / vp.get_visible_rect().size
+		_blur_mat.set_shader_parameter("focus", Vector2(clampf(s.x, 0.25, 0.75), clampf(s.y, 0.25, 0.7)))
+
 ## Road vibration: a little at high speed, more over kerbs, grass and gravel.
 func _shake(spd: float, delta: float) -> Vector3:
 	_shake_t += delta
-	var amp := clampf((spd - 50.0) * 0.0006, 0.0, 0.018)
+	# Grows with speed: barely there at 180 km/h, a fine buzz flat out.
+	var amp := clampf((spd - 45.0) * 0.0007, 0.0, 0.03)
 	if target.wheels_on_grass > 0:
 		amp += 0.03 * clampf(spd / 30.0, 0.0, 1.0)
 	if amp <= 0.0:
 		return Vector3.ZERO
-	return Vector3(sin(_shake_t * 61.0) * 0.6, sin(_shake_t * 83.0 + 1.3), sin(_shake_t * 47.0 + 0.4) * 0.4) * amp
+	# A fine buzz plus a slower float over the road's undulations.
+	var bob := sin(_shake_t * 7.3) * 0.6 + sin(_shake_t * 11.9 + 2.0) * 0.4
+	return Vector3(sin(_shake_t * 61.0) * 0.6, sin(_shake_t * 83.0 + 1.3) + bob * 0.8, sin(_shake_t * 47.0 + 0.4) * 0.4) * amp

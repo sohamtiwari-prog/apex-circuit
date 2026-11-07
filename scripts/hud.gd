@@ -1418,6 +1418,7 @@ func _build_pause_menu(root: Control) -> void:
 	_setting(v, "ideal_ghost", "Ghost car: the ideal lap", func(): _toggle("ideal_ghost"))
 	_setting(v, "pit_mode", "Pit stops", func(): save.set_setting("pit_mode", "auto" if save.get_setting("pit_mode") == "manual" else "manual"))
 	_setting(v, "vibration", "Vibration", func(): _toggle("vibration"))
+	_setting(v, "speed_blur", "Speed blur", func(): _toggle("speed_blur"))
 	_setting(v, "engineer", "Race engineer radio", func(): _toggle("engineer"))
 	_setting(v, "graphics", "Graphics", func():
 		save.set_setting("graphics", "saver" if save.get_setting("graphics") != "saver" else "high"))
@@ -1490,6 +1491,7 @@ func _refresh_menu() -> void:
 	(_menu_buttons["ideal_ghost"] as Label).text = on_off.call("ideal_ghost")
 	(_menu_buttons["pit_mode"] as Label).text = "You drive" if save.get_setting("pit_mode") != "auto" else "Automatic"
 	(_menu_buttons["vibration"] as Label).text = on_off.call("vibration")
+	(_menu_buttons["speed_blur"] as Label).text = on_off.call("speed_blur")
 	(_menu_buttons["engineer"] as Label).text = on_off.call("engineer")
 	(_menu_buttons["graphics"] as Label).text = "Battery saver" if save.get_setting("graphics") == "saver" else "High"
 	touch.configure(control, bool(save.get_setting("auto_accelerate")), float(save.get_setting("tilt_sensitivity")))

@@ -7,7 +7,8 @@ render_mode cull_disabled;
 
 uniform sampler2D grain : filter_linear_mipmap, repeat_enable;
 uniform sampler2D grain_normal : hint_normal, filter_linear_mipmap, repeat_enable;
-uniform float rubber = 0.32;
+uniform float rubber = 0.42;
+uniform float edge_dust_from = 4.5;   // metres from the centre where the off-line dust starts
 uniform float wetness = 0.0;     // 0 dry .. 1 soaked: darker, glossy, puddles off the line
 
 void fragment() {
@@ -20,19 +21,36 @@ void fragment() {
 	float g1 = texture(grain, UV * vec2(0.6, 0.6)).r;
 	float g2 = texture(grain, UV * vec2(5.0, 5.0)).r;
 	float g3 = texture(grain, UV * vec2(0.08, 0.08)).r;
-	// Asphalt: fine aggregate, large patches of repair, rubbered line.
+	// Asphalt: fine aggregate, large patches of repair, a rubbered line
+	// (the whole line darker, the two wheel tracks darkest), and dust and
+	// marbles off line, lightest towards the edges.
 	float d = UV2.x - UV2.y;
-	float rub = exp(-d * d / 2.2) * asphalt;
-	vec3 asphalt_c = c * (0.82 + 0.32 * g2) * (0.9 + 0.2 * g3);
+	float line_band = exp(-d * d / 7.5);
+	float tracks = exp(-pow(abs(d) - 0.8, 2.0) / 0.35);
+	float rub = clamp(line_band * 0.65 + tracks * 0.55, 0.0, 1.0) * asphalt;
+	float edge = smoothstep(edge_dust_from, edge_dust_from + 2.5, abs(UV2.x)) * asphalt;
+	float patches = smoothstep(0.42, 0.62, g3);
+	vec3 asphalt_c = c * (0.8 + 0.34 * g2) * (0.9 + 0.2 * g3);
+	asphalt_c *= 1.0 - 0.07 * patches;                       // resurfaced patches
 	asphalt_c *= 1.0 - rubber * rub * (0.75 + 0.5 * g1);
+	asphalt_c = mix(asphalt_c, asphalt_c * vec3(1.16, 1.13, 1.08), edge * (0.5 + 0.5 * g1)); // dust
+	// Tyre marks: long dark streaks along the line (locked wheels into the
+	// corners, wheelspin out of them), in stretches, not everywhere.
+	float streak = texture(grain, vec2(UV2.x * 0.55, UV.y * 0.045)).r;
+	float stretch = smoothstep(0.52, 0.72, texture(grain, vec2(0.37, UV.y * 0.011)).r);
+	float skid = smoothstep(0.56, 0.78, streak) * stretch * (line_band * 0.7 + tracks * 0.6) * asphalt;
+	asphalt_c *= 1.0 - 0.5 * clamp(skid, 0.0, 1.0);
 	// Gravel: coarse, high contrast.
 	vec3 gravel_c = c * (0.7 + 0.6 * g2) * (0.85 + 0.3 * g1);
 	vec3 paint_c = c * (0.94 + 0.08 * g2);
 	vec3 col = paint_c;
 	col = mix(col, asphalt_c, asphalt);
 	col = mix(col, gravel_c, gravel);
-	col = mix(col, c * (0.88 + 0.22 * g2), runoff);
-	float rough = mix(0.9, 0.72, rub) - 0.12 * (1.0 - code) * step(code, 0.1);
+	// Run-off asphalt: coarser and dustier than the track, in patches.
+	vec3 runoff_c = c * (0.78 + 0.34 * g2) * (0.86 + 0.28 * g3) * (1.0 - 0.08 * patches);
+	col = mix(col, runoff_c, runoff);
+	// The rubbered line has a slight sheen; paint is smoother than asphalt.
+	float rough = mix(0.88, 0.62, rub) - 0.14 * (1.0 - code) * step(code, 0.1);
 	float spec = mix(0.4, 0.15, gravel);
 	if (wetness > 0.0) {
 		// Standing water collects in the low patches; the line dries first.

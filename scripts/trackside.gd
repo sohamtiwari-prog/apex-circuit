@@ -761,6 +761,27 @@ func _hills() -> void:
 		var back1 := c3 + d1 * (radius + 1100.0) + Vector3(0, h1 * 0.6, 0)
 		_hill_quad(in0, in1, top1, top0, near_col)
 		_hill_quad(top0, top1, back1, back0, far_col)
+	# A tree line along the foot of the hills: a jagged band of crowns, so
+	# the land runs into woods on the horizon instead of a smooth slope.
+	if track.style == "park" or track.style == "forest":
+		var crowns := 720
+		var c3 := Vector3(centre.x, (track.terrain_base if not track.terrain_h.is_empty() else Track.GROUND_Y) - 0.5, centre.y)
+		var dark := Color(0.09, 0.17, 0.07) if track.style == "forest" else Color(0.11, 0.2, 0.08)
+		for row in 2:
+			var r := radius + 40.0 + row * 70.0
+			var prev := Vector3.ZERO
+			var prev_top := Vector3.ZERO
+			for k in range(crowns + 1):
+				var a := TAU * k / crowns + row * 0.004
+				var d := Vector3(cos(a), 0, sin(a))
+				var base := c3 + d * r
+				# Crowns: big and small, every few metres round the ring.
+				var hh := 14.0 + 9.0 * (noise.get_noise_1d(k * 0.9 + row * 50.0) * 0.5 + 0.5) + (4.0 if k % 2 == 0 else 0.0)
+				var top := base + Vector3(0, hh + row * 6.0, 0)
+				if k > 0:
+					_hill_quad(prev, base, top, prev_top, dark.lightened(row * 0.06))
+				prev = base
+				prev_top = top
 
 
 func _hill_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, col: Color) -> void:

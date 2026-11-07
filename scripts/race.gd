@@ -416,6 +416,8 @@ func _apply_assists() -> void:
 	if line_guide != null:
 		line_guide.visible = bool(save.get_setting("racing_line"))
 	var high := String(save.get_setting("graphics")) != "saver"
+	if cam != null:
+		cam.speed_fx = high and bool(save.get_setting("speed_blur")) and not OS.has_feature("web")
 	if high != _graphics_high:
 		_graphics_high = high
 		Look.apply_quality(self, high)

@@ -248,10 +248,13 @@ static func _material(key: String) -> StandardMaterial3D:
 	m.vertex_color_is_srgb = true
 	match key:
 		"paint":
-			m.metallic = 0.45
-			m.roughness = 0.22
+			# Glossy paint under a clear lacquer: the colour stays rich (low
+			# metallic) and the lacquer carries sharp sky reflections.
+			m.metallic = 0.2
+			m.roughness = 0.24
 			m.clearcoat_enabled = true
-			m.clearcoat = 0.6
+			m.clearcoat = 1.0
+			m.clearcoat_roughness = 0.06
 		"matte":
 			# Carbon fibre: a fine twill weave, mapped without UVs.
 			m.metallic = 0.3

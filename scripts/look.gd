@@ -5,13 +5,13 @@ extends RefCounted
 
 const SKIES := {
 	"park": {"top": Color(0.17, 0.38, 0.74), "horizon": Color(0.68, 0.79, 0.9), "cover": 0.42,
-		"sun": Color(1.0, 0.96, 0.88), "sun_energy": 1.35, "sun_rot": Vector3(-48, 35, 0), "fog": Color(0.72, 0.8, 0.9)},
+		"sun": Color(1.0, 0.96, 0.88), "sun_energy": 2.05, "sun_rot": Vector3(-48, 35, 0), "fog": Color(0.72, 0.8, 0.9)},
 	"forest": {"top": Color(0.28, 0.42, 0.62), "horizon": Color(0.72, 0.77, 0.82), "cover": 0.62,
-		"sun": Color(0.98, 0.95, 0.9), "sun_energy": 1.15, "sun_rot": Vector3(-40, 60, 0), "fog": Color(0.74, 0.78, 0.82)},
+		"sun": Color(0.98, 0.95, 0.9), "sun_energy": 1.8, "sun_rot": Vector3(-40, 60, 0), "fog": Color(0.74, 0.78, 0.82)},
 	"desert": {"top": Color(0.2, 0.44, 0.78), "horizon": Color(0.9, 0.84, 0.72), "cover": 0.12,
-		"sun": Color(1.0, 0.9, 0.74), "sun_energy": 1.5, "sun_rot": Vector3(-34, -40, 0), "fog": Color(0.9, 0.84, 0.74)},
+		"sun": Color(1.0, 0.9, 0.74), "sun_energy": 2.25, "sun_rot": Vector3(-34, -40, 0), "fog": Color(0.9, 0.84, 0.74)},
 	"city": {"top": Color(0.14, 0.38, 0.78), "horizon": Color(0.7, 0.8, 0.92), "cover": 0.28,
-		"sun": Color(1.0, 0.95, 0.86), "sun_energy": 1.4, "sun_rot": Vector3(-56, 20, 0), "fog": Color(0.76, 0.83, 0.92)},
+		"sun": Color(1.0, 0.95, 0.86), "sun_energy": 2.1, "sun_rot": Vector3(-56, 20, 0), "fog": Color(0.76, 0.83, 0.92)},
 	"studio": {"top": Color(0.08, 0.09, 0.12), "horizon": Color(0.22, 0.24, 0.3), "cover": 0.0,
 		"sun": Color(1.0, 0.97, 0.92), "sun_energy": 1.2, "sun_rot": Vector3(-40, 30, 0), "fog": Color(0.1, 0.1, 0.12)},
 }
@@ -19,7 +19,7 @@ const SKIES := {
 
 ## Late-evening light: low golden sun, long shadows, warm haze.
 const SUNSET := {"top": Color(0.14, 0.2, 0.42), "horizon": Color(1.0, 0.62, 0.34), "cover": 0.36,
-	"sun": Color(1.0, 0.64, 0.36), "sun_energy": 1.25, "fog": Color(0.95, 0.66, 0.46),
+	"sun": Color(1.0, 0.64, 0.36), "sun_energy": 1.85, "fog": Color(0.95, 0.66, 0.46),
 	"cloud": Color(1.0, 0.78, 0.6), "cloud_shade": Color(0.42, 0.34, 0.46)}
 
 
@@ -63,13 +63,19 @@ static func build(parent: Node, style: String, time_of_day := "day") -> Directio
 		sky_mat.set_shader_parameter("cloud_shade", cfg["cloud_shade"])
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
-	sky.radiance_size = Sky.RADIANCE_SIZE_64
+	sky.radiance_size = Sky.RADIANCE_SIZE_128     # (sharper reflections in paint and glass)
 
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.6 if sunset else 0.75
+	# Less fill than before, more sun: shadows and form, not flat light.
+	env.ambient_light_energy = 0.42 if sunset else 0.5
+	# Shade lit partly by the sky (blue) and partly by light bounced off
+	# the ground and buildings (warm), not by pure sky: walls in shadow
+	# stay their colour instead of going blue.
+	env.ambient_light_sky_contribution = 0.55
+	env.ambient_light_color = Color(0.62, 0.58, 0.52)
 	if night:
 		# The bowl of floodlights fills in from every side.
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -84,8 +90,8 @@ static func build(parent: Node, style: String, time_of_day := "day") -> Directio
 	env.glow_bloom = 0.04
 	env.glow_hdr_threshold = 1.1
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.06
-	env.adjustment_saturation = 1.08
+	env.adjustment_contrast = 1.1
+	env.adjustment_saturation = 1.0
 	if night:
 		env.glow_intensity = 0.8
 		env.glow_bloom = 0.08
@@ -104,7 +110,7 @@ static func build(parent: Node, style: String, time_of_day := "day") -> Directio
 	sun.light_color = cfg["sun"]
 	sun.light_energy = cfg["sun_energy"]
 	sun.shadow_enabled = true
-	sun.shadow_blur = 1.5
+	sun.shadow_blur = 1.0
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.directional_shadow_max_distance = 160.0 if sunset else 140.0
 	sun.directional_shadow_split_1 = 0.25

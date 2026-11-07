@@ -71,6 +71,7 @@ const _DEFAULTS := {
 		"tyres": "medium",          # quick race: starting compound
 		"weather": "dry",           # dry, wet, changing
 		"vibration": true,          # phone buzzes on contact, kerbs, grass
+		"speed_blur": true,         # the edges of the picture streak at speed
 		"engineer": true,           # race engineer radio messages
 		"race_control": true,       # flags, penalties, VSC, retirements (scripts/race_control.gd)
 		"pit_mode": "manual",       # manual: you drive the pit lane; auto: the car drives itself
