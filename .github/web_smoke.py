@@ -41,19 +41,21 @@ async def main() -> int:
         # And a race draws its 3D world (index.html?race=: straight onto the
         # grid). A world that isn't drawn (sky and HUD only) is a small,
         # mostly flat picture; the grid with 20 cars is several times bigger.
-        await pg.goto(URL + "?race=silvermoor")
-        try:
-            await pg.wait_for_function("!document.getElementById('status')", timeout=180000)
-            await pg.wait_for_timeout(15000)
-            race_png = await pg.screenshot(path=SHOT.replace(".png", "_race.png"), timeout=120000)
-            if len(race_png) < 400000:
-                print("FAIL  the race's 3D world isn't drawn (%d byte screenshot)" % len(race_png))
+        # Three kinds of venue: open parkland, the densest forest, a city.
+        for tid in ["silvermoor", "ardennes", "marina"]:
+            await pg.goto(URL + "?race=" + tid)
+            try:
+                await pg.wait_for_function("!document.getElementById('status')", timeout=180000)
+                await pg.wait_for_timeout(15000)
+                race_png = await pg.screenshot(path=SHOT.replace(".png", "_%s.png" % tid), timeout=180000)
+                if len(race_png) < 400000:
+                    print("FAIL  %s: the race's 3D world isn't drawn (%d byte screenshot)" % (tid, len(race_png)))
+                    ok = False
+                else:
+                    print("PASS  %s: the race draws the track and the grid (%d byte screenshot)" % (tid, len(race_png)))
+            except Exception as e:  # noqa: BLE001
+                print("FAIL  %s: the race didn't start: %s" % (tid, e))
                 ok = False
-            else:
-                print("PASS  the race draws the track and the grid (%d byte screenshot)" % len(race_png))
-        except Exception as e:  # noqa: BLE001
-            print("FAIL  the race didn't start: %s" % e)
-            ok = False
         bad = [l for l in logs if "PAGEERROR" in l or "SCRIPT ERROR" in l or "Parse Error" in l]
         for l in logs[-25:]:
             print("    " + l[:200])

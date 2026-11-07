@@ -189,6 +189,8 @@ func build(id: String = "kestrel_park") -> void:
 	var sv := get_node_or_null("/root/Save") if is_inside_tree() else null
 	if sv != null and String(sv.get_setting("graphics")) == "saver":
 		detail = 0.55
+	if OS.has_feature("web"):
+		detail = minf(detail, 0.35)
 	style = catalog_entry(id)["style"]
 	if id == "kestrel_park" and not FileAccess.file_exists("res://tracks/kestrel_park.json"):
 		road_half = 6.5
@@ -1357,7 +1359,7 @@ func _build_scenery() -> void:
 	# Hedgerows and tree lines across the land (field edges, lanes): rows of
 	# big trees close together, so the countryside reads as fields and woods
 	# rather than trees dotted about.
-	if style == "park" or style == "forest":
+	if (style == "park" or style == "forest") and not OS.has_feature("web"):
 		var rows := int(26 * detail) if style == "park" else int(14 * detail)
 		for r in rows:
 			var a := Vector2(rng.randf_range(lo.x, hi.x), rng.randf_range(lo.y, hi.y))
@@ -1534,6 +1536,8 @@ static func _canopy(st: SurfaceTool, centre: Vector3, radii: Vector3, col: Color
 ## a far mesh, near cells draw the full model and far cells the cheap one.
 func _chunked_multimesh(mesh: Mesh, xforms: Array, cols: Array, far_mesh: Mesh = null) -> void:
 	var cell := 150.0 if far_mesh != null else 300.0
+	if OS.has_feature("web"):
+		cell *= 4.0                    # (WebGL drew nothing at all with too many of them)
 	var cells := {}
 	for k in range(xforms.size()):
 		var p: Vector3 = xforms[k].origin
