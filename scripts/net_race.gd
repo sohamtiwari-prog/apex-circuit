@@ -18,7 +18,9 @@ const SEND_HZ := 20.0
 const DELAY_MIN := 0.12        # seconds of interpolation delay (adapts to jitter)
 const DELAY_MAX := 0.6         # online through a public server can be jumpy
 const START_WAIT := 15.0       # max seconds to wait for everyone to load
-const LEAD_MAX := 0.3          # carry other cars forward at most this far (s)
+const LEAD_MAX := 0.6          # carry other cars forward at most this far (s): all the delay
+const SNAP := 6.0              # a correction bigger than this (m) is a reset: no gliding
+const GLIDE := 0.07            # small corrections are blended in over about this long (s)
 
 var race: Node
 var Net: Node                  # the Net autoload, looked up at runtime
@@ -46,6 +48,7 @@ var _touching := {}
 var _kicks := {}                    # slot -> [[net time, velocity change]] from contact here
 var _yaw_rate := {}                 # slot -> smoothed yaw rate (rad/s) of a network car
 var _ahead := {}                    # slot -> [smoothed forward offset, its time]
+var _disp := {}                     # slot -> [position, rotation, velocity, yaw rate, time] as last drawn
 
 
 func setup(r: Node) -> void:
@@ -100,8 +103,84 @@ static func car_state(c: RaceCar) -> PackedFloat32Array:
 	var xf := c.global_transform
 	var q := xf.basis.get_rotation_quaternion()
 	var v := c.remote_vel if c.remote else c.linear_velocity
+	if c.freeze and not c.remote:
+		v = Vector3.ZERO                 # (a frozen body keeps its last velocity, but isn't moving)
 	return PackedFloat32Array([xf.origin.x, xf.origin.y, xf.origin.z, q.x, q.y, q.z, q.w,
 		v.x, v.y, v.z, c.steering, c.rpm, float(c.gear), c.brake_input, 1.0 if c.drs_open else 0.0, c.throttle])
+
+
+## On the wire, a car's state is packed into 43 bytes (it was ~120 as
+## floats in a dictionary): a 20-car snapshot is ~0.9 KB instead of 2.4 KB,
+## so it fits in one network packet (nothing to reassemble, nothing lost
+## when one fragment of a big packet goes missing) and online it's a third
+## of the traffic through the servers. Position stays exact; rotation,
+## speed and the rest are rounded far below anything you could see.
+const PACKED := 43
+
+static func _q16(x: float, scale: float) -> int:
+	return clampi(roundi(x * scale), -32767, 32767)
+
+
+static func pack_state(buf: StreamPeerBuffer, slot: int, s: PackedFloat32Array) -> void:
+	var f := s.duplicate()
+	if f.size() < 24:
+		f.resize(24)
+	buf.put_u8(slot)
+	buf.put_float(f[0]); buf.put_float(f[1]); buf.put_float(f[2])
+	var q := Quaternion(f[3], f[4], f[5], f[6]).normalized()
+	if q.w < 0.0:
+		q = -q                               # (same rotation: keeps w >= 0)
+	buf.put_16(_q16(q.x, 32767.0)); buf.put_16(_q16(q.y, 32767.0)); buf.put_16(_q16(q.z, 32767.0))
+	buf.put_16(_q16(f[7], 100.0)); buf.put_16(_q16(f[8], 100.0)); buf.put_16(_q16(f[9], 100.0))
+	buf.put_8(clampi(roundi(f[10] * 127.0), -127, 127))
+	buf.put_u16(clampi(roundi(f[11]), 0, 65535))
+	buf.put_8(clampi(int(f[12]), -1, 12))
+	buf.put_u8(clampi(roundi(f[13] * 255.0), 0, 255))
+	buf.put_u8(1 if f[14] > 0.5 else 0)
+	buf.put_u8(clampi(roundi(f[15] * 255.0), 0, 255))
+	buf.put_8(int(f[16])); buf.put_u16(clampi(roundi(f[17] * 65535.0), 0, 65535)); buf.put_u8(int(f[18])); buf.put_8(int(f[19]))
+	buf.put_u16(clampi(roundi(f[20] * 10.0), 0, 65535)); buf.put_u16(clampi(roundi(f[21] * 10.0), 0, 65535))
+	buf.put_u8(clampi(int(f[22]), 0, 255)); buf.put_u8(clampi(int(f[23]), 0, 255))
+
+
+## [slot, state] from bytes written by pack_state.
+static func unpack_state(buf: StreamPeerBuffer) -> Array:
+	var slot := buf.get_u8()
+	var f := PackedFloat32Array()
+	f.resize(24)
+	f[0] = buf.get_float(); f[1] = buf.get_float(); f[2] = buf.get_float()
+	var qx := buf.get_16() / 32767.0
+	var qy := buf.get_16() / 32767.0
+	var qz := buf.get_16() / 32767.0
+	f[3] = qx; f[4] = qy; f[5] = qz; f[6] = sqrt(maxf(1.0 - qx * qx - qy * qy - qz * qz, 0.0))
+	f[7] = buf.get_16() / 100.0; f[8] = buf.get_16() / 100.0; f[9] = buf.get_16() / 100.0
+	f[10] = buf.get_8() / 127.0
+	f[11] = buf.get_u16()
+	f[12] = buf.get_8()
+	f[13] = buf.get_u8() / 255.0
+	f[14] = buf.get_u8()
+	f[15] = buf.get_u8() / 255.0
+	f[16] = buf.get_8(); f[17] = buf.get_u16() / 65535.0; f[18] = buf.get_u8(); f[19] = buf.get_8()
+	f[20] = buf.get_u16() / 10.0; f[21] = buf.get_u16() / 10.0
+	f[22] = buf.get_u8(); f[23] = buf.get_u8()
+	return [slot, f]
+
+
+static func pack_states(states: Dictionary) -> PackedByteArray:
+	var buf := StreamPeerBuffer.new()
+	for slot in states:
+		pack_state(buf, int(slot), states[slot])
+	return buf.data_array
+
+
+static func unpack_states(bytes: PackedByteArray) -> Dictionary:
+	var buf := StreamPeerBuffer.new()
+	buf.data_array = bytes
+	var out := {}
+	while buf.get_available_bytes() >= PACKED:
+		var r := unpack_state(buf)
+		out[int(r[0])] = r[1]
+	return out
 
 
 ## Turns a car into a network-driven one: no physics of its own, moved to
@@ -151,24 +230,29 @@ func physics_tick(delta: float) -> void:
 			var cars := {}
 			for e in race.entrants:
 				cars[e.slot] = entrant_state(e)
-			var snap := {"t": "s", "nt": net_time(), "time": race.race_time, "st": race.state, "lt": race.lights_time, "cars": cars}
+			var snap := {"t": "s", "nt": net_time(), "time": race.race_time, "st": race.state, "lt": race.lights_time, "b": pack_states(cars)}
 			if race.control != null and race.control.sc_phase > 0:
 				snap["sc"] = race.control.sc.net_state()
 			elif race.control != null:
 				snap["sc"] = [0, 0]
 			Net.send(0, snap, false)
 		else:
-			Net.send(1, {"t": "c", "nt": net_time(), "s": entrant_state(race.player)}, false)
+			Net.send(1, {"t": "c", "nt": net_time(), "b": pack_states({race.player.slot: entrant_state(race.player)})}, false)
 	if Net.is_host():
 		_std_t -= delta
 		if _std_t <= 0.0:
 			_std_t = 0.25
-			var rows: Array = []
+			# (Numbers as one flat array, 10 per car, and the few retirement
+			# reasons on their own: a third of the size of a list of lists.)
+			var flat := PackedFloat32Array()
+			var why := {}
 			for e in race.entrants:
-				rows.append([e.slot, e.lap, e.progress, 1 if e.finished else 0, e.finish_time, e.best_lap, e.last_lap, e.position,
-					1 if e.dnf else 0, e.dnf_reason, 1 if e.car.visible else 0])
+				flat.append_array(PackedFloat32Array([e.slot, e.lap, e.progress, 1 if e.finished else 0, e.finish_time, e.best_lap, e.last_lap, e.position,
+					1 if e.dnf else 0, 1 if e.car.visible else 0]))
+				if e.dnf_reason != "":
+					why[e.slot] = e.dnf_reason
 			var vsc: int = race.control.vsc_state() if race.control != null else 0
-			Net.send(0, {"t": "std", "rows": rows, "vsc": vsc})
+			Net.send(0, {"t": "std", "f": flat, "why": why, "vsc": vsc})
 	else:
 		# Follow the host's clock and start lights.
 		if _host_time_at > 0.0 and race.state != 0:
@@ -248,8 +332,10 @@ func _drive_remote_lead(e, at: float, lead_max: float) -> void:
 		f = clampf((at - a[0]) / (b[0] - a[0]), 0.0, 1.0)
 		pos = Vector3(sa[0], sa[1], sa[2]).lerp(Vector3(sb[0], sb[1], sb[2]), f)
 	else:
-		# Newer than anything we have: extrapolate a little on velocity.
-		var ahead := clampf(at - a[0], 0.0, 0.25)
+		# Newer than anything we have (a hiccup on the connection, or the
+		# other phone paused for a moment): keep it going on its velocity
+		# (up to half a second here, plus the lead below).
+		var ahead := clampf(at - a[0], 0.0, 0.5)
 		pos = Vector3(sa[0], sa[1], sa[2]) + Vector3(sa[7], sa[8], sa[9]) * ahead
 	var qa := Quaternion(sa[3], sa[4], sa[5], sa[6]).normalized()
 	var qb := Quaternion(sb[3], sb[4], sb[5], sb[6]).normalized()
@@ -271,9 +357,18 @@ func _drive_remote_lead(e, at: float, lead_max: float) -> void:
 	_yaw_rate[e.slot] = ws
 	if lead > 0.0 and vel.length() > 1.0:
 		var turn := ws * lead
+		# Speeding up or braking (from the last two states), so a car
+		# braking for a corner is drawn slowing, not still at full speed.
+		var acc := 0.0
+		if b[0] > a[0]:
+			acc = clampf((Vector3(sb[7], sb[8], sb[9]).length() - Vector3(sa[7], sa[8], sa[9]).length()) / (b[0] - a[0]), -45.0, 15.0)
+		var spd := vel.length()
+		var t_stop := lead if acc >= 0.0 else minf(lead, spd / -acc)
+		var dist := spd * t_stop + 0.5 * acc * t_stop * t_stop
 		# The step forward, smoothed over ~0.05 s: packets arriving early or
 		# late would otherwise make it (and the car) twitch.
-		var step := vel.rotated(Vector3.UP, turn * 0.5) * lead
+		var step := vel.rotated(Vector3.UP, turn * 0.5) / spd * dist
+		vel *= maxf(spd + acc * t_stop, 0.0) / spd
 		var now_s := at                    # the game's clock (also in tests)
 		var prev: Array = _ahead.get(e.slot, [step, now_s])
 		var k := 1.0 - exp(-maxf(now_s - float(prev[1]), 0.0) / 0.05)
@@ -282,7 +377,10 @@ func _drive_remote_lead(e, at: float, lead_max: float) -> void:
 		pos += sm
 		basis = Basis(Vector3.UP, turn) * basis
 		vel = vel.rotated(Vector3.UP, turn)
-	# Pushes from contact on this phone that its states don't show yet.
+	# Pushes from contact on this phone that its states don't show yet
+	# (added after the gliding below: they're known here, not guessed).
+	var kick_pos := Vector3.ZERO
+	var kick_vel := Vector3.ZERO
 	var ks: Array = _kicks.get(e.slot, [])
 	if not ks.is_empty():
 		var now_t := net_time()
@@ -292,11 +390,30 @@ func _drive_remote_lead(e, at: float, lead_max: float) -> void:
 			if kt < at:
 				ks.remove_at(k)             # its states include this push by now
 				continue
-			pos += (ks[k][1] as Vector3) * maxf(now_t - kt, 0.0)
-			vel += ks[k][1]
+			kick_pos += (ks[k][1] as Vector3) * maxf(now_t - kt, 0.0)
+			kick_vel += ks[k][1]
 			k += 1
-	c.global_transform = Transform3D(basis, pos)
-	c.remote_vel = vel
+	# What's drawn (and touched) glides onto that: each new state corrects
+	# the prediction a little, and those corrections are blended in over a
+	# few hundredths of a second instead of making the car jump. Only a big
+	# difference (a reset, the pits) moves it at once.
+	var shown_t := at + clampf(net_time() - at, 0.0, lead_max)
+	var prev_d: Array = _disp.get(e.slot, [])
+	if not prev_d.is_empty():
+		var dt: float = shown_t - float(prev_d[4])
+		if dt >= 0.0 and dt < 0.5:
+			var pv: Vector3 = prev_d[2]
+			var pturn: float = float(prev_d[3]) * dt
+			var guess: Vector3 = (prev_d[0] as Vector3) + pv.rotated(Vector3.UP, pturn * 0.5) * dt
+			var err := pos - guess
+			if err.length() < SNAP:
+				var kp := 1.0 - exp(-dt / GLIDE)
+				pos = guess + err * kp
+				var qg := (Basis(Vector3.UP, pturn) * (prev_d[1] as Basis)).get_rotation_quaternion()
+				basis = Basis(qg.slerp(basis.get_rotation_quaternion(), 1.0 - exp(-dt / (GLIDE * 0.8))))
+	_disp[e.slot] = [pos, basis, vel, ws, shown_t]
+	c.global_transform = Transform3D(basis, pos + kick_pos)
+	c.remote_vel = vel + kick_vel
 	c.steering = lerpf(sa[10], sb[10], f)
 	c.rpm = lerpf(sa[11], sb[11], f)
 	c.gear = int(sb[12])
@@ -363,8 +480,10 @@ func _on_message(from: int, m: Dictionary) -> void:
 				offs.append(nt - _sim)
 				if offs.size() > 40:
 					offs.pop_front()
-				_jitter = maxf(_jitter, float(offs.max()) - float(offs[offs.size() - 1]))
-				_push(_slot_of_peer[from], m["s"], nt)
+				_note_late(float(offs.max()) - float(offs[offs.size() - 1]))
+				var mine: Dictionary = unpack_states(m.get("b", PackedByteArray()))
+				if not mine.is_empty():
+					_push(_slot_of_peer[from], mine.values()[0], nt)
 		"ready":
 			_ready_peers[from] = true
 		"s":
@@ -377,12 +496,12 @@ func _on_message(from: int, m: Dictionary) -> void:
 			_offsets.append(float(m["nt"]) - _sim)
 			if _offsets.size() > 40:
 				_offsets.pop_front()
-			_jitter = maxf(_jitter, float(_offsets.max()) - float(_offsets[_offsets.size() - 1]))
+			_note_late(float(_offsets.max()) - float(_offsets[_offsets.size() - 1]))
 			if _offset == -INF:
 				_offset = _offsets[0]
 			_host_state = int(m["st"])
 			var me: int = race.player.slot
-			var cars: Dictionary = m["cars"]
+			var cars: Dictionary = unpack_states(m.get("b", PackedByteArray()))
 			for slot in cars:
 				if int(slot) != me:
 					_push(int(slot), cars[slot], float(m["nt"]))
@@ -395,7 +514,13 @@ func _on_message(from: int, m: Dictionary) -> void:
 		"std":
 			if Net.is_host():
 				return
-			_apply_standings(m["rows"])
+			var flat: PackedFloat32Array = m.get("f", PackedFloat32Array())
+			var why: Dictionary = m.get("why", {})
+			var rows: Array = []
+			for k in range(0, flat.size() - 9, 10):
+				rows.append([flat[k], flat[k + 1], flat[k + 2], flat[k + 3], flat[k + 4], flat[k + 5], flat[k + 6], flat[k + 7],
+					flat[k + 8], String(why.get(int(flat[k]), "")), flat[k + 9]])
+			_apply_standings(rows)
 			if race.control != null and int(m.get("vsc", 0)) != race.control.vsc_state():
 				race.control.set_vsc(int(m.get("vsc", 0)))
 		"rc":
@@ -409,6 +534,20 @@ func _on_message(from: int, m: Dictionary) -> void:
 		"to_lobby":
 			ended = true
 			race.go_to_lobby()
+
+
+## How late packets arrive: the delay covers nine in ten of them. The odd
+## very late one (a hiccup in the connection) doesn't push every car further
+## back for the next few seconds; the prediction covers it instead.
+var _late: Array[float] = []
+
+func _note_late(l: float) -> void:
+	_late.append(l)
+	if _late.size() > 60:
+		_late.pop_front()
+	var s := _late.duplicate()
+	s.sort()
+	_jitter = maxf(_jitter, s[int(0.9 * (s.size() - 1))])
 
 
 func _apply_standings(rows: Array) -> void:

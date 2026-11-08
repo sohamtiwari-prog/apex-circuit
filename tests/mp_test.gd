@@ -11,6 +11,10 @@ func _check(ok: bool, msg: String) -> void:
 	print(("  PASS  " if ok else "  FAIL  ") + msg)
 	if not ok:
 		failures.append(msg)
+func secs_now(t0: int) -> float:
+	return (Time.get_ticks_msec() - t0) / 1000.0
+
+
 func _wait(cond: Callable, secs: float) -> bool:
 	var t0 := Time.get_ticks_msec()
 	while Time.get_ticks_msec() - t0 < secs * 1000.0:
@@ -124,6 +128,13 @@ func _run() -> void:
 	var spinning := false
 	var offs := 0
 	var off_now := false
+	# Every car near you on this phone (bots too, on a friend's phone): how
+	# often one visibly jumps (> 0.5 m from where its speed takes it).
+	var near_last := {}
+	var near_frames := 0
+	var near_jumps := 0
+	var near_worst := 0.0
+	var near_when := {}
 	while not race._results_shown and Time.get_ticks_msec() - go_time < 330000:
 		await process_frame          # what you see: once per drawn frame
 		frames += 1
@@ -146,11 +157,29 @@ func _run() -> void:
 		ticks += 1
 		if err > 0.5:
 			big += 1
+			if big <= 6 or (big % 10 == 0 and big < 100):
+				var bf: Array = race.net._buffers.get(other.slot, [])
+				var newest: float = bf[bf.size() - 1][0] if not bf.is_empty() else -1.0
+				print("      jump %.2f m at %.1f s: other in pit phase %d%s, step %.2f m vs %.2f expected, drawn speed %.1f, newest state %.2f s old, at %s" % [err, secs_now(go_time), other.pit_phase, " (finished)" if other.finished else "", step, expect, other.car.remote_vel.length(), race.net.net_time() - newest, str(p)])
 			var b := int((Time.get_ticks_msec() - go_time) / 5000) * 5
 			big_when[b] = big_when.get(b, 0) + 1
 		max_jump = maxf(max_jump, err)
 		path += step
 		last_pos = p
+		for e in race.entrants:
+			if e == race.player or not e.car.visible:
+				continue
+			var q: Vector3 = e.car.global_position
+			if q.distance_to(race.car.global_position) < 60.0 and near_last.has(e.slot) and e.pit_phase == 0:
+				var vel: float = e.car.remote_vel.length() if e.car.remote else e.car.linear_velocity.length()
+				var er := absf(q.distance_to(near_last[e.slot]) - vel * dt)
+				near_frames += 1
+				if er > 0.5:
+					near_jumps += 1
+					var nb := int((Time.get_ticks_msec() - go_time) / 10000) * 10
+					near_when[nb] = near_when.get(nb, 0) + 1
+				near_worst = maxf(near_worst, er)
+			near_last[e.slot] = q
 		var me = race.player
 		if not me.finished and me.pit_phase == 0:
 			var trk = race.track
@@ -169,6 +198,8 @@ func _run() -> void:
 	print("    contact: %d touches on this phone's car, %d spins, %d trips off the track" % [touches[0], spins, offs])
 	_check(spins == 0 and offs <= 1, "%s: touching other cars doesn't spin you or throw you off (%d touches, %d spins, %d offs)" % [role, touches[0], spins, offs])
 	print("    big jumps by time (s: frames): ", big_when, "   other car stuck/reset events seen: ", other.stuck)
+	print("    cars near you: %d jumps in %d car-frames (worst %.2f m), by time (s: count) %s" % [near_jumps, near_frames, near_worst, near_when])
+	_check(near_jumps <= near_frames / 200, "%s: every car near you moves smoothly (%d of %d car-frames jump > 0.5 m; worst %.2f m)" % [role, near_jumps, near_frames, near_worst])
 	_check(big <= ticks / 100, "%s: and moves smoothly (%d of %d frames off by > 0.5 m; worst %.2f m)" % [role, big, ticks, max_jump])
 	_check(race._results_shown, "%s: finishes and sees the results" % role)
 	_check(race.weekend != null and race.player.stops == 1 and race.player.compound == "hard", "%s: your pit stop with friends: in, new hard tyres, out (%d stop, %s)" % [role, race.player.stops, race.player.compound])

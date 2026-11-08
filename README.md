@@ -358,6 +358,12 @@ car doing the hitting takes 60% of the speed change, the car hit 40%: tap
 someone at 12 m/s and they gain about 5 m/s while you lose about 6.5,
 instead of them shooting off and you stopping dead. Low body friction and a
 reduced turning effect mean rubbing wheels or a nudge doesn't spin anyone.
+After any contact both cars also get about a second of contact recovery:
+stability control holds the yaw to what the steering asks for and turns
+the nose back to where the car is going, the way a driver catches a nudge.
+Full races raced hard (tests/crash_audit.gd: from P12, on/off thumbs,
+following close, squeezing cars alongside) had 1 contact in 3 spinning the
+car or putting it off before this; now none.
 
 With friends, each phone simulates its own car and sees the others through
 the network, about a tenth of a second late. Their cars are drawn (and
@@ -367,6 +373,17 @@ share of a contact and, until news of the other car's share arrives, moves
 the other car's copy as if it had been pushed too, so a touch feels the
 same as it does against a bot (tests/net_contact_test.gd replays squeezes,
 taps and slipstreaming through the network code at 10 to 150 ms).
+
+What's sent is small: each car's state is packed into 43 bytes, so the
+host's 20-car update (20 a second) is about 1 KB, one network packet (it
+was 2.4 KB, over two, and online that was more than a slow connection
+could carry: the friends' phones fell further and further behind, with
+cars stuttering and jumping, while the host was fine). Other cars are
+predicted to now (speed, turning and braking), corrections glide in over a
+few hundredths of a second, and a hiccup of up to a second on the
+connection keeps them moving. tests/run_mp_test.sh can put either phone on
+a bad connection (NETEM_CLIENT / NETEM_HOST: latency, jitter, loss and
+bandwidth); CI races two phones with 70 ms latency, jitter and 3% loss.
 
 Barriers glance: brush one at 216 km/h and you lose a few km/h, and the hit
 can't knock the car round into a spin (at most a little extra yaw). Only a
@@ -514,6 +531,7 @@ tests/
   race_control_test.gd  breakdowns and the VSC, penalties, the tower, live results and stats
   bot_probe.gd       bot behaviour over a race: resets, twitches, offs, stops
   contact_test.gd    racing contact with drivers at the wheel; brushing the barrier
+  crash_audit.gd     full races raced hard against the bots: what every contact did to you
   net_contact_test.gd  multiplayer contact through the network code at 10-150 ms
   recovery_probe.gd  a full-grid race: every car put back on track, and why
   engineer_test.gd   radio lap reports, yellow/blue flags, vibration

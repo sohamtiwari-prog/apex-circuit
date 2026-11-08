@@ -37,6 +37,11 @@ var gear := 1                     # -1 = reverse, 1..n forward
 var rpm := 1000.0
 var engine_load := 0.0            # 0..1, how hard the engine is working
 var tyre_slip := 0.0              # 0..1, worst wheel, for tyre squeal and smoke
+## Seconds left of contact recovery: just touched another car, so stability
+## control also straightens the car up (keeps it pointing where it's going),
+## the way a driver catches a nudge (scripts/car_contacts.gd sets it).
+var contact_calm := 0.0
+const CALM_TIME := 1.2
 var wheels_on_grass := 0
 var body: CarBody
 var remote := false               # driven by the network (another phone), not simulated here
@@ -544,13 +549,30 @@ func _simulate_wheels(delta: float, drive_force: float, brake_force: float) -> v
 ## damps any difference between the yaw rate and the yaw rate the tyres'
 ## sideways force supports. Takes the snap out of sudden inputs and catches
 ## a slide before it becomes a spin; steady cornering is untouched.
-func _stability(side_force: float, _delta: float) -> void:
+func _stability(side_force: float, delta: float) -> void:
 	var v := linear_velocity.length()
 	if v < 8.0:
+		contact_calm = 0.0
 		return
 	var r := angular_velocity.dot(global_basis.y)
 	var r_supported := (side_force / mass) / v      # +x force (left) -> +yaw (left)
 	var k := STABILITY if traction_control else STABILITY * 0.45
+	if contact_calm > 0.0:
+		contact_calm -= delta
+		var calm := clampf(contact_calm / (CALM_TIME * 0.5), 0.0, 1.0)
+		# The car's sideways push from a rub isn't a cornering force: don't
+		# follow it, damp all yaw beyond what the steering asks for...
+		var up := global_basis.y
+		var fwd := global_basis.z - up * global_basis.z.dot(up)
+		var vel := linear_velocity - up * linear_velocity.dot(up)
+		var r_steer := forward_speed() * tan(steering) / maxf(_wheelbase, 1.0)
+		var r_want := lerpf(r_supported, clampf(r_steer, -absf(r_supported) - 0.3, absf(r_supported) + 0.3), calm)
+		apply_torque(-up * (r - r_want) * (k + STABILITY * 2.0 * calm) * inertia.y)
+		# ... and turn the nose back towards where the car is going (body slip).
+		var beta := fwd.signed_angle_to(vel, up)       # + : moving to the left of where it points
+		if absf(beta) < 1.2:
+			apply_torque(up * beta * 9.0 * calm * inertia.y)
+		return
 	apply_torque(-global_basis.y * (r - r_supported) * k * inertia.y)
 
 

@@ -443,8 +443,56 @@ func chat(index: int) -> void:
 		send(1, {"t": "_chat", "m": index})
 
 
+## Tests: a bad connection, on the receiving side (APEX_NETEM, e.g.
+## "lat=0.08,jit=0.06,loss=0.03,bw=24000": one-way latency and extra random
+## lateness in seconds, the share of car-state packets lost, the link's
+## bytes per second). Packets stay in order, as over the online servers
+## (a late one holds up the ones behind it).
+var _netem := {}
+var _netem_q: Array = []            # [release msec, from, msg]
+var _netem_free := 0.0              # when the link has sent everything queued (s)
+var _netem_last := 0.0
+var _netem_rng := RandomNumberGenerator.new()
+
+
+func _ready() -> void:
+	var spec := OS.get_environment("APEX_NETEM")
+	for kv in spec.split(",", false):
+		var p := kv.split("=")
+		if p.size() == 2:
+			_netem[p[0]] = float(p[1])
+	_netem_rng.seed = 7
+
+
+func _netem_take(from: int, msg: Dictionary) -> void:
+	var t: String = String(msg.get("t", ""))
+	if t in ["s", "c"] and _netem_rng.randf() < float(_netem.get("loss", 0.0)):
+		return
+	var now := Time.get_ticks_usec() / 1000000.0
+	var size := var_to_bytes(msg).size() + 40
+	var bw := float(_netem.get("bw", 0.0))
+	_netem_free = maxf(_netem_free, now) + (size / bw if bw > 0.0 else 0.0)
+	var due := _netem_free + float(_netem.get("lat", 0.0)) + _netem_rng.randf() * float(_netem.get("jit", 0.0))
+	_netem_last = maxf(_netem_last, due)
+	_netem_q.append([_netem_last, from, msg])
+
+
+func _netem_poll() -> void:
+	var now := Time.get_ticks_usec() / 1000000.0
+	while not _netem_q.is_empty() and float(_netem_q[0][0]) <= now:
+		var q: Array = _netem_q.pop_front()
+		_deliver_now(q[1], q[2])
+
+
 ## Every received game message passes through here; ping and chat stay inside.
 func _deliver(from: int, msg: Dictionary) -> void:
+	if not _netem.is_empty():
+		_netem_take(from, msg)
+		return
+	_deliver_now(from, msg)
+
+
+func _deliver_now(from: int, msg: Dictionary) -> void:
 	match String(msg.get("t", "")):
 		"_chat":
 			var i := clampi(int(msg.get("m", 0)), 0, CHAT.size() - 1)
@@ -494,6 +542,7 @@ func send(to_id: int, msg: Dictionary, reliable := true) -> void:
 
 
 func leave() -> void:
+	_netem_q.clear()
 	if _enet != null:
 		_enet.close()
 		_enet = null
@@ -540,6 +589,8 @@ func _end(reason: String) -> void:
 
 func _process(delta: float) -> void:
 	_poll_discovery(delta)
+	if not _netem_q.is_empty():
+		_netem_poll()
 	if _enet != null:
 		_poll_enet(delta)
 	elif _ws != null:

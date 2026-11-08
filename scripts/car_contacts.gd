@@ -10,7 +10,11 @@ extends RefCounted
 ## only. The car doing the hitting takes 60% of the speed change, the car hit
 ## 40% (so a tap doesn't fire the car ahead up the road), body friction is
 ## low, and only a fraction of the turning effect is applied (no spins from
-## nudges). Cars still never drive through each other.
+## nudges). Cars still never drive through each other. After any contact,
+## both cars get a moment of extra stability (RaceCar.contact_calm): races
+## showed a long side-by-side rub slowly sliding a car round into a spin
+## (1 contact in 3 in a hard-fought race); with it, none.
+## (tests/crash_audit.gd: a full race, raced like a person, every contact.)
 
 const STIFF_HZ := 6.0         # contact spring (Hz, on the pair's reduced mass)
 const DAMPING := 1.1          # >1: no bounce at all
@@ -164,12 +168,16 @@ static func _pair(a: RaceCar, b: RaceCar, ca: Array, cb: Array, vel_b: Vector3, 
 		ja += tf
 		jb -= tf
 	# (Never a frozen car: it would store the push and let it go on release.)
+	# Both cars get contact recovery (RaceCar.contact_calm): a rub or a nudge
+	# never turns into a spin on its own.
 	if not a.freeze:
 		a.apply_central_impulse(ja)
 		a.apply_torque_impulse((point - a.global_position).cross(ja) * spin)
+		a.contact_calm = RaceCar.CALM_TIME
 	if push_b and not b.freeze:
 		b.apply_central_impulse(jb)
 		b.apply_torque_impulse((point - b.global_position).cross(jb) * spin)
+		b.contact_calm = RaceCar.CALM_TIME
 	return [maxf(-vn, 0.0), jb]
 
 
