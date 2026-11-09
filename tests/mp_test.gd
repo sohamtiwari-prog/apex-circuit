@@ -224,6 +224,8 @@ func _run() -> void:
 		seen[e.position] = true
 	_check(seen.size() == 20, "%s: positions 1..20 all distinct" % role)
 	var race_secs := (Time.get_ticks_msec() - go_time) / 1000.0
+	if role == "client":
+		print("  client: connection: ping %d ms, %d updates from the host (%.1f a second), longest wait %.2f s, %d waits over 0.25 s" % [Net.my_ping, race.net.rx_count, race.net.rx_count / maxf(race_secs, 1.0), race.net.rx_max_gap, race.net.rx_stalls])
 	print("  %s: drawing the other phone's cars took %.1f ms per second of racing" % [role, race.net.cost_us / 1000.0 / maxf(race_secs, 1.0)])
 	print("  %s: finished P%d, other player P%d (automatic recoveries on this phone: %d)" % [role, race.player.position, other.position, race.recoveries]); print("  %s: interpolation delay %.2f s, jitter %.3f s" % [role, race.net.delay, race.net._jitter])
 	# Host: back to the lobby together.

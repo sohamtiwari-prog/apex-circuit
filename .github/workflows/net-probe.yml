@@ -1,0 +1,54 @@
+name: Real-server multiplayer probe
+
+# Two copies of the game race each other through the real online servers
+# (the free public MQTT brokers and the relay) from a GitHub machine, and
+# report what the joining phone sees: ping, how evenly the host's updates
+# arrive, and how far from where they really are the cars are drawn.
+# Run by hand (Actions tab) when multiplayer online needs looking at.
+on:
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.3"
+  GODOT_RELEASE: "stable"
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        server:
+          - { name: "EMQX (free)", kind: public, url: "wss://broker.emqx.io:8084/mqtt" }
+          - { name: "HiveMQ (free)", kind: public, url: "wss://broker.hivemq.com:8884/mqtt" }
+          - { name: "Mosquitto (free)", kind: public, url: "wss://test.mosquitto.org:8081/mqtt" }
+          - { name: "Relay", kind: online, url: "wss://apex-circuit-relay.onrender.com" }
+    name: ${{ matrix.server.name }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache Godot
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}-v1
+      - name: Download Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          V="${GODOT_VERSION}-${GODOT_RELEASE}"
+          mkdir -p ~/godot
+          curl -sSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${V}/Godot_v${V}_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+          mv ~/godot/Godot_v${V}_linux.x86_64 ~/godot/godot
+      - name: Import project
+        run: timeout 300 ~/godot/godot --headless --import || true
+      - name: Race through ${{ matrix.server.name }}
+        run: |
+          mkdir -p /tmp/truth
+          # (A server that's asleep takes up to a minute to wake: ping it first.)
+          curl -sS -m 70 -o /dev/null "$(echo '${{ matrix.server.url }}' | sed 's#^wss#https#')" || true
+          TRUTH_DIR=/tmp/truth LOGDIR=/tmp bash tests/run_mp_test.sh ~/godot/godot ${{ matrix.server.kind }} "${{ matrix.server.url }}" || true
+          grep -hE "connection:|cars near you|took|interpolation" /tmp/mp_client.log /tmp/mp_host.log || true
+          python3 tests/mp_truth.py /tmp/truth || true

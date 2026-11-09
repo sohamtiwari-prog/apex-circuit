@@ -356,6 +356,24 @@ func _process(_delta: float) -> void:
 
 
 var cost_us := 0
+## How the host's updates arrive here (for the connection readout and tests):
+## how many, the longest wait between two, and how many waits over 0.25 s.
+var rx_count := 0
+var rx_max_gap := 0.0
+var rx_stalls := 0
+var _rx_last := -1.0
+
+func _note_arrival() -> void:
+	var t := now()
+	if _rx_last > 0.0:
+		var g := t - _rx_last
+		if race != null and race.state == 1:
+			rx_max_gap = maxf(rx_max_gap, g)
+			if g > 0.25:
+				rx_stalls += 1
+	_rx_last = t
+	rx_count += 1
+
                     # time spent drawing other phones' cars (tests)
 
 func _drive_remote(e, at: float) -> void:
@@ -560,6 +578,7 @@ func _on_message(from: int, m: Dictionary) -> void:
 		"s":
 			if Net.is_host():
 				return
+			_note_arrival()
 			_host_time = float(m["time"])
 			_host_time_at = now()
 			# Clock offset: the fastest packet in the last ~2 s is the best
