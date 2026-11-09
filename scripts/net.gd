@@ -20,6 +20,19 @@ signal closed(reason: String)       # session ended (host left, connection lost)
 signal games_found(games: Array)    # LAN discovery: [{name, ip, players}]
 signal chat_received(from_id: int, text: String)
 
+## What every phone in a game must agree on: how cars and races are sent.
+## Bump it whenever that changes (v0.1.52 packed cars into 43 bytes, v0.1.53
+## into 45: a phone on one reading the other's cars put them anywhere).
+## Phones on a different one can't join each other; both are told to update.
+## (APEX_PROTO: tests pretend to be another version.)
+static var PROTOCOL: int = int(OS.get_environment("APEX_PROTO")) if OS.has_environment("APEX_PROTO") else 3
+
+
+## This build's version (set by CI before export, e.g. "0.1.54").
+static func game_version() -> String:
+	return String(ProjectSettings.get_setting("application/config/version", "?"))
+
+
 ## Quick-chat phrases (sent as an index, so they're short and clean).
 const CHAT := ["Let's go!", "GG", "Nice move!", "Sorry!", "Rematch?"]
 

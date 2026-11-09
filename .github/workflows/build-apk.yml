@@ -211,6 +211,8 @@ jobs:
           VERSION_NAME="0.1.${{ github.run_number }}"
           sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/" export_presets.cfg
           sed -i "s/^version\/name=.*/version\/name=\"${VERSION_NAME}\"/" export_presets.cfg
+          # (In the game too: phones check each other's version before racing.)
+          sed -i "s/^config\/version=.*/config\/version=\"${VERSION_NAME}\"/" project.godot
           mkdir -p build
           ~/godot/godot --headless --export-release "Android" build/apex-circuit.apk > export.log 2>&1 || true
           grep -v -e 'Parameter "m" is null' -e 'mesh_storage.h' -e '^$' export.log | tail -80

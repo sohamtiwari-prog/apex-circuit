@@ -74,7 +74,7 @@ func _ready() -> void:
 			_broadcast_lobby()
 		else:
 			var me: Dictionary = _players().get(Net.my_id, {})
-			Net.send(1, {"t": "hello", "name": String(me.get("name", _my_name())), "car": String(save.get_setting("car")), "team": int(save.get_setting("team")), "rp": _my_rp()})
+			Net.send(1, {"t": "hello", "proto": Net.PROTOCOL, "ver": Net.game_version(), "name": String(me.get("name", _my_name())), "car": String(save.get_setting("car")), "team": int(save.get_setting("team")), "rp": _my_rp()})
 	else:
 		_show_connect()
 
@@ -548,7 +548,7 @@ func _step_car(d: int) -> void:
 		_players()[1] = pick
 		_broadcast_lobby()
 	else:
-		Net.send(1, {"t": "hello", "name": pick["name"], "car": id, "team": pick["team"], "rp": pick["rp"]})
+		Net.send(1, {"t": "hello", "proto": Net.PROTOCOL, "ver": Net.game_version(), "name": pick["name"], "car": id, "team": pick["team"], "rp": pick["rp"]})
 		_players()[Net.my_id] = pick
 		_refresh_lobby()
 
@@ -580,7 +580,7 @@ func _on_joined() -> void:
 		return
 	_players().clear()
 	_show_status("", UIStyle.FOG)
-	Net.send(1, {"t": "hello", "name": _my_name(), "car": String(save.get_setting("car")), "team": int(save.get_setting("team")), "rp": _my_rp()})
+	Net.send(1, {"t": "hello", "proto": Net.PROTOCOL, "ver": Net.game_version(), "name": _my_name(), "car": String(save.get_setting("car")), "team": int(save.get_setting("team")), "rp": _my_rp()})
 	_show_lobby()
 
 
@@ -603,17 +603,35 @@ func _on_closed(reason: String) -> void:
 func _broadcast_lobby() -> void:
 	if not Net.is_host():
 		return
-	Net.send(0, {"t": "lobby", "players": _players(), "settings": _settings()})
+	Net.send(0, {"t": "lobby", "players": _players(), "settings": _settings(), "proto": Net.PROTOCOL, "ver": Net.game_version()})
 	_refresh_lobby()
 
 
 func _on_message(from: int, m: Dictionary) -> void:
 	match String(m.get("t", "")):
 		"hello":
-			if Net.is_host():
+			if Net.is_host() and int(m.get("proto", 0)) != Net.PROTOCOL:
+				# A different version: its cars would be read wrongly (and ours
+				# by it). Turned away, both sides told why. ("busy" too: a
+				# version from before this check only understands that.)
+				var theirs := String(m.get("ver", "older"))
+				Net.send(from, {"t": "old", "proto": Net.PROTOCOL, "ver": Net.game_version()})
+				if not m.has("proto"):
+					Net.send(from, {"t": "busy"})
+				print("version: a friend on a different version was turned away"); _show_status("%s couldn't join: their game is v%s, yours is v%s. Everyone needs the same version (update from the download page)." % [String(m.get("name", "A friend")).substr(0, 14), theirs, Net.game_version()], UIStyle.YELLOW)
+			elif Net.is_host():
 				_players()[from] = {"name": String(m.get("name", "Player")).substr(0, 14), "car": String(m.get("car", "gp26")), "team": int(m.get("team", 0)), "rp": maxi(int(m.get("rp", 0)), 0)}
 				_broadcast_lobby()
+		"old":
+			Net.leave()
+			_show_connect()
+			print("version: different"); _show_status("Different versions: the host has v%s, you have v%s. Everyone needs the same version: update from the download page (in the browser, close and reopen the page)." % [String(m.get("ver", "?")), Net.game_version()], UIStyle.YELLOW)
 		"lobby":
+			if not Net.is_host() and int(m.get("proto", 0)) != Net.PROTOCOL:
+				Net.leave()
+				_show_connect()
+				print("version: different"); _show_status("Different versions: the host has v%s, you have v%s. Everyone needs the same version: the host needs to update." % [String(m.get("ver", "older")), Net.game_version()], UIStyle.YELLOW)
+				return
 			Net.set_meta("players", m["players"])
 			Net.set_meta("settings", m["settings"])
 			_refresh_lobby()
