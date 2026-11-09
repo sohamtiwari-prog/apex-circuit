@@ -46,6 +46,7 @@ var wheels_on_grass := 0
 var body: CarBody
 var remote := false               # driven by the network (another phone), not simulated here
 var remote_vel := Vector3.ZERO
+var remote_yaw := 0.0                # (yaw rate of a network-driven car, rad/s)
 var _light_t := 0.0
 var drs_open := false             # set by race logic in DRS zones (GP car)
 var grip_scale := 1.0               # tyres and weather (scripts/tyres.gd)

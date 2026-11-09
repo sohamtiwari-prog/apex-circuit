@@ -374,16 +374,33 @@ the other car's copy as if it had been pushed too, so a touch feels the
 same as it does against a bot (tests/net_contact_test.gd replays squeezes,
 taps and slipstreaming through the network code at 10 to 150 ms).
 
-What's sent is small: each car's state is packed into 43 bytes, so the
+What's sent is small: each car's state is packed into 45 bytes, so the
 host's 20-car update (20 a second) is about 1 KB, one network packet (it
 was 2.4 KB, over two, and online that was more than a slow connection
 could carry: the friends' phones fell further and further behind, with
-cars stuttering and jumping, while the host was fine). Other cars are
-predicted to now (speed, turning and braking), corrections glide in over a
-few hundredths of a second, and a hiccup of up to a second on the
-connection keeps them moving. tests/run_mp_test.sh can put either phone on
-a bad connection (NETEM_CLIENT / NETEM_HOST: latency, jitter, loss and
-bandwidth); CI races two phones with 70 ms latency, jitter and 3% loss.
+cars stuttering and jumping, while the host was fine).
+
+Every phone draws the other cars where they are now. A friend's clock adds
+half the round trip to the host's (the packets show the host's clock as it
+was when they left), so "now" means the same moment on every phone; each
+car is carried on from its newest state (speed, braking, its own yaw rate,
+which is sent with it; a sideways slide fades out instead of being carried
+on); corrections glide in (a small one in a few hundredths of a second, a
+big one after a stall over up to a third of a second); a hiccup of up to a
+second keeps cars moving. Before, a friend's phone drew the host's cars a
+trip late: online, ~8 m behind where they were, so you'd touch cars that
+on the host were elsewhere. Touching a car whose position is a long guess
+pushes more gently. Only cars near yours are moved every physics step as
+well as every frame (a friend's phone spent ~0.1 s of every second moving
+19 cars 120 times a second; now under half that).
+
+tests/run_mp_test.sh can put either phone on a bad connection (NETEM_CLIENT
+/ NETEM_HOST: latency, jitter, loss, bandwidth, stalls); with TRUTH_DIR set
+both phones log where every car really is and where it's drawn, and
+tests/mp_truth.py compares them. On a mobile-data-like connection (0.3 s
+round trip, jitter, 3% loss, a stall of up to 0.6 s every few seconds)
+cars near you are drawn 1.2 m from where they really are (half the time;
+95%: 3 m). It was 6.7 m (95%: 18 m). CI races two phones on it.
 
 Barriers glance: brush one at 216 km/h and you lose a few km/h, and the hit
 can't knock the car round into a spin (at most a little extra yaw). Only a

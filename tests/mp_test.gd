@@ -102,6 +102,10 @@ func _run() -> void:
 		_check(remote == 19 and bots == 0, "client: every other car comes from the host (%d remote)" % remote)
 	_check(await _wait(func(): return race.state == 1, 40.0), "%s: lights go out" % role)
 	var go_time := Time.get_ticks_msec()
+	var truth_log: FileAccess = null
+	if OS.has_environment("TRUTH_DIR"):
+		truth_log = FileAccess.open(OS.get_environment("TRUTH_DIR") + "/truth_%s.csv" % role, FileAccess.WRITE)
+	var truth_t := -1.0
 	# The other human's car must move on this phone.
 	var other = null
 	for e in race.entrants:
@@ -137,6 +141,17 @@ func _run() -> void:
 	var near_when := {}
 	while not race._results_shown and Time.get_ticks_msec() - go_time < 330000:
 		await process_frame          # what you see: once per drawn frame
+		# Truth and what's drawn, at the same real moment (both phones run on
+		# this one computer; tests/mp_truth.py compares them: how far from
+		# where it really is each other car is drawn).
+		if truth_log != null and race.net.net_time() - truth_t > 0.1:
+			truth_t = race.net.net_time()
+			for e in race.entrants:
+				if not e.car.visible:
+					continue
+				var q: Vector3 = e.car.global_position
+				var near: bool = q.distance_to(race.car.global_position) < 60.0
+				truth_log.store_line("%.3f,%d,%s,%.2f,%.2f,%.2f,%d,%d" % [Time.get_unix_time_from_system(), e.slot, "D" if e.remote else "T", q.x, q.y, q.z, 1 if near else 0, e.pit_phase])
 		frames += 1
 		# Both players box for hard tyres early in the race (stop at the end of lap 1).
 		if not boxed and Time.get_ticks_msec() - go_time > 6000 and race.weekend != null:
@@ -208,6 +223,8 @@ func _run() -> void:
 	for e in race.entrants:
 		seen[e.position] = true
 	_check(seen.size() == 20, "%s: positions 1..20 all distinct" % role)
+	var race_secs := (Time.get_ticks_msec() - go_time) / 1000.0
+	print("  %s: drawing the other phone's cars took %.1f ms per second of racing" % [role, race.net.cost_us / 1000.0 / maxf(race_secs, 1.0)])
 	print("  %s: finished P%d, other player P%d (automatic recoveries on this phone: %d)" % [role, race.player.position, other.position, race.recoveries]); print("  %s: interpolation delay %.2f s, jitter %.3f s" % [role, race.net.delay, race.net._jitter])
 	# Host: back to the lobby together.
 	if role == "host":

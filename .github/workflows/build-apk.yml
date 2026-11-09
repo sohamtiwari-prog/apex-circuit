@@ -174,8 +174,13 @@ jobs:
       - name: Multiplayer race over Wi-Fi (two phones)
         run: LOGDIR=/tmp bash tests/run_mp_test.sh ~/godot/godot lan
 
-      - name: Multiplayer race on a bad connection (late, jittery, lossy, both ways)
-        run: NETEM_CLIENT="lat=0.07,jit=0.08,loss=0.03" NETEM_HOST="lat=0.07,jit=0.08,loss=0.03" LOGDIR=/tmp bash tests/run_mp_test.sh ~/godot/godot lan
+      - name: Multiplayer race on a mobile-data-like connection (0.3 s round trip, jitter, loss, stalls)
+        run: |
+          mkdir -p /tmp/truth
+          NE="lat=0.15,jit=0.10,loss=0.03,stall=0.02,stallmax=0.6"
+          TRUTH_DIR=/tmp/truth NETEM_CLIENT=$NE NETEM_HOST=$NE LOGDIR=/tmp bash tests/run_mp_test.sh ~/godot/godot lan
+          # Cars near you drawn where they really are (95% within 6 m; it was 18 m).
+          python3 tests/mp_truth.py /tmp/truth 6
 
       - name: Multiplayer race online (two phones via relay)
         run: LOGDIR=/tmp bash tests/run_mp_test.sh ~/godot/godot online ws://127.0.0.1:8090

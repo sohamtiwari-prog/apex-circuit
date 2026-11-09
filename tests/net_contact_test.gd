@@ -75,6 +75,8 @@ func _reset_net() -> void:
 		var ph: NetRace = phones[k]
 		ph._buffers.clear()
 		ph._yaw_rate.clear()
+		ph._disp.clear()
+		ph._kicks.clear()
 		ph.delay = 1.0 / NetRace.SEND_HZ + 0.05 + latency * 0.5
 		sent[k].clear()
 		touching[k].clear()
@@ -137,7 +139,7 @@ func _drive(secs: float, lanes: Array, push: Callable) -> Array:
 				# The old drawing: interpolated, not carried forward.
 				ph._drive_remote_lead(ents[other], t - ph.delay, 0.0)
 			else:
-				ph._drive_remote(ents[other], t - ph.delay)
+				ph._drive_remote(ents[other], t - NetRace.DRAW_DELAY)
 		# Contact: each phone pushes only its own car.
 		for k in 2:
 			var c: RaceCar = real[k]

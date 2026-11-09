@@ -100,7 +100,10 @@ static func step(cars: Array, delta: float, touching: Dictionary) -> Array:
 ## state here is ~0.1 s old, so until news of that push arrives, its copy
 ## here is moved as if it had been pushed (or this car would keep being
 ## pushed by a copy that isn't getting out of the way).
-static func step_against(locals: Array, others: Array, delta: float, touching: Dictionary, kicks: Dictionary = {}) -> Array:
+## soft: car -> 0..1, how firmly to take that car's position (a car whose
+## position here is a long guess, on a slow connection, pushes more gently:
+## a misjudged touch is a brush, not a hit).
+static func step_against(locals: Array, others: Array, delta: float, touching: Dictionary, kicks: Dictionary = {}, soft: Dictionary = {}) -> Array:
 	var began: Array = []
 	var now := {}
 	var ocaps: Array = []
@@ -112,7 +115,7 @@ static func step_against(locals: Array, others: Array, delta: float, touching: D
 			var b: RaceCar = others[j]
 			if (a as RaceCar).global_position.distance_squared_to(b.global_position) > 64.0:
 				continue
-			var hit := _pair(a, b, ca, ocaps[j], b.remote_vel, Vector3.ZERO, false, delta, NET_SPIN)
+			var hit := _pair(a, b, ca, ocaps[j], b.remote_vel, Vector3.ZERO, false, delta, NET_SPIN, float(soft.get(b, 1.0)))
 			if hit.is_empty():
 				continue
 			kicks[b] = kicks.get(b, Vector3.ZERO) + (hit[1] as Vector3) / b.mass
@@ -128,7 +131,7 @@ static func step_against(locals: Array, others: Array, delta: float, touching: D
 ## The contact between a and b (capsules ca, cb; b moving at vel_b / ang_b).
 ## Pushes a, and b too if push_b. Returns [closing speed, b's impulse] or []
 ## if apart.
-static func _pair(a: RaceCar, b: RaceCar, ca: Array, cb: Array, vel_b: Vector3, ang_b: Vector3, push_b: bool, delta: float, spin := SPIN) -> Array:
+static func _pair(a: RaceCar, b: RaceCar, ca: Array, cb: Array, vel_b: Vector3, ang_b: Vector3, push_b: bool, delta: float, spin := SPIN, scale := 1.0) -> Array:
 	var pts := _closest(ca[0], ca[1], cb[0], cb[1])
 	var pa: Vector3 = pts[0]
 	var pb: Vector3 = pts[1]
@@ -146,7 +149,7 @@ static func _pair(a: RaceCar, b: RaceCar, ca: Array, cb: Array, vel_b: Vector3, 
 	var vn := rel.dot(n)                       # < 0: closing
 	var mu := a.mass * b.mass / (a.mass + b.mass)
 	var w := TAU * STIFF_HZ
-	var force := mu * (w * w * overlap - 2.0 * DAMPING * w * vn)
+	var force := mu * (w * w * overlap - 2.0 * DAMPING * w * vn) * scale
 	if force <= 0.0:
 		return []
 	# Who's doing the hitting: the one moving harder into the other.

@@ -16,10 +16,16 @@ extends Node
 
 const SEND_HZ := 20.0
 const DELAY_MIN := 0.12        # seconds of interpolation delay (adapts to jitter)
+## Other cars are drawn from their newest state, carried on to now, not
+## from states `delay` old: the less that's guessed, the closer to where they
+## really are (tests/mp_truth.py: online, half the distance off). The
+## gliding (below) keeps them smooth through late and early packets instead.
+const DRAW_DELAY := 0.03
 const DELAY_MAX := 0.6         # online through a public server can be jumpy
 const START_WAIT := 15.0       # max seconds to wait for everyone to load
-const LEAD_MAX := 0.6          # carry other cars forward at most this far (s): all the delay
-const SNAP := 6.0              # a correction bigger than this (m) is a reset: no gliding
+const LEAD_MAX := 1.0          # carry other cars forward at most this far (s): all the delay
+const PRED_MAX := 1.0          # and at most this far past the newest state (s): a hiccup
+const SNAP := 25.0             # a correction bigger than this (m) is a reset: no gliding
 const GLIDE := 0.07            # small corrections are blended in over about this long (s)
 
 var race: Node
@@ -47,8 +53,8 @@ var delay := 0.12
 var _touching := {}
 var _kicks := {}                    # slot -> [[net time, velocity change]] from contact here
 var _yaw_rate := {}                 # slot -> smoothed yaw rate (rad/s) of a network car
-var _ahead := {}                    # slot -> [smoothed forward offset, its time]
 var _disp := {}                     # slot -> [position, rotation, velocity, yaw rate, time] as last drawn
+var horizon := {}                   # slot -> how far ahead of its newest state it's drawn (s)
 
 
 func setup(r: Node) -> void:
@@ -65,11 +71,21 @@ func setup(r: Node) -> void:
 		Net.send(1, {"t": "ready"})
 
 
-## Estimated host session time, on any phone.
+## Estimated host session time, on any phone. The offset from the fastest
+## packets is the host's clock as it was when they left (one trip behind),
+## so half the round trip is added: then every phone means the same moment
+## by "now", draws the others where they are now, and contact between two
+## phones' cars happens in the same place on both (instead of the host's
+## cars being drawn ~0.15 s back online, where you'd hit them, or not).
 func net_time() -> float:
 	if Net.is_host():
 		return _sim
-	return _sim + (_offset if _offset > -INF else 0.0)
+	return _sim + (_offset if _offset > -INF else 0.0) + _half_trip
+
+
+var _half_trip := 0.0
+var _pings: Array[int] = []
+var _last_ping := -1
 
 
 static func now() -> float:
@@ -95,6 +111,9 @@ static func entrant_state(e) -> PackedFloat32Array:
 	var s := car_state(e.car)
 	s.append_array(PackedFloat32Array([float(Tyres.COMPOUNDS.find(e.compound)), e.wear, float(e.pit_phase), float(Tyres.COMPOUNDS.find(e.next_compound)),
 		e.pen_pending, e.pen_total, float(e.tl_strikes), float(e.stops)]))
+	# How fast it's turning: carrying it on round a bend between updates.
+	var c: RaceCar = e.car
+	s.append(c.remote_yaw if c.remote else (0.0 if c.freeze else c.angular_velocity.dot(c.global_basis.y)))
 	return s
 
 
@@ -109,13 +128,13 @@ static func car_state(c: RaceCar) -> PackedFloat32Array:
 		v.x, v.y, v.z, c.steering, c.rpm, float(c.gear), c.brake_input, 1.0 if c.drs_open else 0.0, c.throttle])
 
 
-## On the wire, a car's state is packed into 43 bytes (it was ~120 as
+## On the wire, a car's state is packed into 45 bytes (it was ~120 as
 ## floats in a dictionary): a 20-car snapshot is ~0.9 KB instead of 2.4 KB,
 ## so it fits in one network packet (nothing to reassemble, nothing lost
 ## when one fragment of a big packet goes missing) and online it's a third
 ## of the traffic through the servers. Position stays exact; rotation,
 ## speed and the rest are rounded far below anything you could see.
-const PACKED := 43
+const PACKED := 45
 
 static func _q16(x: float, scale: float) -> int:
 	return clampi(roundi(x * scale), -32767, 32767)
@@ -123,8 +142,8 @@ static func _q16(x: float, scale: float) -> int:
 
 static func pack_state(buf: StreamPeerBuffer, slot: int, s: PackedFloat32Array) -> void:
 	var f := s.duplicate()
-	if f.size() < 24:
-		f.resize(24)
+	if f.size() < 25:
+		f.resize(25)
 	buf.put_u8(slot)
 	buf.put_float(f[0]); buf.put_float(f[1]); buf.put_float(f[2])
 	var q := Quaternion(f[3], f[4], f[5], f[6]).normalized()
@@ -141,13 +160,14 @@ static func pack_state(buf: StreamPeerBuffer, slot: int, s: PackedFloat32Array) 
 	buf.put_8(int(f[16])); buf.put_u16(clampi(roundi(f[17] * 65535.0), 0, 65535)); buf.put_u8(int(f[18])); buf.put_8(int(f[19]))
 	buf.put_u16(clampi(roundi(f[20] * 10.0), 0, 65535)); buf.put_u16(clampi(roundi(f[21] * 10.0), 0, 65535))
 	buf.put_u8(clampi(int(f[22]), 0, 255)); buf.put_u8(clampi(int(f[23]), 0, 255))
+	buf.put_16(_q16(f[24], 1000.0))
 
 
 ## [slot, state] from bytes written by pack_state.
 static func unpack_state(buf: StreamPeerBuffer) -> Array:
 	var slot := buf.get_u8()
 	var f := PackedFloat32Array()
-	f.resize(24)
+	f.resize(25)
 	f[0] = buf.get_float(); f[1] = buf.get_float(); f[2] = buf.get_float()
 	var qx := buf.get_16() / 32767.0
 	var qy := buf.get_16() / 32767.0
@@ -163,6 +183,7 @@ static func unpack_state(buf: StreamPeerBuffer) -> Array:
 	f[16] = buf.get_8(); f[17] = buf.get_u16() / 65535.0; f[18] = buf.get_u8(); f[19] = buf.get_8()
 	f[20] = buf.get_u16() / 10.0; f[21] = buf.get_u16() / 10.0
 	f[22] = buf.get_u8(); f[23] = buf.get_u8()
+	f[24] = buf.get_16() / 1000.0
 	return [slot, f]
 
 
@@ -215,8 +236,22 @@ func physics_tick(delta: float) -> void:
 	_sim += delta
 	if not _offsets.is_empty():
 		var target: float = _offsets.max()
-		# Never jump: at most 5% faster or slower than real time while syncing.
-		_offset = move_toward(_offset, target, 0.05 * delta)
+		# Never jump while racing: at most 5% faster or slower than real time
+		# while syncing (15% if it's well out). On the grid, before the
+		# lights, it's set straight away: the start is where cars are
+		# closest, so it has to be right by then (it was still catching up
+		# from the first, possibly late, packet: cars ~10 m from where they
+		# were for the first seconds of the race).
+		var rate := 0.15 if absf(target - _offset) > 0.25 else 0.05
+		_offset = target if race.state == 0 else move_toward(_offset, target, rate * delta)
+	if not Net.is_host() and Net.my_ping > 0 and Net.my_ping != _last_ping:
+		_last_ping = Net.my_ping
+		_pings.append(Net.my_ping)
+		if _pings.size() > 8:
+			_pings.pop_front()
+	if not _pings.is_empty():
+		var ht := minf(float(_pings.min()) / 2000.0, 0.35)
+		_half_trip = ht if race.state == 0 else move_toward(_half_trip, ht, 0.05 * delta)
 	# Interpolation delay: one send interval plus room for the usual lateness.
 	_jitter = maxf(_jitter * (1.0 - 0.3 * delta), 0.0)
 	var want := clampf(1.0 / SEND_HZ + 0.05 + _jitter * 2.0, DELAY_MIN, DELAY_MAX)
@@ -257,9 +292,14 @@ func physics_tick(delta: float) -> void:
 		# Follow the host's clock and start lights.
 		if _host_time_at > 0.0 and race.state != 0:
 			race.race_time = _host_time + (t - _host_time_at)
-	var at := net_time() - delay
+	# Every physics step only the cars that could touch yours (for contact);
+	# the rest move once per drawn frame (_process). On a friend's phone
+	# that's nearly every car: doing all 19 at 120 a second as well cost
+	# ~0.1 s of every second of racing, enough to make the game stutter.
+	var at := net_time() - DRAW_DELAY
+	var mine: Vector3 = race.car.global_position
 	for e in race.entrants:
-		if e.remote:
+		if e.remote and (Net.is_host() or e.car.global_position.distance_squared_to(mine) < 50.0 * 50.0):
 			_drive_remote(e, at)
 	if race.control != null and not Net.is_host():
 		race.control.sc.net_draw(self, at)
@@ -282,7 +322,13 @@ func _contacts() -> void:
 		_touching.clear()
 		return
 	var kicks := {}
-	for hit in CarContacts.step_against(local_cars, remote_cars, 1.0 / Engine.physics_ticks_per_second, _touching, kicks):
+	# How sure we are where each other phone's car is: firm when its state
+	# is fresh, gentler the further it's been guessed ahead (> 0.2 s).
+	var soft := {}
+	for e in race.entrants:
+		if e.remote:
+			soft[e.car] = clampf(1.0 - (float(horizon.get(e.slot, 0.0)) - 0.2) / 0.5, 0.4, 1.0)
+	for hit in CarContacts.step_against(local_cars, remote_cars, 1.0 / Engine.physics_ticks_per_second, _touching, kicks, soft):
 		race.car_contact.emit(hit[0], hit[1], hit[2])
 	for e in race.entrants:
 		if kicks.has(e.car):
@@ -303,14 +349,19 @@ func _process(_delta: float) -> void:
 	if ended or race == null or race.replay.playing:
 		return
 	# Between physics steps: the fraction of the next step already elapsed.
-	var at := net_time() + Engine.get_physics_interpolation_fraction() / float(Engine.physics_ticks_per_second) - delay
+	var at := net_time() + Engine.get_physics_interpolation_fraction() / float(Engine.physics_ticks_per_second) - DRAW_DELAY
 	for e in race.entrants:
 		if e.remote:
 			_drive_remote(e, at)
 
 
+var cost_us := 0
+                    # time spent drawing other phones' cars (tests)
+
 func _drive_remote(e, at: float) -> void:
+	var t0 := Time.get_ticks_usec()
 	_drive_remote_lead(e, at, LEAD_MAX)
+	cost_us += Time.get_ticks_usec() - t0
 
 
 ## (lead_max 0: drawn where it was `delay` ago, as before prediction.)
@@ -326,27 +377,30 @@ func _drive_remote_lead(e, at: float, lead_max: float) -> void:
 			b = buf[mini(k + 1, buf.size() - 1)]
 	var sa: PackedFloat32Array = a[1]
 	var sb: PackedFloat32Array = b[1]
+	var newest: float = buf[buf.size() - 1][0]
 	var f := 0.0
 	var pos: Vector3
+	var tb := float(a[0])                  # the time the base state is for
 	if b[0] > a[0]:
 		f = clampf((at - a[0]) / (b[0] - a[0]), 0.0, 1.0)
 		pos = Vector3(sa[0], sa[1], sa[2]).lerp(Vector3(sb[0], sb[1], sb[2]), f)
+		tb = lerpf(a[0], b[0], f)
 	else:
-		# Newer than anything we have (a hiccup on the connection, or the
-		# other phone paused for a moment): keep it going on its velocity
-		# (up to half a second here, plus the lead below).
-		var ahead := clampf(at - a[0], 0.0, 0.5)
-		pos = Vector3(sa[0], sa[1], sa[2]) + Vector3(sa[7], sa[8], sa[9]) * ahead
+		pos = Vector3(sa[0], sa[1], sa[2])
 	var qa := Quaternion(sa[3], sa[4], sa[5], sa[6]).normalized()
 	var qb := Quaternion(sb[3], sb[4], sb[5], sb[6]).normalized()
 	var c: RaceCar = e.car
 	var vel := Vector3(sa[7], sa[8], sa[9]).lerp(Vector3(sb[7], sb[8], sb[9]), f)
 	var basis := Basis(qa.slerp(qb, f))
-	# Carry it forward to now along its path: on its velocity, turning at
-	# its yaw rate (so it follows a bend rather than running wide of it).
-	var newest: float = buf[buf.size() - 1][0]
-	var lead := clampf(net_time() - at, 0.0, lead_max)
-	lead = minf(lead, maxf(newest + lead_max - at, 0.0))
+	# Shown at now: carried forward from the base state (also past the
+	# newest state, through a hiccup on the connection, up to PRED_MAX).
+	# (Now includes how far into the next physics step this frame is, so a
+	# car moves on every drawn frame, not in lumps when the frame rate and
+	# the physics rate don't line up.)
+	var shown_t := minf(minf(at + DRAW_DELAY, at + lead_max), newest + PRED_MAX)
+	shown_t = maxf(shown_t, tb)
+	var h := shown_t - tb
+	horizon[e.slot] = shown_t - newest
 	var yr := 0.0
 	if b[0] > a[0]:
 		var ha := Vector3(sa[7], 0.0, sa[9])
@@ -354,29 +408,42 @@ func _drive_remote_lead(e, at: float, lead_max: float) -> void:
 		if ha.length() > 3.0 and hb.length() > 3.0:
 			yr = ha.signed_angle_to(hb, Vector3.UP) / (b[0] - a[0])
 	var ws: float = lerpf(float(_yaw_rate.get(e.slot, yr)), yr, 0.15)
+	if sa.size() > 24 and sb.size() > 24:
+		ws = lerpf(sa[24], sb[24], f)        # (its own yaw rate, sent with it)
 	_yaw_rate[e.slot] = ws
-	if lead > 0.0 and vel.length() > 1.0:
-		var turn := ws * lead
+	if h > 0.0 and vel.length() > 1.0:
 		# Speeding up or braking (from the last two states), so a car
 		# braking for a corner is drawn slowing, not still at full speed.
+		# (Over ~0.2 s of states: from one update to the next it's noisy.)
 		var acc := 0.0
-		if b[0] > a[0]:
-			acc = clampf((Vector3(sb[7], sb[8], sb[9]).length() - Vector3(sa[7], sa[8], sa[9]).length()) / (b[0] - a[0]), -45.0, 15.0)
-		var spd := vel.length()
-		var t_stop := lead if acc >= 0.0 else minf(lead, spd / -acc)
+		var o: Array = b
+		for st0 in buf:
+			if float(st0[0]) <= float(b[0]) - 0.2:
+				o = st0
+		if b[0] > o[0]:
+			var so: PackedFloat32Array = o[1]
+			acc = clampf((Vector3(sb[7], sb[8], sb[9]).length() - Vector3(so[7], so[8], so[9]).length()) / (b[0] - o[0]), -35.0, 12.0)
+		# Sliding sideways (a nudge, a squeeze) doesn't last: the tyres stop
+		# it within a fraction of a second, so that part isn't carried on
+		# like the rest (it would push the car further into yours).
+		var fwd := Vector3(basis.z.x, 0.0, basis.z.z).normalized()
+		var side := vel - fwd * vel.dot(fwd)
+		side.y = 0.0
+		var run := vel - side
+		var spd := run.length()
+		if spd < 1.0:
+			run = vel
+			side = Vector3.ZERO
+			spd = vel.length()
+		var t_stop := h if acc >= 0.0 else minf(h, spd / -acc)
 		var dist := spd * t_stop + 0.5 * acc * t_stop * t_stop
-		# The step forward, smoothed over ~0.05 s: packets arriving early or
-		# late would otherwise make it (and the car) twitch.
-		var step := vel.rotated(Vector3.UP, turn * 0.5) / spd * dist
-		vel *= maxf(spd + acc * t_stop, 0.0) / spd
-		var now_s := at                    # the game's clock (also in tests)
-		var prev: Array = _ahead.get(e.slot, [step, now_s])
-		var k := 1.0 - exp(-maxf(now_s - float(prev[1]), 0.0) / 0.05)
-		var sm: Vector3 = (prev[0] as Vector3).lerp(step, k)
-		_ahead[e.slot] = [sm, now_s]
-		pos += sm
+		var spd1 := maxf(spd + acc * t_stop, 0.0)
+		# On round the bend at its yaw rate (tested against carrying it along
+		# the track itself: this is closer, the track's line isn't the car's).
+		var turn := ws * h
+		pos += run.rotated(Vector3.UP, turn * 0.5) / spd * dist + side * 0.15 * (1.0 - exp(-h / 0.15))
 		basis = Basis(Vector3.UP, turn) * basis
-		vel = vel.rotated(Vector3.UP, turn)
+		vel = run.rotated(Vector3.UP, turn) / spd * spd1 + side * exp(-h / 0.15)
 	# Pushes from contact on this phone that its states don't show yet
 	# (added after the gliding below: they're known here, not guessed).
 	var kick_pos := Vector3.ZERO
@@ -387,17 +454,18 @@ func _drive_remote_lead(e, at: float, lead_max: float) -> void:
 		var k := 0
 		while k < ks.size():
 			var kt: float = ks[k][0]
-			if kt < at:
+			if kt < newest:
 				ks.remove_at(k)             # its states include this push by now
 				continue
 			kick_pos += (ks[k][1] as Vector3) * maxf(now_t - kt, 0.0)
 			kick_vel += ks[k][1]
 			k += 1
 	# What's drawn (and touched) glides onto that: each new state corrects
-	# the prediction a little, and those corrections are blended in over a
-	# few hundredths of a second instead of making the car jump. Only a big
-	# difference (a reset, the pits) moves it at once.
-	var shown_t := at + clampf(net_time() - at, 0.0, lead_max)
+	# the prediction a little, and those corrections are blended in instead
+	# of making the car jump: a small one over a few hundredths of a second,
+	# a big one (after a stall on the connection) over up to a third of a
+	# second, so the car slides back into place rather than teleporting.
+	# Only a reset or the pits (> SNAP) moves it at once.
 	var prev_d: Array = _disp.get(e.slot, [])
 	if not prev_d.is_empty():
 		var dt: float = shown_t - float(prev_d[4])
@@ -406,12 +474,15 @@ func _drive_remote_lead(e, at: float, lead_max: float) -> void:
 			var pturn: float = float(prev_d[3]) * dt
 			var guess: Vector3 = (prev_d[0] as Vector3) + pv.rotated(Vector3.UP, pturn * 0.5) * dt
 			var err := pos - guess
-			if err.length() < SNAP:
-				var kp := 1.0 - exp(-dt / GLIDE)
+			var el := err.length()
+			if el < SNAP:
+				var tau := clampf(GLIDE + el * 0.03, GLIDE, 0.35)
+				var kp := 1.0 - exp(-dt / tau)
 				pos = guess + err * kp
 				var qg := (Basis(Vector3.UP, pturn) * (prev_d[1] as Basis)).get_rotation_quaternion()
-				basis = Basis(qg.slerp(basis.get_rotation_quaternion(), 1.0 - exp(-dt / (GLIDE * 0.8))))
+				basis = Basis(qg.slerp(basis.get_rotation_quaternion(), 1.0 - exp(-dt / (tau * 0.8))))
 	_disp[e.slot] = [pos, basis, vel, ws, shown_t]
+	c.remote_yaw = ws
 	c.global_transform = Transform3D(basis, pos + kick_pos)
 	c.remote_vel = vel + kick_vel
 	c.steering = lerpf(sa[10], sb[10], f)

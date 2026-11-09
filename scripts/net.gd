@@ -444,9 +444,10 @@ func chat(index: int) -> void:
 
 
 ## Tests: a bad connection, on the receiving side (APEX_NETEM, e.g.
-## "lat=0.08,jit=0.06,loss=0.03,bw=24000": one-way latency and extra random
-## lateness in seconds, the share of car-state packets lost, the link's
-## bytes per second). Packets stay in order, as over the online servers
+## "lat=0.08,jit=0.06,loss=0.03,bw=24000,stall=0.01,stallmax=0.6": one-way
+## latency and extra random lateness in seconds, the share of car-state
+## packets lost, the link's bytes per second, the chance of a stall per
+## packet and how long one can be). Packets stay in order, as over the online servers
 ## (a late one holds up the ones behind it).
 var _netem := {}
 var _netem_q: Array = []            # [release msec, from, msg]
@@ -473,6 +474,10 @@ func _netem_take(from: int, msg: Dictionary) -> void:
 	var bw := float(_netem.get("bw", 0.0))
 	_netem_free = maxf(_netem_free, now) + (size / bw if bw > 0.0 else 0.0)
 	var due := _netem_free + float(_netem.get("lat", 0.0)) + _netem_rng.randf() * float(_netem.get("jit", 0.0))
+	# Now and then a stall (a lost packet resent, a busy server): this one
+	# is late by up to stallmax, and everything behind it waits.
+	if _netem_rng.randf() < float(_netem.get("stall", 0.0)):
+		due += _netem_rng.randf() * float(_netem.get("stallmax", 0.5))
 	_netem_last = maxf(_netem_last, due)
 	_netem_q.append([_netem_last, from, msg])
 
