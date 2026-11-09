@@ -37,10 +37,24 @@ airfoil wings, lathed tyres). Names and teams are fictional.
 | **Caspian City Circuit** | the Azerbaijan street circuit | 5.97 km |
 | **Lone Star Circuit** | the United States GP venue | 5.51 km |
 | **Red Sea Street Circuit** | the Saudi Arabian night race | 6.18 km |
+| **Ise Bay Circuit** | the Japanese GP venue (figure of eight, with its bridge) | 5.81 km |
+| **Jiading International Circuit** | the Chinese GP venue | 5.45 km |
 | **Kestrel Park** | original club circuit | 2.06 km |
 
 Layouts are accurate to within ~1% of the official lengths, with real
 elevation (see below).
+
+**Ise Bay crosses over itself.** The road from Spoon to 130R goes over a
+bridge; Degner to the hairpin runs underneath, 4.9 m lower (both heights
+from 2025 qualifying telemetry, pooled along each car's own lap so the two
+levels don't mix). The track finds its bridges (Track.bridges: the upper
+road's samples over the lower road), builds a concrete deck from barrier to
+barrier with fascias and abutment walls, and the landscape cuts down to the
+lower road under it (tools/terrain.py). Which bit of road a car is on is
+judged with its height too (Track.nearest_index), so laps, positions and
+track limits never mix the levels up. tests/crossover_test.gd races 20 cars
+over and under it: nobody on the wrong level, every lap counted, no
+touching between levels, no resets.
 
 **Night races:** Marina Lights, Gulf Lights and Red Sea race at night by default
 (lighting towers all the way round, lit city windows, stars and a glow of
@@ -425,9 +439,9 @@ Every real circuit has its true height profile, measured from F1 car-position
 telemetry (about 25-30 qualifying laps per track, aligned to our centreline,
 pooled and smoothed): Ardennes 102 m from top to bottom (down to the
 compression, up the hill and the long straight to the highest corner), Styria
-63 m, Entrelagos 43 m, Riviera 42 m, Pannonia 35 m, Lone Star 30 m, Caspian 27 m, Desert 16 m,
+63 m, Entrelagos 43 m, Riviera 42 m, Ise Bay 40 m, Pannonia 35 m, Lone Star 30 m, Caspian 27 m, Desert 16 m,
 Brianza 12 m, Silvermoor 11 m, Gulf 11 m, Duinen 9 m, Île-Royale 5 m,
-Marina 5 m, Lakeside 2 m, Red Sea 2 m. The same data put each lap's start on the real timing line.
+Jiading 7 m, Marina 5 m, Lakeside 2 m, Red Sea 2 m. The same data put each lap's start on the real timing line.
 `tools/elevation_from_telemetry.py` does this; `tools/terrain.py` then builds
 each venue's landscape (`tracks/<id>.terrain`): level shelves by the track for
 verges, pits and stands, smooth hillsides between stretches at different

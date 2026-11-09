@@ -35,6 +35,8 @@ const CATALOG := [
 	{"id": "caspian", "name": "Caspian City Circuit", "desc": "Azerbaijan · 5.97 km · old-town walls, endless straight", "style": "city"},
 	{"id": "lone_star", "name": "Lone Star Circuit", "desc": "USA · 5.51 km · up the hill to turn 1, then the esses", "style": "park"},
 	{"id": "red_sea", "name": "Red Sea Street Circuit", "desc": "Saudi Arabia · 6.18 km · fastest streets, under the lights", "style": "city", "night": true},
+	{"id": "isebay", "name": "Ise Bay Circuit", "desc": "Japan · 5.81 km · figure of eight: the esses, over the bridge, 130R", "style": "park"},
+	{"id": "jiading", "name": "Jiading International Circuit", "desc": "China · 5.45 km · the snail, then a 1.2 km straight", "style": "park"},
 	{"id": "kestrel_park", "name": "Kestrel Park", "desc": "Original club circuit · 2.06 km", "style": "park"},
 ]
 
@@ -203,12 +205,14 @@ func build(id: String = "kestrel_park") -> void:
 	_derive_runoff()
 	_derive_drs()
 	_build_grid()
+	_find_bridges()
 	_derive_walls()
 	_plan_pit_lane()
 	_build_ground()
 	_build_road()
 	_build_rubber()
 	_build_walls()
+	_build_bridges()
 	trackside = Trackside.new()
 	add_child(trackside)
 	trackside.build(self)
@@ -230,7 +234,9 @@ func nearest_index(pos: Vector3, hint: int = -1) -> int:
 	if hint < 0:
 		for i in range(n):
 			var p: Vector3 = points[i]
-			var d := (p.x - pos.x) * (p.x - pos.x) + (p.z - pos.z) * (p.z - pos.z)
+			# (Height counts double: where the track crosses itself, the
+			# road you're on, not the one 5 m above or below.)
+			var d := (p.x - pos.x) * (p.x - pos.x) + (p.z - pos.z) * (p.z - pos.z) + 4.0 * (p.y - pos.y) * (p.y - pos.y)
 			if d < best_d:
 				best_d = d
 				best = i
@@ -238,7 +244,7 @@ func nearest_index(pos: Vector3, hint: int = -1) -> int:
 		for k in range(-60, 61):
 			var i := (hint + k + n) % n
 			var p: Vector3 = points[i]
-			var d := (p.x - pos.x) * (p.x - pos.x) + (p.z - pos.z) * (p.z - pos.z)
+			var d := (p.x - pos.x) * (p.x - pos.x) + (p.z - pos.z) * (p.z - pos.z) + 4.0 * (p.y - pos.y) * (p.y - pos.y)
 			if d < best_d:
 				best_d = d
 				best = i
@@ -464,6 +470,133 @@ func _derive() -> void:
 		var a: Vector3 = htangents[(i - 4 + count) % count]
 		var b: Vector3 = htangents[(i + 4) % count]
 		curv[i] = a.cross(b).y / (8.0 * SPACING)
+
+
+## Where the track crosses over itself (Ise Bay's figure of eight): each
+## bridge is the run of samples of the upper road that pass over the lower
+## one. {"i0", "i1": upper road samples, "lower": the lower road's sample
+## under the middle, "drop": metres between the two roads}.
+var bridges: Array = []
+const BRIDGE_CLEAR := 3.0           # roads at least this far apart in height cross on a bridge
+
+
+func _find_bridges() -> void:
+	bridges.clear()
+	var n := points.size()
+	var over := PackedInt32Array()
+	over.resize(n)
+	over.fill(-1)
+	var reach := road_half + KERB_W + 4.0
+	for i in n:
+		var p: Vector3 = points[i]
+		var cx := int(floor(p.x / GRID))
+		var cz := int(floor(p.z / GRID))
+		for dx in range(-1, 2):
+			for dz in range(-1, 2):
+				var key := Vector2i(cx + dx, cz + dz)
+				if not _grid.has(key):
+					continue
+				for j in _grid[key]:
+					var arc := absi(int(j) - i)
+					arc = mini(arc, n - arc)
+					var q: Vector3 = points[j]
+					if arc < 100 or p.y - q.y < BRIDGE_CLEAR:
+						continue
+					if Vector2(q.x - p.x, q.z - p.z).length() < reach:
+						over[i] = j
+	var i := 0
+	while i < n:
+		if over[i] < 0:
+			i += 1
+			continue
+		var i0 := i
+		while i < n and over[i] >= 0:
+			i += 1
+		var mid := (i0 + i - 1) / 2
+		bridges.append({"i0": i0, "i1": i, "lower": over[mid], "drop": points[mid].y - points[over[mid]].y})
+
+
+## The bridge itself: a concrete deck under the upper road (its road and
+## verges are the driving surface on top) from barrier to barrier, with
+## a fascia along each side and a beam under each edge, and an abutment
+## wall each side of the road underneath, where the bank meets the deck.
+func _build_bridges() -> void:
+	if bridges.is_empty():
+		return
+	var n := points.size()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var deck := 1.2
+	for b in bridges:
+		var k0 := int(b["i0"]) - 8
+		var k1 := int(b["i1"]) + 8
+		for k in range(k0, k1):
+			var i := posmod(k, n)
+			var j := posmod(k + 1, n)
+			var li := wall_at(i, -1.0) + 0.6
+			var ri := wall_at(i, 1.0) + 0.6
+			var lj := wall_at(j, -1.0) + 0.6
+			var rj := wall_at(j, 1.0) + 0.6
+			var top_i: Vector3 = points[i] + Vector3.UP * (GROUND_Y - 0.04)
+			var top_j: Vector3 = points[j] + Vector3.UP * (GROUND_Y - 0.04)
+			var a_l := top_i - rights[i] * li
+			var a_r := top_i + rights[i] * ri
+			var b_l := top_j - rights[j] * lj
+			var b_r := top_j + rights[j] * rj
+			var dn := Vector3.DOWN * deck
+			# Underside.
+			_quad(st, a_l + dn, b_l + dn, b_r + dn, a_r + dn)
+			# Fascias (outside faces of the deck's edges), up past the verge.
+			var up := Vector3.UP * 0.35
+			_quad(st, a_l + dn, a_l + up, b_l + up, b_l + dn)
+			_quad(st, b_r + dn, b_r + up, a_r + up, a_r + dn)
+		_abutments(st, b)
+	st.generate_normals()
+	var mesh := st.commit()
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.62, 0.61, 0.58)
+	mat.roughness = 0.9
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = mat
+	add_child(mi)
+
+
+## Two walls along the lower road, each side, under the bridge: from the
+## lower road's barrier line up to the deck, as long as the deck is wide.
+func _abutments(st: SurfaceTool, b: Dictionary) -> void:
+	var n := points.size()
+	var lo := int(b["lower"])
+	var mid: int = (int(b["i0"]) + int(b["i1"])) / 2
+	var top_y: float = points[mid].y + GROUND_Y - 1.24
+	for side in [-1.0, 1.0]:
+		for k in range(lo - 14, lo + 14):
+			var i := posmod(k, n)
+			var j := posmod(k + 1, n)
+			var a: Vector3 = points[i] + rights[i] * wall_at(i, side) * side
+			var c: Vector3 = points[j] + rights[j] * wall_at(j, side) * side
+			# Only under the deck: within the upper road's barriers.
+			var up_i := track_index(a, mid)
+			if absf(lateral(a, up_i)) > maxf(wall_at(up_i, -1.0), wall_at(up_i, 1.0)) + 0.6:
+				continue
+			var a0 := Vector3(a.x, a.y + GROUND_Y - 0.3, a.z)
+			var c0 := Vector3(c.x, c.y + GROUND_Y - 0.3, c.z)
+			var a1 := Vector3(a.x, top_y, a.z)
+			var c1 := Vector3(c.x, top_y, c.z)
+			_quad(st, a0, a1, c1, c0)
+
+
+static func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
+	st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
+	st.add_vertex(a); st.add_vertex(c); st.add_vertex(d)
+
+
+func on_bridge(i: int) -> bool:
+	for b in bridges:
+		if i >= int(b["i0"]) - 6 and i < int(b["i1"]) + 6:
+			return true
+	return false
 
 
 func _build_grid() -> void:

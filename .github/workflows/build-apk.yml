@@ -125,6 +125,9 @@ jobs:
       - name: Racing contact with drivers at the wheel, and brushing barriers
         run: bash .github/run_test.sh res://tests/contact_test.gd
 
+      - name: Ise Bay's figure of eight (over the bridge and under it, 20 cars)
+        run: bash .github/run_test.sh res://tests/crossover_test.gd
+
       - name: Wheel-to-wheel in real races (a contact never spins you or puts you off)
         run: |
           for sty in racer bully; do

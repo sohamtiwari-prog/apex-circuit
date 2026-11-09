@@ -3,7 +3,7 @@ extends SceneTree
 ##   godot --headless --script res://tests/corners_test.gd
 const REAL := {"silvermoor": 18, "styria": 10, "lakeside": 14, "red_sea": 27, "caspian": 20, "lone_star": 20,
 	"duinen": 14, "brianza": 11, "ardennes": 19, "riviera": 19, "marina": 19, "gulf": 16, "desert": 15,
-	"pannonia": 14, "ile_royale": 14, "entrelagos": 15}
+	"pannonia": 14, "ile_royale": 14, "entrelagos": 15, "isebay": 18, "jiading": 16}
 
 func _initialize() -> void:
 	var a := OS.get_cmdline_user_args()

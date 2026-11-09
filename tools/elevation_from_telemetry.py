@@ -38,6 +38,8 @@ EVENTS = {
     "caspian": "Azerbaijan Grand Prix",
     "lone_star": "United States Grand Prix",
     "red_sea": "Saudi Arabian Grand Prix",
+    "jiading": "Chinese Grand Prix",
+    "isebay": "Japanese Grand Prix",
 }
 HERE = os.path.dirname(os.path.abspath(__file__))
 TRACKS = os.path.join(HERE, "..", "tracks")
@@ -150,6 +152,21 @@ def main():
             d, idx = tree.query(xy)
             if np.median(d) > 6.0:
                 continue
+            # Follow the lap along the track: where it crosses itself (the
+            # figure of eight at Ise Bay), the nearest point can be on the
+            # other level; take the nearby point closest along the lap to
+            # where the car just was instead.
+            dk, ik = tree.query(xy, k=12)
+            prev = int(idx[0])
+            for m in range(len(xy)):
+                ahead = (ik[m] - prev) % n
+                ahead = np.where(ahead > n // 2, ahead - n, ahead)
+                ok_m = (np.abs(ahead) < 60) & (dk[m] < 12.0)
+                if ok_m.any():
+                    j = int(np.argmin(np.where(ok_m, dk[m], np.inf)))
+                    idx[m] = ik[m][j]
+                    d[m] = dk[m][j]
+                prev = int(idx[m])
             used += 1
             starts.append(idx[0])
             for k in np.nonzero(d < 9.0)[0]:

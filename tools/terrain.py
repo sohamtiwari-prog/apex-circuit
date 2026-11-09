@@ -31,7 +31,8 @@ TRACKS = os.path.join(HERE, "..", "tracks")
 STYLE = {"silvermoor": "park", "brianza": "park", "ardennes": "forest", "riviera": "city",
          "styria": "park", "entrelagos": "park", "desert": "desert", "kestrel_park": "park",
          "ile_royale": "park", "marina": "city", "pannonia": "park", "gulf": "desert",
-         "lakeside": "park", "duinen": "park", "caspian": "city", "lone_star": "park", "red_sea": "city"}
+         "lakeside": "park", "duinen": "park", "caspian": "city", "lone_star": "park", "red_sea": "city",
+         "jiading": "park", "isebay": "park"}
 # Rolling-hill height far from the track, and how far out it builds up.
 HILLS = {"park": 7.0, "forest": 16.0, "desert": 3.0, "city": 3.0}
 # Water (our coordinates): Monaco's harbour and the open sea beyond the tunnel.
@@ -99,6 +100,32 @@ def build(tid):
     shelf = np.minimum(wall + 30.0, np.maximum((d1 + d2) * 0.5 - 4.0, wall + 3.0))
     fixed = d1 <= shelf
     target = np.where(np.isfinite(d1), elev[np.minimum(i1, n - 1)] - GROUND_DROP, 0.0)
+
+    # Where the track crosses itself (Ise Bay's figure of eight): the ground
+    # follows the lower road (the upper one is on a bridge), the strip along
+    # each road is held at that road's height, and between the two the
+    # ground is left free (a smooth bank up from the cutting).
+    half = float(data.get("half_width", 7.0))
+    corridor = half + 9.0
+    near_k = np.isfinite(d) & (d <= corridor)
+    hk = np.where(near_k, elev[np.minimum(idx, n - 1)], np.inf)
+    lowest = hk.min(axis=1)
+    highest = np.where(near_k, hk, -np.inf).max(axis=1)
+    crossing = np.isfinite(lowest) & (highest - lowest > 2.0)
+    target = np.where(crossing, lowest - GROUND_DROP, target)
+    # Other vertices near a crossing (two roads at different heights within
+    # 40 m, neither right here): free.
+    i2 = np.full(len(V), -1)
+    for k in range(1, d.shape[1]):
+        ok = valid[:, k] & (i2 < 0)
+        ik = np.where(ok, idx[:, k], 0)
+        arc = np.abs(ik - i1)
+        arc = np.minimum(arc, n - arc) * spacing
+        other = ok & (arc > 2.5 * d[:, k] + 60.0)
+        i2 = np.where(other, ik, i2)
+    step_up = np.where(i2 >= 0, np.abs(elev[np.minimum(i2, n - 1)] - elev[np.minimum(i1, n - 1)]), 0.0)
+    loose = (step_up > 2.0) & (d2 < 40.0) & ~np.any(near_k, axis=1)
+    fixed = fixed & ~loose
 
     # Laplace solve for the free vertices (fixed ones are boundary values).
     N = w * h
