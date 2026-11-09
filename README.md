@@ -374,11 +374,20 @@ the other car's copy as if it had been pushed too, so a touch feels the
 same as it does against a bot (tests/net_contact_test.gd replays squeezes,
 taps and slipstreaming through the network code at 10 to 150 ms).
 
-What's sent is small: each car's state is packed into 45 bytes, so the
-host's 20-car update (20 a second) is about 1 KB, one network packet (it
-was 2.4 KB, over two, and online that was more than a slow connection
-could carry: the friends' phones fell further and further behind, with
-cars stuttering and jumping, while the host was fine).
+What's sent is small: a car is 23 bytes (position to the centimetre,
+rotation, speed, inputs); its tyres, pit stop and penalties go only when
+they change and once a second; cars far from every player go every other
+update. The host's 20-car update (20 a second) is about 0.5 KB (it was
+2.4 KB, over two packets, then 1 KB: online that was more than a slow
+connection or a busy server could carry, and the friends' phones fell
+behind, with cars stuttering and jumping, while the host was fine).
+Standings are 20 bytes a car. tests/wire_test.gd checks it all survives.
+
+Which free server: .github/workflows/net-probe.yml (run by hand) races two
+copies of the game through each real one. HiveMQ passed every update on
+time; EMQX, which every game used first until now, let through ~8 of the
+20 a second with stalls of up to a second; Mosquitto didn't connect. Hosts
+now try HiveMQ first.
 
 Every phone draws the other cars where they are now. A friend's clock adds
 half the round trip to the host's (the packets show the host's clock as it

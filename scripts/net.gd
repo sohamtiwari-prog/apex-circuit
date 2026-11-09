@@ -22,10 +22,10 @@ signal chat_received(from_id: int, text: String)
 
 ## What every phone in a game must agree on: how cars and races are sent.
 ## Bump it whenever that changes (v0.1.52 packed cars into 43 bytes, v0.1.53
-## into 45: a phone on one reading the other's cars put them anywhere).
+## into 45, then 23: a phone on one reading the other's cars put them anywhere).
 ## Phones on a different one can't join each other; both are told to update.
 ## (APEX_PROTO: tests pretend to be another version.)
-static var PROTOCOL: int = int(OS.get_environment("APEX_PROTO")) if OS.has_environment("APEX_PROTO") else 3
+static var PROTOCOL: int = int(OS.get_environment("APEX_PROTO")) if OS.has_environment("APEX_PROTO") else 4
 
 
 ## This build's version (set by CI before export, e.g. "0.1.54").
@@ -41,10 +41,15 @@ const BEACON_PORT := 47011          # joiners listen here (host announcements, p
 const PROBE_PORT := 47012           # hosts listen here for "who's hosting?" probes
 const DEFAULT_SERVER := "wss://apex-circuit-relay.onrender.com"
 ## Free public MQTT brokers (WebSocket + TLS). The first letter of a room code
-## says which one the game is on, so joiners need nothing but the code.
+## says which one the game is on, so joiners need nothing but the code. A
+## host tries them in this order. Measured racing through each
+## (.github/workflows/net-probe.yml): HiveMQ passed every update on time;
+## EMQX let through ~8 of the 20 a second, with stalls of up to a second
+## (cars jumping on friends' phones); Mosquitto didn't connect at all. (It
+## was EMQX first: most games online were on the one that held updates back.)
 const PUBLIC_BROKERS := [
-	"wss://broker.emqx.io:8084/mqtt",
 	"wss://broker.hivemq.com:8884/mqtt",
+	"wss://broker.emqx.io:8084/mqtt",
 	"wss://test.mosquitto.org:8081/mqtt",
 ]
 const CODE_CHARS := "ABCDEFGHJKMNPQRSTUVWXYZ23456789"

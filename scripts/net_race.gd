@@ -128,80 +128,140 @@ static func car_state(c: RaceCar) -> PackedFloat32Array:
 		v.x, v.y, v.z, c.steering, c.rpm, float(c.gear), c.brake_input, 1.0 if c.drs_open else 0.0, c.throttle])
 
 
-## On the wire, a car's state is packed into 45 bytes (it was ~120 as
-## floats in a dictionary): a 20-car snapshot is ~0.9 KB instead of 2.4 KB,
-## so it fits in one network packet (nothing to reassemble, nothing lost
-## when one fragment of a big packet goes missing) and online it's a third
-## of the traffic through the servers. Position stays exact; rotation,
-## speed and the rest are rounded far below anything you could see.
-const PACKED := 45
+## On the wire. A car is 23 bytes (it was ~120 as floats in a dictionary,
+## then 45): position to the centimetre, heading to 0.006 degrees, pitch and
+## roll to under a degree, speed to 1 cm/s, and the driver's inputs. Its
+## tyres, pit stop and penalties (11 bytes) only go out when they change
+## (three times over, as packets can be lost) and once a second besides.
+## Cars far from every player (> 250 m) go every other update. The update's
+## own timing rides in the same bytes. A 20-car update is ~0.4 KB (it was
+## 2.4 KB, then 1 KB): less to carry on a weak connection or a busy server.
+const FAST := 23
+const SLOW := 11
+const FAR := 250.0
 
-static func _q16(x: float, scale: float) -> int:
-	return clampi(roundi(x * scale), -32767, 32767)
+static func _q(x: float, scale: float, lim: int) -> int:
+	return clampi(roundi(x * scale), -lim, lim)
 
 
-static func pack_state(buf: StreamPeerBuffer, slot: int, s: PackedFloat32Array) -> void:
+static func _put24(buf: StreamPeerBuffer, v: int) -> void:
+	v = clampi(v, -8388607, 8388607) & 0xFFFFFF
+	buf.put_u16(v & 0xFFFF)
+	buf.put_u8(v >> 16)
+
+
+static func _get24(buf: StreamPeerBuffer) -> int:
+	var v := buf.get_u16() | (buf.get_u8() << 16)
+	return v - 0x1000000 if v >= 0x800000 else v
+
+
+## A car's tyres, pit stop and penalties: the slowly changing part.
+static func slow_part(s: PackedFloat32Array) -> PackedFloat32Array:
+	return s.slice(16, 24) if s.size() >= 24 else PackedFloat32Array([-1, 0, 0, -1, 0, 0, 0, 0])
+
+
+static func pack_state(buf: StreamPeerBuffer, slot: int, s: PackedFloat32Array, with_slow: bool) -> void:
 	var f := s.duplicate()
 	if f.size() < 25:
 		f.resize(25)
-	buf.put_u8(slot)
-	buf.put_float(f[0]); buf.put_float(f[1]); buf.put_float(f[2])
-	var q := Quaternion(f[3], f[4], f[5], f[6]).normalized()
-	if q.w < 0.0:
-		q = -q                               # (same rotation: keeps w >= 0)
-	buf.put_16(_q16(q.x, 32767.0)); buf.put_16(_q16(q.y, 32767.0)); buf.put_16(_q16(q.z, 32767.0))
-	buf.put_16(_q16(f[7], 100.0)); buf.put_16(_q16(f[8], 100.0)); buf.put_16(_q16(f[9], 100.0))
-	buf.put_8(clampi(roundi(f[10] * 127.0), -127, 127))
-	buf.put_u16(clampi(roundi(f[11]), 0, 65535))
-	buf.put_8(clampi(int(f[12]), -1, 12))
-	buf.put_u8(clampi(roundi(f[13] * 255.0), 0, 255))
-	buf.put_u8(1 if f[14] > 0.5 else 0)
-	buf.put_u8(clampi(roundi(f[15] * 255.0), 0, 255))
-	buf.put_8(int(f[16])); buf.put_u16(clampi(roundi(f[17] * 65535.0), 0, 65535)); buf.put_u8(int(f[18])); buf.put_8(int(f[19]))
-	buf.put_u16(clampi(roundi(f[20] * 10.0), 0, 65535)); buf.put_u16(clampi(roundi(f[21] * 10.0), 0, 65535))
-	buf.put_u8(clampi(int(f[22]), 0, 255)); buf.put_u8(clampi(int(f[23]), 0, 255))
-	buf.put_16(_q16(f[24], 1000.0))
+	buf.put_u8((slot & 0x7F) | (0x80 if with_slow else 0))
+	_put24(buf, roundi(f[0] * 100.0)); buf.put_16(_q(f[1], 100.0, 32767)); _put24(buf, roundi(f[2] * 100.0))
+	var basis := Basis(Quaternion(f[3], f[4], f[5], f[6]).normalized())
+	var eu := basis.get_euler()                       # (pitch, yaw, roll)
+	var qy := _q(eu.y, 32767.0 / PI, 32767)
+	var qp := _q(eu.x, 127.0 / 1.6, 127)
+	var qr := _q(eu.z, 127.0 / 1.6, 127)
+	buf.put_16(qy); buf.put_8(qp); buf.put_8(qr)
+	# (Speed in the car's frame as the other phone will rebuild it, so the
+	# rounding of the rotation doesn't turn the speed.)
+	var rb := Basis.from_euler(Vector3(qp * 1.6 / 127.0, qy * PI / 32767.0, qr * 1.6 / 127.0))
+	var lv := rb.transposed() * Vector3(f[7], f[8], f[9])
+	buf.put_16(_q(lv.z, 100.0, 32767)); buf.put_16(_q(lv.x, 100.0, 32767)); buf.put_8(_q(lv.y, 10.0, 127))
+	buf.put_8(_q(f[10], 127.0, 127))
+	buf.put_u8(clampi(roundi(f[11] / 64.0), 0, 255))
+	buf.put_u8((clampi(int(f[12]) + 1, 0, 15) << 4) | (1 if f[14] > 0.5 else 0))
+	buf.put_u8((clampi(roundi(f[13] * 15.0), 0, 15) << 4) | clampi(roundi(f[15] * 15.0), 0, 15))
+	buf.put_8(_q(f[24], 1.0 / 0.03, 127))
+	if with_slow:
+		buf.put_8(int(f[16])); buf.put_u16(clampi(roundi(f[17] * 65535.0), 0, 65535)); buf.put_u8(int(f[18])); buf.put_8(int(f[19]))
+		buf.put_u16(clampi(roundi(f[20] * 10.0), 0, 65535)); buf.put_u16(clampi(roundi(f[21] * 10.0), 0, 65535))
+		buf.put_u8(clampi(int(f[22]), 0, 255)); buf.put_u8(clampi(int(f[23]), 0, 255))
 
 
-## [slot, state] from bytes written by pack_state.
-static func unpack_state(buf: StreamPeerBuffer) -> Array:
-	var slot := buf.get_u8()
+## [slot, state] from bytes written by pack_state; the slow part comes from
+## `known` (slot -> its last slow part) when it isn't in these bytes.
+static func unpack_state(buf: StreamPeerBuffer, known: Dictionary) -> Array:
+	var head := buf.get_u8()
+	var slot := head & 0x7F
 	var f := PackedFloat32Array()
 	f.resize(25)
-	f[0] = buf.get_float(); f[1] = buf.get_float(); f[2] = buf.get_float()
-	var qx := buf.get_16() / 32767.0
-	var qy := buf.get_16() / 32767.0
-	var qz := buf.get_16() / 32767.0
-	f[3] = qx; f[4] = qy; f[5] = qz; f[6] = sqrt(maxf(1.0 - qx * qx - qy * qy - qz * qz, 0.0))
-	f[7] = buf.get_16() / 100.0; f[8] = buf.get_16() / 100.0; f[9] = buf.get_16() / 100.0
+	f[0] = _get24(buf) / 100.0; f[1] = buf.get_16() / 100.0; f[2] = _get24(buf) / 100.0
+	var yaw := buf.get_16() * PI / 32767.0
+	var pitch := buf.get_8() * 1.6 / 127.0
+	var roll := buf.get_8() * 1.6 / 127.0
+	var basis := Basis.from_euler(Vector3(pitch, yaw, roll))
+	var q := basis.get_rotation_quaternion()
+	f[3] = q.x; f[4] = q.y; f[5] = q.z; f[6] = q.w
+	var lz := buf.get_16() / 100.0
+	var lx := buf.get_16() / 100.0
+	var ly := buf.get_8() / 10.0
+	var v := basis * Vector3(lx, ly, lz)
+	f[7] = v.x; f[8] = v.y; f[9] = v.z
 	f[10] = buf.get_8() / 127.0
-	f[11] = buf.get_u16()
-	f[12] = buf.get_8()
-	f[13] = buf.get_u8() / 255.0
-	f[14] = buf.get_u8()
-	f[15] = buf.get_u8() / 255.0
-	f[16] = buf.get_8(); f[17] = buf.get_u16() / 65535.0; f[18] = buf.get_u8(); f[19] = buf.get_8()
-	f[20] = buf.get_u16() / 10.0; f[21] = buf.get_u16() / 10.0
-	f[22] = buf.get_u8(); f[23] = buf.get_u8()
-	f[24] = buf.get_16() / 1000.0
+	f[11] = buf.get_u8() * 64.0
+	var gd := buf.get_u8()
+	f[12] = (gd >> 4) - 1
+	f[14] = gd & 1
+	var bt := buf.get_u8()
+	f[13] = (bt >> 4) / 15.0
+	f[15] = (bt & 15) / 15.0
+	f[24] = buf.get_8() * 0.03
+	var slow: PackedFloat32Array
+	if head & 0x80:
+		slow = PackedFloat32Array([buf.get_8(), buf.get_u16() / 65535.0, buf.get_u8(), buf.get_8(),
+			buf.get_u16() / 10.0, buf.get_u16() / 10.0, buf.get_u8(), buf.get_u8()])
+		known[slot] = slow
+	else:
+		slow = known.get(slot, PackedFloat32Array([-1, 0, 0, -1, 0, 0, 0, 0]))
+	for k in 8:
+		f[16 + k] = slow[k]
 	return [slot, f]
 
 
-static func pack_states(states: Dictionary) -> PackedByteArray:
-	var buf := StreamPeerBuffer.new()
-	for slot in states:
-		pack_state(buf, int(slot), states[slot])
-	return buf.data_array
-
-
-static func unpack_states(bytes: PackedByteArray) -> Dictionary:
-	var buf := StreamPeerBuffer.new()
-	buf.data_array = bytes
+## Several cars (after `head` bytes of the update's own timing).
+static func unpack_states(buf: StreamPeerBuffer, known: Dictionary) -> Dictionary:
 	var out := {}
-	while buf.get_available_bytes() >= PACKED:
-		var r := unpack_state(buf)
+	while buf.get_available_bytes() >= FAST:
+		var r := unpack_state(buf, known)
 		out[int(r[0])] = r[1]
 	return out
+
+
+var _slow_sent := {}                 # slot -> [slow part last sent, sends still to repeat, when last sent]
+var _slow_known := {}                # slot -> slow part last received
+var _snap_n := 0
+
+## Send this car's slow part in this update?
+func _want_slow(slot: int, slow: PackedFloat32Array) -> bool:
+	var t := now()
+	var rec: Array = _slow_sent.get(slot, [])
+	if rec.is_empty() or rec[0] != slow:
+		rec = [slow, 3, t + fmod(slot * 0.05, 1.0)]
+		_slow_sent[slot] = rec
+	if int(rec[1]) > 0:
+		rec[1] = int(rec[1]) - 1
+		rec[2] = t
+		return true
+	if t - float(rec[2]) > 1.0:
+		rec[2] = t
+		return true
+	return false
+
+
+func _pack_cars(buf: StreamPeerBuffer, states: Dictionary) -> void:
+	for slot in states:
+		var s: PackedFloat32Array = states[slot]
+		pack_state(buf, int(slot), s, _want_slow(int(slot), slow_part(s)))
 
 
 ## Turns a car into a network-driven one: no physics of its own, moved to
@@ -261,33 +321,58 @@ func physics_tick(delta: float) -> void:
 	_send_t -= delta
 	if _send_t <= 0.0:
 		_send_t = 1.0 / SEND_HZ
+		_snap_n += 1
 		if Net.is_host():
+			# Cars far from every player go every other update.
+			var humans: Array = []
+			for e in race.entrants:
+				if e.is_player or e.net_id > 0:
+					humans.append(e.car.global_position)
 			var cars := {}
 			for e in race.entrants:
-				cars[e.slot] = entrant_state(e)
-			var snap := {"t": "s", "nt": net_time(), "time": race.race_time, "st": race.state, "lt": race.lights_time, "b": pack_states(cars)}
+				var near := false
+				for hp in humans:
+					if e.car.global_position.distance_squared_to(hp) < FAR * FAR:
+						near = true
+						break
+				if near or (_snap_n + e.slot) % 2 == 0:
+					cars[e.slot] = entrant_state(e)
+			var buf := StreamPeerBuffer.new()
+			buf.put_double(net_time()); buf.put_float(race.race_time); buf.put_u8(race.state); buf.put_float(race.lights_time)
+			_pack_cars(buf, cars)
+			var snap := {"t": "s", "b": buf.data_array}
+			# The Safety Car while it's out; that it's in, once a second.
 			if race.control != null and race.control.sc_phase > 0:
 				snap["sc"] = race.control.sc.net_state()
-			elif race.control != null:
+			elif race.control != null and _snap_n % int(SEND_HZ) == 0:
 				snap["sc"] = [0, 0]
 			Net.send(0, snap, false)
 		else:
-			Net.send(1, {"t": "c", "nt": net_time(), "b": pack_states({race.player.slot: entrant_state(race.player)})}, false)
+			var buf := StreamPeerBuffer.new()
+			buf.put_double(net_time())
+			_pack_cars(buf, {race.player.slot: entrant_state(race.player)})
+			Net.send(1, {"t": "c", "b": buf.data_array}, false)
 	if Net.is_host():
 		_std_t -= delta
 		if _std_t <= 0.0:
 			_std_t = 0.25
-			# (Numbers as one flat array, 10 per car, and the few retirement
-			# reasons on their own: a third of the size of a list of lists.)
-			var flat := PackedFloat32Array()
+			# (20 bytes a car, and the few retirement reasons on their own:
+			# a fifth of the size of a list of lists.)
+			var sbuf := StreamPeerBuffer.new()
 			var why := {}
 			for e in race.entrants:
-				flat.append_array(PackedFloat32Array([e.slot, e.lap, e.progress, 1 if e.finished else 0, e.finish_time, e.best_lap, e.last_lap, e.position,
-					1 if e.dnf else 0, 1 if e.car.visible else 0]))
+				sbuf.put_u8(e.slot); sbuf.put_u8(clampi(e.lap, 0, 255)); sbuf.put_float(e.progress)
+				sbuf.put_u8((1 if e.finished else 0) | (2 if e.dnf else 0) | (4 if e.car.visible else 0))
+				sbuf.put_float(e.finish_time); sbuf.put_float(e.best_lap); sbuf.put_float(e.last_lap); sbuf.put_u8(clampi(e.position, 0, 255))
 				if e.dnf_reason != "":
 					why[e.slot] = e.dnf_reason
 			var vsc: int = race.control.vsc_state() if race.control != null else 0
-			Net.send(0, {"t": "std", "f": flat, "why": why, "vsc": vsc})
+			var msg := {"t": "std", "b": sbuf.data_array}
+			if not why.is_empty():
+				msg["why"] = why
+			if vsc != 0:
+				msg["vsc"] = vsc
+			Net.send(0, msg)
 	else:
 		# Follow the host's clock and start lights.
 		if _host_time_at > 0.0 and race.state != 0:
@@ -562,7 +647,11 @@ func _on_message(from: int, m: Dictionary) -> void:
 	match String(m.get("t", "")):
 		"c":
 			if Net.is_host() and _slot_of_peer.has(from):
-				var nt := float(m.get("nt", net_time()))
+				var cb := StreamPeerBuffer.new()
+				cb.data_array = m.get("b", PackedByteArray())
+				if cb.get_available_bytes() < 8 + FAST:
+					return
+				var nt := cb.get_double()
 				if not _peer_offsets.has(from):
 					_peer_offsets[from] = []
 				var offs: Array = _peer_offsets[from]
@@ -570,7 +659,7 @@ func _on_message(from: int, m: Dictionary) -> void:
 				if offs.size() > 40:
 					offs.pop_front()
 				_note_late(float(offs.max()) - float(offs[offs.size() - 1]))
-				var mine: Dictionary = unpack_states(m.get("b", PackedByteArray()))
+				var mine: Dictionary = unpack_states(cb, _slow_known)
 				if not mine.is_empty():
 					_push(_slot_of_peer[from], mine.values()[0], nt)
 		"ready":
@@ -578,38 +667,54 @@ func _on_message(from: int, m: Dictionary) -> void:
 		"s":
 			if Net.is_host():
 				return
+			var sb := StreamPeerBuffer.new()
+			sb.data_array = m.get("b", PackedByteArray())
+			if sb.get_available_bytes() < 17:
+				return
+			var nt := sb.get_double()
+			var h_time := sb.get_float()
+			var h_state := sb.get_u8()
+			var h_lights := sb.get_float()
 			_note_arrival()
-			_host_time = float(m["time"])
+			_host_time = h_time
 			_host_time_at = now()
 			# Clock offset: the fastest packet in the last ~2 s is the best
 			# estimate (least delayed). The clock then glides towards it.
-			_offsets.append(float(m["nt"]) - _sim)
+			_offsets.append(nt - _sim)
 			if _offsets.size() > 40:
 				_offsets.pop_front()
 			_note_late(float(_offsets.max()) - float(_offsets[_offsets.size() - 1]))
 			if _offset == -INF:
 				_offset = _offsets[0]
-			_host_state = int(m["st"])
+			_host_state = h_state
 			var me: int = race.player.slot
-			var cars: Dictionary = unpack_states(m.get("b", PackedByteArray()))
+			var cars: Dictionary = unpack_states(sb, _slow_known)
 			for slot in cars:
 				if int(slot) != me:
-					_push(int(slot), cars[slot], float(m["nt"]))
+					_push(int(slot), cars[slot], nt)
 			if m.has("sc") and race.control != null:
-				race.control.sc.net_update(m["sc"], float(m["nt"]), self)
+				race.control.sc.net_update(m["sc"], nt, self)
 			if race.state == 0:
-				race.lights_time = float(m["lt"])
+				race.lights_time = h_lights
 				if _host_state != 0:
 					race.lights_out_at = 0.0           # lights out on the next tick
 		"std":
 			if Net.is_host():
 				return
-			var flat: PackedFloat32Array = m.get("f", PackedFloat32Array())
+			var sbuf := StreamPeerBuffer.new()
+			sbuf.data_array = m.get("b", PackedByteArray())
 			var why: Dictionary = m.get("why", {})
 			var rows: Array = []
-			for k in range(0, flat.size() - 9, 10):
-				rows.append([flat[k], flat[k + 1], flat[k + 2], flat[k + 3], flat[k + 4], flat[k + 5], flat[k + 6], flat[k + 7],
-					flat[k + 8], String(why.get(int(flat[k]), "")), flat[k + 9]])
+			while sbuf.get_available_bytes() >= 20:
+				var slot := sbuf.get_u8()
+				var lap := sbuf.get_u8()
+				var prog := sbuf.get_float()
+				var flags := sbuf.get_u8()
+				var ft := sbuf.get_float()
+				var best := sbuf.get_float()
+				var last := sbuf.get_float()
+				var pos := sbuf.get_u8()
+				rows.append([slot, lap, prog, flags & 1, ft, best, last, pos, (flags >> 1) & 1, String(why.get(slot, "")), (flags >> 2) & 1])
 			_apply_standings(rows)
 			if race.control != null and int(m.get("vsc", 0)) != race.control.vsc_state():
 				race.control.set_vsc(int(m.get("vsc", 0)))

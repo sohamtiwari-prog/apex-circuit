@@ -132,6 +132,9 @@ jobs:
             test ${PIPESTATUS[0]} -eq 0 || exit 1
           done
 
+      - name: What goes over the network (car states packed small, nothing lost)
+        run: bash .github/run_test.sh res://tests/wire_test.gd
+
       - name: Multiplayer contact through the network code (10 to 150 ms)
         run: |
           for l in 0.01 0.06 0.15; do
