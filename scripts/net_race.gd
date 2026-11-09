@@ -23,8 +23,8 @@ const DELAY_MIN := 0.12        # seconds of interpolation delay (adapts to jitte
 const DRAW_DELAY := 0.03
 const DELAY_MAX := 0.6         # online through a public server can be jumpy
 const START_WAIT := 15.0       # max seconds to wait for everyone to load
-const LEAD_MAX := 1.0          # carry other cars forward at most this far (s): all the delay
-const PRED_MAX := 1.0          # and at most this far past the newest state (s): a hiccup
+const LEAD_MAX := 1.5          # carry other cars forward at most this far (s): all the delay
+const PRED_MAX := 1.5          # and at most this far past the newest state (s): a slow link
 const SNAP := 25.0             # a correction bigger than this (m) is a reset: no gliding
 const GLIDE := 0.07            # small corrections are blended in over about this long (s)
 
@@ -310,7 +310,7 @@ func physics_tick(delta: float) -> void:
 		if _pings.size() > 8:
 			_pings.pop_front()
 	if not _pings.is_empty():
-		var ht := minf(float(_pings.min()) / 2000.0, 0.35)
+		var ht := minf(float(_pings.min()) / 2000.0, 0.6)
 		_half_trip = ht if race.state == 0 else move_toward(_half_trip, ht, 0.05 * delta)
 	# Interpolation delay: one send interval plus room for the usual lateness.
 	_jitter = maxf(_jitter * (1.0 - 0.3 * delta), 0.0)
@@ -408,11 +408,14 @@ func _contacts() -> void:
 		return
 	var kicks := {}
 	# How sure we are where each other phone's car is: firm when its state
-	# is fresh, gentler the further it's been guessed ahead (> 0.2 s).
+	# is fresh, gentler the further it's been guessed ahead (> 0.25 s), and
+	# not there at all past 0.6 s: on a connection that slow (a friend's
+	# phone showed a 1.8 s ping) the car you'd touch is a guess, and a guess
+	# shouldn't knock you off. You drive through it, as through a ghost.
 	var soft := {}
 	for e in race.entrants:
 		if e.remote:
-			soft[e.car] = clampf(1.0 - (float(horizon.get(e.slot, 0.0)) - 0.2) / 0.5, 0.4, 1.0)
+			soft[e.car] = clampf(1.0 - (float(horizon.get(e.slot, 0.0)) - 0.25) / 0.35, 0.0, 1.0)
 	for hit in CarContacts.step_against(local_cars, remote_cars, 1.0 / Engine.physics_ticks_per_second, _touching, kicks, soft):
 		race.car_contact.emit(hit[0], hit[1], hit[2])
 	for e in race.entrants:
@@ -447,6 +450,19 @@ var rx_count := 0
 var rx_max_gap := 0.0
 var rx_stalls := 0
 var _rx_last := -1.0
+
+## A friend's phone on a slow connection says so (once a minute at most):
+## other cars will be guesses, and touching them won't count.
+var _warned_at := -999.0
+
+func _slow_link_warning() -> void:
+	if race == null or race.hud == null or race.state != 1 or Net.my_ping < 600:
+		return
+	if race.race_time - _warned_at < 60.0:
+		return
+	_warned_at = race.race_time
+	race.hud.show_banner("Slow connection to the host (%.1f s ping): other cars may jump, and pass through you" % (Net.my_ping / 1000.0), UIStyle.YELLOW, 4.0)
+
 
 func _note_arrival() -> void:
 	var t := now()
@@ -677,6 +693,7 @@ func _on_message(from: int, m: Dictionary) -> void:
 			var h_lights := sb.get_float()
 			_note_arrival()
 			_host_time = h_time
+			_slow_link_warning()
 			_host_time_at = now()
 			# Clock offset: the fastest packet in the last ~2 s is the best
 			# estimate (least delayed). The clock then glides towards it.

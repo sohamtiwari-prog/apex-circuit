@@ -386,8 +386,12 @@ Standings are 20 bytes a car. tests/wire_test.gd checks it all survives.
 Which free server: .github/workflows/net-probe.yml (run by hand) races two
 copies of the game through each real one. HiveMQ passed every update on
 time; EMQX, which every game used first until now, let through ~8 of the
-20 a second with stalls of up to a second; Mosquitto didn't connect. Hosts
-now try HiveMQ first.
+20 a second with stalls of up to a second (with small updates too: it caps
+messages, not bytes); Mosquitto didn't connect. Hosts now try HiveMQ first.
+A friend's recording showed a 1.8 s ping through EMQX: on a link that slow
+no guess is good, so a car guessed more than 0.6 s ahead is a ghost to you
+(you pass through it, nobody is knocked off by a car that isn't there), and
+a banner says the connection is slow.
 
 Every phone draws the other cars where they are now. A friend's clock adds
 half the round trip to the host's (the packets show the host's clock as it
