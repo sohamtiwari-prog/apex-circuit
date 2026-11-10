@@ -85,6 +85,7 @@ const _DEFAULTS := {
 		"opponents": 19,
 		"difficulty": "medium",     # easy, medium, hard
 		"garage_car": "marauder",   # the car on the home screen
+		"paint_car": "",            # the car in the paint shop
 		"career_series": 0,
 		"career_car": {},           # series id -> the car you last raced in it
 		"qualifying": false,        # quick race: qualifying session first
@@ -114,6 +115,7 @@ const _DEFAULTS := {
 	"championship": {},              # the season in progress (scripts/championship.gd)
 	"trophies": [],                  # finished seasons: {series, position, year}
 	"checkpoint_best": {},           # "track|car" -> metres, the furthest checkpoint run
+	"paint": {},                     # car id -> your own paint (CarSpecs.apply_paint)
 }
 
 
@@ -261,8 +263,21 @@ func _migrate(profile: Dictionary) -> void:
 # ---------------------------------------------------------------- cars
 
 ## A car's spec (every car races as it comes).
+## Your car: its spec, in your own paint if you've made one for it.
 func car_spec(car_id: String, team := 0) -> Dictionary:
-	return CarSpecs.get_spec(car_id, team)
+	return CarSpecs.apply_paint(CarSpecs.get_spec(car_id, team), my_paint(car_id))
+
+
+## Your paint for a car (scripts/paint_shop.gd), {} if none.
+func my_paint(car_id: String) -> Dictionary:
+	return data.get("paint", {}).get(car_id, {})
+
+
+func set_paint(car_id: String, p: Dictionary) -> void:
+	if not data.has("paint"):
+		data["paint"] = {}
+	data["paint"][car_id] = p
+	save()
 
 
 # ---------------------------------------------------------------- career

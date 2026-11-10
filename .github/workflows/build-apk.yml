@@ -138,6 +138,9 @@ jobs:
       - name: Party modes with friends (teams, eliminator, series, rematch line-up)
         run: bash .github/run_test.sh res://tests/party_test.gd
 
+      - name: Your own paint (on your car, off again, sent to friends)
+        run: bash .github/run_test.sh res://tests/paint_test.gd
+
       - name: Ise Bay's figure of eight (over the bridge and under it, 20 cars)
         run: bash .github/run_test.sh res://tests/crossover_test.gd
 

@@ -425,7 +425,7 @@ func _spawn_net_grid(info: Dictionary) -> void:
 		e.slot = int(g["slot"])
 		e.name = String(g["name"])
 		var c := RaceCar.new()
-		c.setup(CarSpecs.get_spec(String(g["car"]), int(g["team"])))
+		c.setup(CarSpecs.apply_paint(CarSpecs.get_spec(String(g["car"]), int(g["team"])), g.get("paint", {})))
 		add_child(c)
 		e.car = c
 		e.team = String(c.spec.get("team_name", c.spec["name"]))

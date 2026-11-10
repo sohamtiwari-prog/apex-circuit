@@ -121,6 +121,15 @@ Your rank is on the main menu (tap it for the whole ladder), the results
 screen shows what you earned and animates your progress, and friends see each
 other's ranks in the lobby.
 
+## Paint shop
+
+Garage → **Paint**: your own livery for each car. Body, accent and stripe
+colours (18 to choose from), the helmet on the Grand Prix car, a pattern
+(**Classic**, **Twin stripes** or **Two-tone**) and your race number (1-99).
+The car on the turntable changes as you tap; **Team colours** / **Factory
+paint** switches back. Your paint is used wherever you drive that car, and
+friends see it too (it goes with your car in the lobby).
+
 ## Racing with friends
 
 **Party modes** (the host's last chip in the lobby):
@@ -607,6 +616,8 @@ tests/
   flow_test.gd       finishing, pausing at the flag, Race again, restarting in qualifying
   race_types_test.gd checkpoint run (the clock, the gates, the best), eliminator, duel, from the back
   party_test.gd      party modes with friends: team split, eliminator settings, series points, rematch grid
+  paint_test.gd      your own paint: on your car, off again, sent to friends
+  paint_shots.gd     the paint shop, for review
   error_sweep.gd     a full race on every track, every car and condition: errors, stuck cars
   net_contact_test.gd  multiplayer contact through the network code at 10-150 ms
   recovery_probe.gd  a full-grid race: every car put back on track, and why

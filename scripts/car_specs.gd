@@ -58,6 +58,39 @@ static func get_spec(id: String, team_index := 0) -> Dictionary:
 	return s
 
 
+## Your own paint (scripts/paint_shop.gd) over a car's spec: colours,
+## pattern and race number. p: {"on", "base", "accent", "stripe", "helmet",
+## "pattern", "number"} (colours as html strings, so they go through the
+## save file and the network as they are).
+static func apply_paint(s: Dictionary, p: Dictionary) -> Dictionary:
+	if p.is_empty() or not bool(p.get("on", false)):
+		return s
+	var base := Color.html(String(p.get("base", "#ff7310")))
+	var accent := Color.html(String(p.get("accent", "#14181f")))
+	var stripe := Color.html(String(p.get("stripe", "#2699ff")))
+	var helmet := Color.html(String(p.get("helmet", "#ffd919")))
+	var pattern := String(p.get("pattern", "classic"))
+	if s["body"] == "gp":
+		var lv: Dictionary = (s["livery"] as Dictionary).duplicate()
+		lv["base"] = base
+		lv["accent"] = accent
+		lv["stripe"] = stripe
+		lv["helmet"] = helmet
+		s["livery"] = lv
+		s["color"] = base
+	else:
+		s["color"] = base
+		s["accent"] = accent
+		var shape: Dictionary = (s["shape"] as Dictionary).duplicate()
+		shape["stripes"] = pattern == "stripes"
+		shape["two_tone"] = pattern == "split"
+		s["shape"] = shape
+	s["pattern"] = pattern
+	s["number"] = clampi(int(p.get("number", 26)), 1, 99)
+	s["paint"] = p
+	return s
+
+
 static func display_name(id: String) -> String:
 	return get_spec(id)["name"]
 

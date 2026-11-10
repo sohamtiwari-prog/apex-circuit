@@ -138,6 +138,12 @@ func _build_panel() -> void:
 	hb.custom_minimum_size = Vector2(0, 76)
 	hb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(hb)
+	var paint := UIStyle.button("Paint", func():
+		save.set_setting("paint_car", car_id)
+		get_tree().change_scene_to_file("res://scenes/paint.tscn"), false, 24)
+	paint.custom_minimum_size = Vector2(0, 76)
+	paint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(paint)
 	var drive := UIStyle.button("Drive it", func():
 		save.set_setting("car", car_id)
 		get_tree().change_scene_to_file("res://scenes/menu.tscn"), true, 30)

@@ -344,7 +344,19 @@ func _build_gp() -> void:
 		[0.0, 0.27, 0.34, 0.27, 3.0], [-0.25, 0.38, 0.24, 0.36, 2.6], [-0.55, 0.36, 0.25, 0.31, 2.6],
 		[-0.95, 0.3, 0.24, 0.24, 2.6], [-1.35, 0.24, 0.2, 0.18, 2.6], [-1.75, 0.19, 0.15, 0.13, 2.5],
 		[-2.15, 0.16, 0.11, 0.1, 2.4], [-2.4, 0.15, 0.07, 0.07, 2.3]])
+	var pattern := String(spec.get("pattern", "classic"))
 	MeshKit.loft(paint, spine, 24, func(p: Vector3, th: float) -> Color:
+		match pattern:
+			"stripes":
+				# Twin stripes nose to tail.
+				if absf(absf(p.x) - 0.06) < 0.022 and th > 0.25:
+					return stripe
+				return accent if th < -0.4 else base
+			"split":
+				# Two-tone: the lower half in the accent, a pinstripe between.
+				if absf(th) < 0.12:
+					return stripe
+				return accent if th < 0.0 else base
 		if absf(p.x) < 0.035 and th > 0.3 and p.z > -0.1:
 			return stripe                      # centre stripe along the nose
 		if th < -0.4:
@@ -370,6 +382,8 @@ func _build_gp() -> void:
 		MeshKit.loft(paint, pod, 16, func(p: Vector3, th: float) -> Color:
 			if p.z > 0.8:
 				return carbon                  # inlet
+			if pattern == "split":
+				return accent if th < 0.1 else base
 			if absf(th) < 0.5 and p.y > 0.05 and p.y < 0.12:
 				return stripe                  # side stripe
 			return accent if th < -0.3 else base)

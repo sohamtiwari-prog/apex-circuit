@@ -74,7 +74,7 @@ func _ready() -> void:
 			_broadcast_lobby()
 		else:
 			var me: Dictionary = _players().get(Net.my_id, {})
-			Net.send(1, {"t": "hello", "proto": Net.PROTOCOL, "ver": Net.game_version(), "name": String(me.get("name", _my_name())), "car": String(save.get_setting("car")), "team": int(save.get_setting("team")), "rp": _my_rp()})
+			Net.send(1, {"t": "hello", "proto": Net.PROTOCOL, "ver": Net.game_version(), "name": String(me.get("name", _my_name())), "car": String(save.get_setting("car")), "team": int(save.get_setting("team")), "rp": _my_rp(), "paint": _my_paint()})
 	else:
 		_show_connect()
 
@@ -563,12 +563,12 @@ func _step_car(d: int) -> void:
 	var cur := ids.find(String(save.get_setting("car")))
 	var id: String = ids[posmod(cur + d, ids.size())]
 	save.set_setting("car", id)
-	var pick := {"name": _my_name(), "car": id, "team": int(save.get_setting("team")), "rp": _my_rp()}
+	var pick := {"name": _my_name(), "car": id, "team": int(save.get_setting("team")), "rp": _my_rp(), "paint": _my_paint()}
 	if Net.is_host():
 		_players()[1] = pick
 		_broadcast_lobby()
 	else:
-		Net.send(1, {"t": "hello", "proto": Net.PROTOCOL, "ver": Net.game_version(), "name": pick["name"], "car": id, "team": pick["team"], "rp": pick["rp"]})
+		Net.send(1, {"t": "hello", "proto": Net.PROTOCOL, "ver": Net.game_version(), "name": pick["name"], "car": id, "team": pick["team"], "rp": pick["rp"], "paint": pick["paint"]})
 		_players()[Net.my_id] = pick
 		_refresh_lobby()
 
@@ -588,7 +588,7 @@ func _step_track(d: int) -> void:
 
 func _enter_as_host() -> void:
 	_players().clear()
-	_players()[1] = {"name": _my_name(), "car": String(save.get_setting("car")), "team": int(save.get_setting("team")), "rp": _my_rp()}
+	_players()[1] = {"name": _my_name(), "car": String(save.get_setting("car")), "team": int(save.get_setting("team")), "rp": _my_rp(), "paint": _my_paint()}
 	Net.set_meta("settings", _default_settings())
 	_show_status("", UIStyle.FOG)
 	_show_lobby()
@@ -600,7 +600,7 @@ func _on_joined() -> void:
 		return
 	_players().clear()
 	_show_status("", UIStyle.FOG)
-	Net.send(1, {"t": "hello", "proto": Net.PROTOCOL, "ver": Net.game_version(), "name": _my_name(), "car": String(save.get_setting("car")), "team": int(save.get_setting("team")), "rp": _my_rp()})
+	Net.send(1, {"t": "hello", "proto": Net.PROTOCOL, "ver": Net.game_version(), "name": _my_name(), "car": String(save.get_setting("car")), "team": int(save.get_setting("team")), "rp": _my_rp(), "paint": _my_paint()})
 	_show_lobby()
 
 
@@ -640,7 +640,7 @@ func _on_message(from: int, m: Dictionary) -> void:
 					Net.send(from, {"t": "busy"})
 				print("version: a friend on a different version was turned away"); _show_status("%s couldn't join: their game is v%s, yours is v%s. Everyone needs the same version (update from the download page)." % [String(m.get("name", "A friend")).substr(0, 14), theirs, Net.game_version()], UIStyle.YELLOW)
 			elif Net.is_host():
-				_players()[from] = {"name": String(m.get("name", "Player")).substr(0, 14), "car": String(m.get("car", "gp26")), "team": int(m.get("team", 0)), "rp": maxi(int(m.get("rp", 0)), 0)}
+				_players()[from] = {"name": String(m.get("name", "Player")).substr(0, 14), "car": String(m.get("car", "gp26")), "team": int(m.get("team", 0)), "rp": maxi(int(m.get("rp", 0)), 0), "paint": m.get("paint", {})}
 				_broadcast_lobby()
 		"old":
 			Net.leave()
@@ -702,7 +702,7 @@ static func make_start(st: Dictionary, ps: Dictionary, order: Array = []) -> Dic
 	ps = _int_keys(ps)
 	var total := maxi(int(st.get("grid", 20)), ids.size())
 	var first_human := clampi(total / 2 - ids.size(), 0, total - ids.size())
-	var base_skill: float = {"easy": 0.86, "medium": 0.93, "hard": 0.985}.get(String(st.get("difficulty")), 0.93)
+	var base_skill: float = {"easy": 0.86, "medium": 0.93, "hard": 0.985}.get(String(st.get("difficulty", "medium")), 0.93)
 	var names: Array = load("res://scripts/race.gd").DRIVER_NAMES
 	var host_car := String(ps[1]["car"]) if ps.has(1) else "gp26"
 	var rng := RandomNumberGenerator.new()
@@ -714,7 +714,7 @@ static func make_start(st: Dictionary, ps: Dictionary, order: Array = []) -> Dic
 		if slot >= first_human and human < ids.size():
 			var id: int = ids[human]
 			var p: Dictionary = ps[id]
-			grid.append({"slot": slot, "kind": "player", "id": id, "name": p["name"], "car": p["car"], "team": int(p.get("team", 0))})
+			grid.append({"slot": slot, "kind": "player", "id": id, "name": p["name"], "car": p["car"], "team": int(p.get("team", 0)), "paint": p.get("paint", {})})
 			human += 1
 		else:
 			grid.append({"slot": slot, "kind": "bot", "id": 0, "name": names[bot % names.size()], "car": host_car,
@@ -791,6 +791,11 @@ func _toast(text: String) -> void:
 	while _chat_lines.size() > 3:
 		_chat_lines.pop_front()
 	_chat_lbl.text = "\n".join(_chat_lines)
+
+
+## Your paint for the car you've picked (friends see it).
+func _my_paint() -> Dictionary:
+	return save.my_paint(String(save.get_setting("car")))
 
 
 func _my_rp() -> int:
