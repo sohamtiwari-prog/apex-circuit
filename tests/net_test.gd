@@ -152,7 +152,7 @@ func _discovery() -> void:
 	var lists: Array = []
 	c.games_found.connect(func(g): lists.append(g))
 	c.start_discovery()
-	var ok := await _wait(func(): return lists.size() > 0 and lists[-1].size() > 0, 6.0)
+	var ok := await _wait(func(): return lists.size() > 0 and lists[-1].size() > 0, 15.0)   # (a busy CI machine: broadcasts can be slow)
 	var ips: Array = []
 	if ok:
 		for g in lists[-1]:

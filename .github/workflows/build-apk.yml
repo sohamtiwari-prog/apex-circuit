@@ -222,6 +222,18 @@ jobs:
       - name: Multiplayer race online (two phones via the free public servers)
         run: LOGDIR=/tmp bash tests/run_mp_test.sh ~/godot/godot public ws://127.0.0.1:8091/mqtt
 
+      - name: Keep the multiplayer logs (when a test fails)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mp-logs
+          path: |
+            /tmp/mp_host.log
+            /tmp/mp_client.log
+            /tmp/relay.log
+            /tmp/broker.log
+          if-no-files-found: ignore
+
       - name: Barriers hold and Reset works on every track
         run: bash .github/run_test.sh res://tests/barrier_test.gd
 
