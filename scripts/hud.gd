@@ -113,6 +113,7 @@ func _ready() -> void:
 	_build_flag(root)
 	_build_race_control(root)
 	_build_messages(root)
+	_build_clock(root)
 	_build_lights(root)
 	_build_pause_menu(root)
 	_build_results(root)
@@ -1318,6 +1319,57 @@ func _build_messages(root: Control) -> void:
 	warn.add_child(warn_label)
 
 
+var _clock: PanelContainer
+var _clock_lbl: Label
+var _clock_add: Label
+var _clock_add_time := 0.0
+var _clock_text := ""
+
+
+## Checkpoint run: the clock, top middle, and what the last gate added.
+func _build_clock(root: Control) -> void:
+	_clock = PanelContainer.new()
+	_clock.add_theme_stylebox_override("panel", UIStyle.panel(Color(UIStyle.TARMAC, 0.88), true, UIStyle.APEX))
+	_clock.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_clock.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_clock.offset_top = 16
+	_clock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_clock.visible = false
+	root.add_child(_clock)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", -8)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_clock.add_child(v)
+	_clock_lbl = UIStyle.label("", 64, UIStyle.PAPER, "extrabold", true)
+	_clock_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_clock_lbl.custom_minimum_size = Vector2(190, 0)
+	v.add_child(_clock_lbl)
+	_clock_add = UIStyle.label("", 28, UIStyle.GREEN, "bold", true)
+	_clock_add.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_clock_add.modulate.a = 0.0
+	v.add_child(_clock_add)
+
+
+## secs < 0 hides the clock; added > 0 flashes "+x.x s" under it.
+func set_clock(secs: float, added := 0.0) -> void:
+	if _clock == null:
+		return
+	if secs < 0.0:
+		_clock.visible = false
+		return
+	_clock.visible = true
+	var txt := "%.1f" % secs
+	if txt != _clock_text:
+		_clock_text = txt
+		_clock_lbl.text = txt
+		var col := UIStyle.RED if secs < 5.0 else (UIStyle.YELLOW if secs < 10.0 else UIStyle.PAPER)
+		_clock_lbl.add_theme_color_override("font_color", col)
+	if added > 0.0:
+		_clock_add.text = "+%.1f s" % added
+		_clock_add.modulate.a = 1.0
+		_clock_add_time = 1.6
+
+
 func _build_lights(root: Control) -> void:
 	lights_box = PanelContainer.new()
 	var sb := UIStyle.panel(Color(UIStyle.INK, 0.9), false, Color(0, 0, 0, 0), 12)
@@ -1737,6 +1789,31 @@ func _reward_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void
 		tw.tween_callback(func(): stars.stars = s)
 
 
+## Checkpoint run: how far, against your best, gates passed, and stars
+## (daily challenge).
+func _checkpoint_column(cols: Control, reward: Dictionary) -> void:
+	var col := VBoxContainer.new()
+	col.custom_minimum_size = Vector2(340, 0)
+	col.add_theme_constant_override("separation", 6)
+	cols.add_child(col)
+	col.add_child(UIStyle.label("Checkpoint run", 34, UIStyle.PAPER, "extrabold", true))
+	if reward.has("stars"):
+		var stars := StarRow.new()
+		stars.custom_minimum_size = Vector2(300, 84)
+		stars.stars = int(reward["stars"])
+		col.add_child(stars)
+	if reward["new_best"]:
+		col.add_child(UIStyle.label("New best!" if float(reward["prev"]) > 0.0 else "First run here", 34, UIStyle.YELLOW, "extrabold", true))
+		if float(reward["prev"]) > 0.0:
+			col.add_child(UIStyle.label("+%.2f km on your old best" % ((float(reward["distance"]) - float(reward["prev"])) / 1000.0), 22, UIStyle.GREEN, "bold", true))
+	else:
+		col.add_child(UIStyle.label("Your best  %.2f km" % (float(reward["best"]) / 1000.0), 26, UIStyle.PURPLE, "bold", true))
+	col.add_child(UIStyle.label("%d gates  ·  %.2f laps" % [int(reward["gates"]), float(reward["laps"])], 22, UIStyle.FOG, "semibold"))
+	var rules := UIStyle.label(String(Career.TYPE_RULES["checkpoint"]), 18, UIStyle.FOG, "medium")
+	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(rules)
+
+
 func _rank_bar(parent: Control) -> ColorRect:
 	var back := ColorRect.new()
 	back.color = Color(UIStyle.PAPER, 0.12)
@@ -1872,6 +1949,9 @@ func _process(delta: float) -> void:
 		_radio_time -= delta
 		if _radio_time <= 0.0:
 			_radio.visible = false
+	if _clock_add_time > 0.0:
+		_clock_add_time -= delta
+		_clock_add.modulate.a = clampf(_clock_add_time / 0.5, 0.0, 1.0)
 	if _banner_time > 0.0:
 		_banner_time -= delta
 		if _banner_time <= 0.0:
@@ -1974,7 +2054,14 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 	left.add_theme_constant_override("separation", 0)
 	cols.add_child(left)
 	var tt: bool = reward.has("event") and reward["event"]["type"] == "time_trial"
-	if tt:
+	var cp: bool = reward.has("checkpoint")
+	if cp:
+		left.add_child(UIStyle.label("You reached", 30, UIStyle.FOG, "bold", true))
+		var dl := UIStyle.label("%.2f km" % (float(reward["distance"]) / 1000.0), 72, UIStyle.APEX if reward["new_best"] else UIStyle.PAPER, "extrabold", true)
+		dl.custom_minimum_size = Vector2(0, 150)
+		dl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		left.add_child(dl)
+	elif tt:
 		left.add_child(UIStyle.label("Best lap", 30, UIStyle.FOG, "bold", true))
 		var bt := UIStyle.label(String(me.get("best", "-")), 72, UIStyle.PAPER, "extrabold", true)
 		bt.custom_minimum_size = Vector2(0, 150)
@@ -1986,7 +2073,7 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 		left.add_child(big)
 		_res_big = big
 		left.add_child(UIStyle.label("of %d" % rows.size(), 30, UIStyle.FOG, "bold", true))
-	if me.get("best", "-") != "-" and not tt:
+	if me.get("best", "-") != "-" and not tt and not cp:
 		var bl := UIStyle.label("Best lap %s" % me["best"], 26, UIStyle.PURPLE if me.get("fastest", false) else UIStyle.PAPER, "bold", true)
 		bl.custom_minimum_size = Vector2(0, 54)
 		bl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
@@ -2027,7 +2114,9 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 	lower.add_child(menu)
 
 	var kids := cols.get_child_count()
-	if reward.has("champ"):
+	if cp:
+		_checkpoint_column(cols, reward)
+	elif reward.has("champ"):
 		_champ_column(cols, reward, rank)
 	elif reward.has("event"):
 		_reward_column(cols, reward, rank)

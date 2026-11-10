@@ -13,6 +13,8 @@ const TWISTS := [
 	["time_trial", "Hot lap", {}],
 	["race", "Rain on the way", {"weather": "changing"}],
 	["time_trial", "Hot lap at sunset", {"tod": "sunset"}],
+	["checkpoint", "Checkpoint run", {}],
+	["eliminator", "Last car out", {}],
 ]
 
 
@@ -41,8 +43,13 @@ static func event(day := "") -> Dictionary:
 			opponents = 1
 		"overtake":
 			opponents = 9
-		"time_trial":
+		"time_trial", "checkpoint":
 			opponents = 0
+		"eliminator":
+			opponents = 7
+			laps = 5
+	if type == "checkpoint":
+		laps = 99
 	var ev := {
 		"id": "daily_" + day, "type": type, "track": track, "laps": laps, "opponents": opponents,
 		"skill": 0.93, "cars": [car], "car": car, "series": 2,

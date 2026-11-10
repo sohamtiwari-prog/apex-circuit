@@ -95,6 +95,14 @@ would need Apple's paid developer programme and a Mac.)
   with fastest lap at the flag. AI drivers follow a computed racing line,
   keep a safe braking gap, overtake only into free space and check their
   mirrors, so a full grid races without piling up.
+- **Kinds of race** (Quick race, the chip beside your best): a normal
+  **Grand Prix race**; **Eliminator** (last car out at the end of every lap,
+  several a lap on a big grid, down to the last two or three for the final
+  lap); **Duel** (you and one rival); **From the back** (start last); and the
+  **Checkpoint run**: on your own against a clock that runs down, topped up
+  at each of six gates a lap by about what that stretch takes, a little less
+  every gate, so in the end the clock wins: how far can you get? Your
+  furthest run is kept for every track and car.
 - **Time trial:** you against the clock; best laps saved per car and track.
 - **Friends:** race your friends, with bots filling the grid up to 20 cars.
   One phone hosts and picks the track, laps, grid size, bot difficulty and
@@ -577,6 +585,7 @@ tests/
   contact_test.gd    racing contact with drivers at the wheel; brushing the barrier
   crash_audit.gd     full races raced hard against the bots: what every contact did to you
   flow_test.gd       finishing, pausing at the flag, Race again, restarting in qualifying
+  race_types_test.gd checkpoint run (the clock, the gates, the best), eliminator, duel, from the back
   error_sweep.gd     a full race on every track, every car and condition: errors, stuck cars
   net_contact_test.gd  multiplayer contact through the network code at 10-150 ms
   recovery_probe.gd  a full-grid race: every car put back on track, and why

@@ -70,7 +70,7 @@ const SERIES := [
 
 const TYPE_NAMES := {
 	"race": "Race", "duel": "Duel", "overtake": "Overtake", "eliminator": "Eliminator",
-	"time_trial": "Time trial", "season": "World Championship",
+	"time_trial": "Time trial", "season": "World Championship", "checkpoint": "Checkpoint run",
 }
 const TYPE_RULES := {
 	"race": "Win for 3 stars, 2nd for 2, 3rd for 1.",
@@ -79,6 +79,7 @@ const TYPE_RULES := {
 	"eliminator": "Last place is out at the end of every lap. Last car standing wins.",
 	"time_trial": "Your best lap against gold, silver and bronze times.",
 	"season": "A full Grand Prix season: qualifying, tyres, pit stops, points.",
+	"checkpoint": "Beat the clock to every gate; each gate tops it up a little less. 1 lap for a star, 1.5 for 2, 2 for 3.",
 }
 
 ## Time trial: target = a flying lap at the car's limits x factor (gold is
@@ -134,6 +135,15 @@ static func stars_for_position(type: String, position: int) -> int:
 			return 1 if position <= 5 else 0
 		_:
 			return clampi(4 - position, 0, 3)
+
+
+## Checkpoint run: stars by how many laps you lasted.
+static func stars_for_checkpoint(laps: float) -> int:
+	if laps >= 2.0:
+		return 3
+	if laps >= 1.5:
+		return 2
+	return 1 if laps >= 1.0 else 0
 
 
 static func stars_for_lap(best: float, targets: Array) -> int:

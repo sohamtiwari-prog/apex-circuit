@@ -80,6 +80,7 @@ const _DEFAULTS := {
 		"team": 0,
 		"track": "silvermoor",
 		"mode": "race",             # "race" or "time_trial"
+		"race_type": "race",        # quick race: race, eliminator, duel, overtake, checkpoint
 		"laps": 3,
 		"opponents": 19,
 		"difficulty": "medium",     # easy, medium, hard
@@ -112,6 +113,7 @@ const _DEFAULTS := {
 	"career": {},                    # event id -> best stars (0..3)
 	"championship": {},              # the season in progress (scripts/championship.gd)
 	"trophies": [],                  # finished seasons: {series, position, year}
+	"checkpoint_best": {},           # "track|car" -> metres, the furthest checkpoint run
 }
 
 
@@ -264,6 +266,22 @@ func car_spec(car_id: String, team := 0) -> Dictionary:
 
 
 # ---------------------------------------------------------------- career
+
+## Checkpoint run: the furthest you've gone (metres) on this track in this
+## car; submit returns true for a new best.
+func checkpoint_best(key: String) -> float:
+	return float(data.get("checkpoint_best", {}).get(key, 0.0))
+
+
+func submit_checkpoint(key: String, metres: float) -> bool:
+	if not data.has("checkpoint_best"):
+		data["checkpoint_best"] = {}
+	if metres <= checkpoint_best(key):
+		return false
+	data["checkpoint_best"][key] = metres
+	save()
+	return true
+
 
 func career_stars(event_id: String) -> int:
 	return int(data["career"].get(event_id, 0))

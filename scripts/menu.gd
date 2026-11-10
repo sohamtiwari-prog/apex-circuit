@@ -281,7 +281,7 @@ func _build_track_side(cols: Control) -> void:
 	_map = MiniMap.new()
 	_map.show_panel = false
 	_map.line_width = 5.0
-	_map.custom_minimum_size = Vector2(0, 100)
+	_map.custom_minimum_size = Vector2(0, 56)
 	_map.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(_map)
 	var foot := HBoxContainer.new()
@@ -292,10 +292,22 @@ func _build_track_side(cols: Control) -> void:
 	_track_count = UIStyle.label("", 18, UIStyle.FOG, "semibold")
 	foot.add_child(_track_count)
 
-	best_label = UIStyle.label("", 22, UIStyle.PURPLE, "bold", true)
-	v.add_child(best_label)
-
-	# Race options as chips: tap to change.
+	# Your best here, and the kind of race (a chip, tap to change).
+	var chips0 := HBoxContainer.new()
+	chips0.add_theme_constant_override("separation", 8)
+	v.add_child(chips0)
+	var bests := VBoxContainer.new()
+	bests.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bests.add_theme_constant_override("separation", -4)
+	chips0.add_child(bests)
+	best_label = UIStyle.label("", 20, UIStyle.PURPLE, "bold", true)
+	bests.add_child(best_label)
+	_type_rule = UIStyle.label("", 16, UIStyle.FOG, "medium")
+	_type_rule.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	bests.add_child(_type_rule)
+	_chip(chips0, "race_type", RACE_TYPES)
+	(_chips["race_type"][0] as Button).size_flags_horizontal = Control.SIZE_FILL
+	(_chips["race_type"][0] as Button).custom_minimum_size = Vector2(210, 46)
 	var chips := HBoxContainer.new()
 	chips.add_theme_constant_override("separation", 8)
 	v.add_child(chips)
@@ -321,7 +333,7 @@ func _build_track_side(cols: Control) -> void:
 	_chip(chips4, "ideal_ghost", [[false, "No ghost"], [true, "Ideal-lap ghost"]])
 
 	var go := UIStyle.button("Race", _start, true, 46)
-	go.custom_minimum_size = Vector2(0, 90)
+	go.custom_minimum_size = Vector2(0, 76)
 	v.add_child(go)
 	_chips["go"] = go
 
@@ -336,6 +348,18 @@ static func _same(a: Variant, b: Variant) -> bool:
 
 
 ## A chip that cycles through `choices` ([value, label] pairs) for a setting.
+const RACE_TYPES := [["race", "Grand Prix race"], ["eliminator", "Eliminator"], ["duel", "Duel"],
+	["overtake", "From the back"], ["checkpoint", "Checkpoint run"]]
+const TYPE_HINTS := {
+	"race": "A normal race from mid-grid.",
+	"eliminator": "Last car out at the end of every lap.",
+	"duel": "You and one rival, head to head.",
+	"overtake": "Start last: how far up can you get?",
+	"checkpoint": "Beat the clock to every gate. How far can you get?",
+}
+var _type_rule: Label
+
+
 func _chip(parent: Node, key: String, choices: Array) -> void:
 	var b := UIStyle.button("", func():
 		var cur: Variant = save.get_setting(key)
@@ -344,8 +368,9 @@ func _chip(parent: Node, key: String, choices: Array) -> void:
 			if _same(choices[k][0], cur):
 				i = k
 		save.set_setting(key, choices[(i + 1) % choices.size()][0])
-		_refresh_mode(), false, 20)
-	b.custom_minimum_size = Vector2(0, 52)
+		_refresh_mode()
+		_refresh_info(), false, 20)
+	b.custom_minimum_size = Vector2(0, 46)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	parent.add_child(b)
 	_chips[key] = [b, choices]
@@ -361,6 +386,14 @@ func _refresh_mode() -> void:
 			b.add_theme_stylebox_override(st, sb)
 		b.add_theme_color_override("font_color", UIStyle.INK if on else UIStyle.FOG)
 		b.add_theme_color_override("font_hover_color", UIStyle.INK if on else UIStyle.FOG)
+	var rt := String(save.get_setting("race_type"))
+	# What each kind of race leaves out.
+	var off := {
+		"checkpoint": ["laps", "opponents", "qualifying", "tyres", "race_control", "pit_mode", "ideal_ghost"],
+		"duel": ["opponents", "qualifying"],
+		"eliminator": ["qualifying"],
+		"overtake": ["qualifying"],
+	}
 	for key in _chips:
 		if key == "go":
 			continue
@@ -371,8 +404,11 @@ func _refresh_mode() -> void:
 		for c in choices:
 			if _same(c[0], cur):
 				b.text = c[1]
-		b.visible = mode == "race" or key == "time_of_day"
-	(_chips["go"] as Button).text = "Race" if mode == "race" else "Drive"
+		b.visible = (mode == "race" and not (off.get(rt, []) as Array).has(key)) or key == "time_of_day"
+	if _type_rule != null:
+		_type_rule.visible = mode == "race"
+		_type_rule.text = String(TYPE_HINTS.get(rt, ""))
+	(_chips["go"] as Button).text = ("Race" if rt != "checkpoint" else "Go") if mode == "race" else "Drive"
 
 
 # ------------------------------------------------------------ selection
@@ -460,8 +496,44 @@ func _refresh_info() -> void:
 	var track_id := String(save.get_setting("track"))
 	var best: int = save.get_best_lap(save.lap_key(track_id, car_id))
 	best_label.text = ("Your best lap here  " + UIStyle.fmt_time(best / 1000.0)) if best >= 0 else "No lap set with this car yet"
+	if String(save.get_setting("race_type")) == "checkpoint" and String(save.get_setting("mode")) == "race":
+		var cpb: float = save.checkpoint_best(save.lap_key(track_id, car_id))
+		best_label.text = ("Your furthest run here  %.2f km" % (cpb / 1000.0)) if cpb > 0.0 else "No checkpoint run here yet"
+		best = 0 if cpb > 0.0 else -1
 	best_label.add_theme_color_override("font_color", UIStyle.PURPLE if best >= 0 else UIStyle.FOG)
 
 
 func _start() -> void:
+	save.pending_event = {}
+	var rt := String(save.get_setting("race_type"))
+	if String(save.get_setting("mode")) == "race" and rt != "race":
+		save.pending_event = quick_event(save)
 	get_tree().change_scene_to_file("res://scenes/race.tscn")
+
+
+## A quick race of another kind, as an event (no stars: it isn't the career).
+static func quick_event(sv: Node) -> Dictionary:
+	var rt := String(sv.get_setting("race_type"))
+	var car := String(sv.get_setting("car"))
+	var opp := int(sv.get_setting("opponents"))
+	var laps := int(sv.get_setting("laps"))
+	var ev := {
+		"id": "", "type": rt, "track": String(sv.get_setting("track")), "car": car, "cars": [car],
+		"laps": laps, "opponents": opp, "series_name": "Quick race", "return_to": "res://scenes/menu.tscn",
+		"skill": {"easy": 0.87, "medium": 0.91, "hard": 0.95}.get(String(sv.get_setting("difficulty")), 0.91),
+		"tod": String(sv.get_setting("time_of_day")), "weather": String(sv.get_setting("weather")),
+		"tyres": String(sv.get_setting("tyres")), "team": int(sv.get_setting("team")),
+	}
+	match rt:
+		"duel":
+			ev["opponents"] = 1
+		"checkpoint":
+			ev["opponents"] = 0
+			ev["laps"] = 99
+		"eliminator":
+			# Out at the end of every lap but the last; with a big grid, more
+			# than one a lap, so it's down to the last two or three.
+			laps = maxi(laps, 3)
+			ev["laps"] = laps
+			ev["elim_per_lap"] = maxi(1, int(ceil(float(opp - 1) / float(laps - 1))))
+	return ev

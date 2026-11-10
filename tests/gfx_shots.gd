@@ -3,7 +3,7 @@ extends SceneTree
 ## player's car close up (front and rear three-quarter), low at the side of
 ## the track, the view ahead down the track, and high over the circuit.
 ## The race is frozen for all but the chase view, so each set is one moment.
-##   godot --rendering-method mobile --resolution 1600x720 --script res://tests/gfx_shots.gd -- <out_dir> <track>[:day|sunset|night][,...] [car] [seconds] [weather]
+##   godot --rendering-method mobile --resolution 1600x720 --script res://tests/gfx_shots.gd -- <out_dir> <track>[:day|sunset|night][,...] [car] [seconds] [weather] [race type]
 func _initialize() -> void:
 	_run()
 
@@ -26,6 +26,7 @@ func _run() -> void:
 	var car_id: String = args[2] if args.size() > 2 else "gp26"
 	var secs: float = float(args[3]) if args.size() > 3 else 14.0
 	var weather: String = args[4] if args.size() > 4 else "dry"
+	var race_type: String = args[5] if args.size() > 5 else "race"
 	await process_frame
 	for spec in String(args[1]).split(","):
 		var tid := spec.get_slice(":", 0)
@@ -35,6 +36,8 @@ func _run() -> void:
 		var st: Dictionary = save.data["settings"]
 		st["mode"] = "race"; st["laps"] = 3; st["opponents"] = 19; st["graphics"] = "high"; st["track"] = tid
 		st["car"] = car_id; st["qualifying"] = false; st["time_of_day"] = tod; st["weather"] = weather
+		st["race_type"] = race_type
+		save.pending_event = load("res://scripts/menu.gd").quick_event(save) if race_type != "race" else {}
 		var race: Node = (load("res://scenes/race.tscn") as PackedScene).instantiate()
 		root.add_child(race)
 		await physics_frame
@@ -44,6 +47,7 @@ func _run() -> void:
 		while race.race_time < secs:
 			await physics_frame
 		var tag := "%s/%s_%s" % [out, tid, tod]
+		await _shot(tag + "_hud.png")
 		_hide_hud(race, true)
 		# Every other camera (onboard, nose...) first, then back to the chase.
 		var cam0: int = race.cam.mode

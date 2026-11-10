@@ -145,11 +145,21 @@ var Net: Node                      # the Net autoload, looked up at runtime
 var _tod := ""
 var replay: Replay
 ## Career / championship event being raced ({} for a quick race); see
-## scripts/career.gd. ev_type: race, duel, overtake, eliminator, time_trial.
+## scripts/career.gd. ev_type: race, duel, overtake, eliminator, time_trial,
+## checkpoint (quick race and daily: beat the clock from gate to gate).
 var event: Dictionary = {}
 var ev_type := ""
 var tt_targets: Array = []
 var _elim_lap := 0
+# Checkpoint run: a clock that runs down, topped up at every gate (six a
+# lap) by about what that stretch takes; each gate gives a little less. The
+# run ends when the clock does: how far did you get?
+const CP_PER_LAP := 6
+var cp_left := 0.0                     # seconds on the clock
+var cp_gates := 0                      # gates passed
+var cp_seg: PackedFloat32Array = []    # seconds allowed for each stretch, gate to gate
+var _cp_gates_node: Node3D
+var _cp_distance := -1.0
 var last_reward := {}                  # what the results screen showed (tests)
 var weekend: Weekend                   # tyres, pits, weather, qualifying
 var control: RaceControl               # flags, penalties, VSC, retirements (races)
@@ -188,7 +198,7 @@ func _ready() -> void:
 		track_id = String(event["track"])
 		car_id = String(event["car"])
 		total_laps = int(event["laps"])
-		mode = "time_trial" if ev_type == "time_trial" else "race"
+		mode = "time_trial" if ev_type in ["time_trial", "checkpoint"] else "race"
 		if event.has("tod"):
 			_tod = String(event["tod"])
 		var sk := float(event.get("skill", 0.92))
@@ -244,7 +254,7 @@ func _ready() -> void:
 	tyre_fx.setup(all_cars)
 	line_guide = LineGuide.new()
 	add_child(line_guide)
-	if mode == "time_trial":
+	if mode == "time_trial" and ev_type != "checkpoint":
 		_load_ghost()
 	_apply_assists()
 
@@ -579,8 +589,12 @@ func _restart() -> void:
 		lights_out_at = 1e9              # the host decides when the lights go out
 	lap_valid = true
 	_elim_lap = 0
+	if ev_type == "checkpoint":
+		_checkpoint_setup()
 	var title := "%d-lap race" % total_laps if mode == "race" else "Time trial"
-	if not event.is_empty():
+	if ev_type == "checkpoint":
+		title = "Checkpoint run"
+	elif not event.is_empty():
 		title = "%s: %s" % [Career.TYPE_NAMES.get(ev_type, "Race"), title]
 	if not tt_targets.is_empty():
 		get_tree().create_timer(3.2).timeout.connect(func():
@@ -924,6 +938,13 @@ func _physics_process(delta: float) -> void:
 			for w in e.car.wheels:
 				w.surface = track.surface_at(e.idx, track.lateral(w.global_position, e.idx))
 	var lat := absf(track.lateral(car.global_position, player.idx))
+	if ev_type == "checkpoint" and state == State.RACING and not player.finished:
+		cp_left -= delta
+		if cp_left <= 0.0:
+			cp_left = 0.0
+			_checkpoint_over()
+		else:
+			hud.set_clock(cp_left)
 	if mode == "time_trial" and state == State.RACING and lat > invalid_limit and lap_valid:
 		lap_valid = false
 		hud.show_warning("Track limits: lap invalidated", 2.5)
@@ -1197,6 +1218,8 @@ func _complete_mini(e: Entrant, m: int) -> void:
 		if counts:
 			session_minis[m] = minf(session_minis[m], t)
 		return
+	if ev_type == "checkpoint" and (m + 1) % (MINIS / CP_PER_LAP) == 0 and state == State.RACING and not e.finished:
+		_checkpoint_gate()
 	var pb: float = save.get_best_mini(lap_key, m)
 	var colour := UIStyle.YELLOW
 	if counts:
@@ -1240,7 +1263,10 @@ func _complete_lap(e: Entrant) -> void:
 	engineer.on_lap(e, lap_time)
 	if ev_type == "eliminator" and e.lap > _elim_lap and e.lap < total_laps and not e.eliminated:
 		_elim_lap = e.lap
-		_eliminate_last()
+		# (Quick races can knock out more than one a lap, so a big grid is
+		# down to the last few by the final lap.)
+		for k in int(event.get("elim_per_lap", 1)):
+			_eliminate_last()
 	if e.is_player and not e.eliminated:
 		_player_lap(lap_time)
 		if e.finished:
@@ -1282,6 +1308,9 @@ func _player_finished() -> void:
 		_cooldown_pilot = true
 	if ev_type == "time_trial":
 		hud.show_center("")
+	elif ev_type == "checkpoint":
+		hud.show_center("Time's up")
+		hud.set_clock(-1.0)
 	else:
 		hud.show_center("P%d" % player.position)
 	# (Waits while paused, and doesn't fire into a race restarted meanwhile.)
@@ -1300,7 +1329,7 @@ func _show_results() -> void:
 		return
 	_results_shown = true
 	hud.show_center("")
-	if ev_type != "time_trial":
+	if ev_type != "time_trial" and ev_type != "checkpoint":
 		if net == null or Net.is_host():
 			_update_positions()
 		save.record_race(track_id, car_id, player.position, entrants.size())
@@ -1409,6 +1438,8 @@ func _settle_rewards() -> Dictionary:
 				fastest = 0 if e.is_player else e.driver
 		var out := Championship.record_round(save, order, fastest)
 		return {"champ": out, "event": event, "position": player.position}
+	if ev_type == "checkpoint":
+		return _checkpoint_reward()
 	if not event.has("id") or String(event["id"]) == "":
 		return {}
 	var stars := 0
@@ -1420,6 +1451,118 @@ func _settle_rewards() -> Dictionary:
 	var fresh: int = save.set_career_stars(String(event["id"]), stars)
 	return {"event": event, "stars": stars, "prev": prev, "new": fresh,
 		"targets": tt_targets, "best": player.best_lap, "position": player.position}
+
+
+# ------------------------------------------------------------ checkpoint run
+
+## The clock and the gates for a new run. Each stretch is allowed what the
+## car takes at its limit (the speed profile) times a margin for the
+## difficulty; the margin shrinks a little with every gate, so in the end
+## the clock always wins.
+func _checkpoint_setup() -> void:
+	var prof := track.speed_profile(car.spec)
+	var n := track.size()
+	cp_seg = PackedFloat32Array()
+	cp_seg.resize(CP_PER_LAP)
+	for g in CP_PER_LAP:
+		var a := n * g / CP_PER_LAP
+		var b := n * (g + 1) / CP_PER_LAP
+		var t := 0.0
+		for i in range(a, b):
+			t += Track.SPACING / maxf(prof[i], 8.0)
+		cp_seg[g] = t
+	# Scaled to a real lap at the car's limits (the gold time trial lap: the
+	# profile alone leaves out accelerating and braking).
+	var total := 0.0
+	for g in CP_PER_LAP:
+		total += cp_seg[g]
+	var lap := track.lap_estimate(car.spec)
+	for g in CP_PER_LAP:
+		cp_seg[g] *= lap / maxf(total, 1.0)
+	cp_gates = 0
+	_cp_distance = -1.0
+	# The first stretch includes the standing start (about 3 s lost).
+	cp_left = cp_seg[0] * _cp_margin(0) + 6.0
+	hud.set_clock(cp_left)
+	if _cp_gates_node == null:
+		_cp_gates_node = _build_gates()
+		add_child(_cp_gates_node)
+
+
+func _cp_margin(k: int) -> float:
+	var base := {"easy": 1.25, "medium": 1.15, "hard": 1.08}.get(_difficulty, 1.15) as float
+	return base * pow(0.987, k)
+
+
+func _checkpoint_gate() -> void:
+	cp_gates += 1
+	var g := cp_gates % CP_PER_LAP
+	var add := cp_seg[g] * _cp_margin(cp_gates)
+	cp_left += add
+	hud.set_clock(cp_left, add)
+	engineer.buzz(40)
+
+
+func _checkpoint_over() -> void:
+	if player.finished:
+		return
+	_cp_distance = checkpoint_distance()
+	player.finished = true
+	player.finish_time = race_time
+	_player_finished()
+
+
+## How far the run got (m): whole laps, then the way round this one (once
+## the clock has run out, where it ran out).
+func checkpoint_distance() -> float:
+	if _cp_distance >= 0.0:
+		return _cp_distance
+	return player.lap * track.total_length + track.cum[player.idx]
+
+
+func _checkpoint_reward() -> Dictionary:
+	var d := checkpoint_distance()
+	var prev: float = save.checkpoint_best(lap_key)
+	var fresh: bool = save.submit_checkpoint(lap_key, d)
+	var out := {"checkpoint": true, "distance": d, "best": maxf(prev, d), "prev": prev, "new_best": fresh,
+		"gates": cp_gates, "laps": d / track.total_length}
+	# Daily challenge: stars by how many laps the run lasted.
+	if event.has("id") and String(event["id"]) != "":
+		var stars := Career.stars_for_checkpoint(d / track.total_length)
+		out["stars"] = stars
+		out["prev_stars"] = save.career_stars(String(event["id"]))
+		out["new_stars"] = save.set_career_stars(String(event["id"]), stars)
+	return out
+
+
+## Gates over the road at each checkpoint: two posts and a lit beam.
+func _build_gates() -> Node3D:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := track.size()
+	for g in CP_PER_LAP:
+		var i := n * (g + 1) / CP_PER_LAP % n
+		var p: Vector3 = track.points[i]
+		var r: Vector3 = track.rights[i]
+		var w := track.road_half + Track.KERB_W + 0.6
+		var basis := Basis.looking_at(-track.tangents[i], Vector3.UP)
+		for side in [-1.0, 1.0]:
+			MeshKit.box(st, Vector3(0.35, 5.2, 0.35), p + r * w * side + Vector3.UP * 2.6, Color(0.1, 0.1, 0.12), basis.get_euler() * (180.0 / PI))
+		MeshKit.box(st, Vector3(w * 2.0 + 0.35, 0.6, 0.3), p + Vector3.UP * 5.0, Color(1.0, 0.45, 0.05), basis.get_euler() * (180.0 / PI))
+	var mesh := MeshKit.finish(st)
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
+	m.emission_enabled = true
+	m.emission = Color(1.0, 0.45, 0.05)
+	m.emission_energy_multiplier = 0.6
+	mesh.surface_set_material(0, m)
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var holder := Node3D.new()
+	holder.add_child(mi)
+	return holder
 
 
 ## Eliminator: the last car still running is out.
