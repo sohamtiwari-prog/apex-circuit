@@ -104,6 +104,15 @@ func _run() -> void:
 		_check(remote == 19 and bots == 0, "client: every other car comes from the host (%d remote)" % remote)
 	_check(await _wait(func(): return race.state == 1, 40.0), "%s: lights go out" % role)
 	var go_time := Time.get_ticks_msec()
+	# (Listening from the start: when the host finishes last, the friend's
+	# "Rematch?" can come before the host's own results are up.)
+	var asked := [false]
+	if role == "host":
+		net.chat_received.connect(func(_f, t):
+			print("  [%.1f s] host: chat from %d: %s" % [secs_now(go_time), _f, t])
+			if t == "Rematch?":
+				asked[0] = true)
+		net.peer_left.connect(func(id): print("  [%.1f s] host: peer %d left" % [secs_now(go_time), id]))
 	var truth_log: FileAccess = null
 	if OS.has_environment("TRUTH_DIR"):
 		truth_log = FileAccess.open(OS.get_environment("TRUTH_DIR") + "/truth_%s.csv" % role, FileAccess.WRITE)
@@ -232,12 +241,6 @@ func _run() -> void:
 	print("  %s: finished P%d, other player P%d (automatic recoveries on this phone: %d)" % [role, race.player.position, other.position, race.recoveries]); print("  %s: interpolation delay %.2f s, jitter %.3f s" % [role, race.net.delay, race.net._jitter])
 	# Host: a rematch (the friend asks for one), then back to the lobby together.
 	if role == "host":
-		var asked := [false]
-		net.chat_received.connect(func(_f, t):
-			print("  [%.1f s] host: chat from %d: %s" % [secs_now(go_time), _f, t])
-			if t == "Rematch?":
-				asked[0] = true)
-		net.peer_left.connect(func(id): print("  [%.1f s] host: peer %d left" % [secs_now(go_time), id]))
 		_check(await _wait(func(): return other.finished, 120.0), "host: the friend finishes too")
 		# Replays open once every car is home.
 		var all_home := func():
