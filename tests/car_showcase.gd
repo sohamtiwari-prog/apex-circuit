@@ -20,24 +20,13 @@ func _run() -> void:
 	var out: String = OS.get_cmdline_user_args()[0]
 	var world := Node3D.new()
 	root.add_child(world)
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.55, 0.6, 0.68)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.6, 0.65, 0.75)
-	env.ambient_light_energy = 0.7
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	var we := WorldEnvironment.new()
-	we.environment = env
-	world.add_child(we)
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-45, 35, 0)
-	sun.shadow_enabled = true
-	world.add_child(sun)
+	# The race's own sky and light (the paint reflects the sky as on track).
+	Look.build(world, "park", "day", "styria")
 	var floor_mesh := PlaneMesh.new()
 	floor_mesh.size = Vector2(200, 200)
 	var fm := StandardMaterial3D.new()
-	fm.albedo_color = Color(0.32, 0.32, 0.34)
+	fm.albedo_color = Color(0.2, 0.2, 0.21)
+	fm.roughness = 0.85
 	var floor_mi := MeshInstance3D.new()
 	floor_mi.mesh = floor_mesh
 	floor_mi.material_override = fm

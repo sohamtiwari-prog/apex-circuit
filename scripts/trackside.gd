@@ -157,10 +157,13 @@ func _material(key: String) -> Material:
 			m.roughness = 0.7
 		"crowd":
 			m.albedo_texture = _crowd_texture()
-			m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
+			m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 			m.roughness = 1.0
 		"hills":
-			m.roughness = 1.0
+			# Far off, so lit evenly (by the haze) rather than by the sun: no
+			# dark side to the ring.
+			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			m.disable_fog = false
 		"lamp":
 			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		"flood":
@@ -170,6 +173,14 @@ func _material(key: String) -> Material:
 			m.emission_energy_multiplier = 5.0
 		"tunnel":
 			m.roughness = 0.95
+		"concrete":
+			# Weathered: blotches and rain streaks, mapped in world space so
+			# every wall, block and stand gets its own patch of grime.
+			m.albedo_texture = grime_texture()
+			m.uv1_triplanar = true
+			m.uv1_world_triplanar = true
+			m.uv1_scale = Vector3(0.11, 0.11, 0.11)
+			m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return m
 
 
@@ -201,25 +212,74 @@ func _fence_texture() -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
+static var _grime: ImageTexture
+
+## Concrete grime: soft blotches, with darker streaks running down (rain
+## off the top of a wall), light enough to keep the vertex colour.
+static func grime_texture() -> ImageTexture:
+	if _grime != null:
+		return _grime
+	var n := 256
+	var blotch := FastNoiseLite.new()
+	blotch.seed = 5
+	blotch.frequency = 0.025
+	blotch.fractal_octaves = 4
+	var fine := FastNoiseLite.new()
+	fine.seed = 9
+	fine.frequency = 0.35
+	var streak := FastNoiseLite.new()
+	streak.seed = 13
+	streak.frequency = 0.08
+	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
+	for y in n:
+		for x in n:
+			var b := blotch.get_noise_2d(x, y) * 0.5 + 0.5
+			var f := fine.get_noise_2d(x, y) * 0.5 + 0.5
+			# Streaks: noise stretched 12x down the texture.
+			var s := streak.get_noise_2d(x, y / 12.0) * 0.5 + 0.5
+			var v := 0.84 + 0.2 * b + 0.07 * f - 0.18 * smoothstep(0.62, 0.85, s)
+			img.set_pixel(x, y, Color(v, v * 0.995, v * 0.98).clamp())
+	img.generate_mipmaps()
+	_grime = ImageTexture.create_from_image(img)
+	return _grime
+
+
+## The crowd in the stands: rows of seats with people in them (a head over
+## shoulders and a shirt), in muted colours, with some empty seats.
 func _crowd_texture() -> ImageTexture:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 99
-	var img := Image.create(128, 32, true, Image.FORMAT_RGB8)
-	var shirts := [Color(0.9, 0.1, 0.1), Color(0.95, 0.95, 0.95), Color(0.1, 0.2, 0.6), Color(0.95, 0.5, 0.05),
-		Color(0.1, 0.5, 0.2), Color(0.95, 0.85, 0.1), Color(0.15, 0.15, 0.15), Color(0.5, 0.75, 0.95)]
-	for y in range(32):
-		for x in range(128):
-			var row := y % 4
-			var col: Color
-			if row == 3:
-				col = Color(0.25, 0.25, 0.27)                 # seat back / gap
-			elif rng.randf() < 0.12:
-				col = Color(0.55, 0.55, 0.58)                 # empty seat
-			elif row == 0:
-				col = Color(0.85, 0.66, 0.5).darkened(rng.randf() * 0.5)   # heads
-			else:
-				col = shirts[rng.randi() % shirts.size()].darkened(rng.randf() * 0.25)
-			img.set_pixel(x, y, col)
+	var w := 256
+	var h := 64
+	var img := Image.create(w, h, false, Image.FORMAT_RGB8)
+	var shirts := [Color(0.78, 0.16, 0.14), Color(0.88, 0.88, 0.86), Color(0.16, 0.24, 0.5), Color(0.86, 0.48, 0.12),
+		Color(0.18, 0.42, 0.24), Color(0.85, 0.76, 0.2), Color(0.14, 0.14, 0.15), Color(0.48, 0.66, 0.84),
+		Color(0.3, 0.3, 0.32), Color(0.6, 0.58, 0.55)]
+	var seat := Color(0.32, 0.34, 0.38)
+	img.fill(Color(0.2, 0.2, 0.22))
+	for row in range(h / 8):
+		var y0 := row * 8
+		# The seat row: a step, then the seat backs.
+		for x in w:
+			img.set_pixel(x, y0 + 7, Color(0.16, 0.16, 0.17))
+			img.set_pixel(x, y0 + 6, seat.darkened(0.15))
+		var x := rng.randi() % 2
+		while x < w - 6:
+			if rng.randf() < 0.1:
+				x += 7                           # an empty seat
+				continue
+			var shirt: Color = shirts[rng.randi() % shirts.size()].darkened(rng.randf() * 0.3)
+			var skin := Color(0.84, 0.66, 0.52).darkened(rng.randf() * 0.55)
+			var hair := Color(0.12, 0.09, 0.07).lightened(rng.randf() * 0.35)
+			var lift := rng.randi() % 2           # some sitting taller
+			for dx in 5:
+				for dy in range(3 - lift, 6):
+					img.set_pixel(x + dx, y0 + dy, shirt)
+			for dx in range(1, 4):
+				img.set_pixel(x + dx, y0 + 1 - lift, hair)
+				img.set_pixel(x + dx, y0 + 2 - lift, skin)
+			img.set_pixel(x + 2, y0 + 1 - lift, skin if rng.randf() < 0.3 else hair)
+			x += 6 + (rng.randi() % 2)
 	img.generate_mipmaps()
 	return ImageTexture.create_from_image(img)
 
@@ -339,6 +399,9 @@ func _barriers() -> void:
 					var basis := Basis.looking_at(-dir.normalized(), Vector3.UP)
 					_box("concrete", Transform3D(basis, mid + inward * 0.5 + Vector3(0, y0 + 0.5, 0)), Vector3(1.2, 1.0, dir.length() - 0.08), col)
 					_box("concrete", Transform3D(basis, mid + inward * 0.5 + Vector3(0, y0 + 1.02, 0)), Vector3(1.22, 0.06, dir.length() - 0.08), Color(0.12, 0.2, 0.55))
+					# The black straps that tie the blocks together.
+					for sy in [0.28, 0.72]:
+						_box("concrete", Transform3D(basis, mid + inward * 0.5 + Vector3(0, y0 + sy, 0)), Vector3(1.23, 0.07, dir.length() - 0.04), Color(0.06, 0.06, 0.07))
 				"armco":
 					# Two steel rails on posts.
 					for rail_y in [0.45, 0.8]:
@@ -642,7 +705,8 @@ func _grandstand_run(start_s: float, length: float, side: float) -> bool:
 				_quad("concrete", a0 + dn, b0 + dn, b0, a0, Color(0.6, 0.6, 0.62))
 			else:
 				_quad("concrete", b0 + dn, a0 + dn, a0, b0, Color(0.6, 0.6, 0.62))
-			var uv := [Vector2(0, (r % 8 + 1) / 8.0), Vector2(seg / 8.0, (r % 8 + 1) / 8.0), Vector2(seg / 8.0, (r % 8) / 8.0), Vector2(0, (r % 8) / 8.0)]
+			var u0 := float(k / step) * seg / 16.0
+			var uv := [Vector2(u0, (r % 8 + 1) / 8.0), Vector2(u0 + seg / 16.0, (r % 8 + 1) / 8.0), Vector2(u0 + seg / 16.0, (r % 8) / 8.0), Vector2(u0, (r % 8) / 8.0)]
 			# Seen from the track, the tier should face up and towards the cars.
 			var lift := Vector3(0, 0.45, 0)
 			if side > 0:
@@ -667,8 +731,27 @@ func _grandstand_run(start_s: float, length: float, side: float) -> bool:
 		else:
 			_quad("concrete", fb2, pb + Vector3(0, topy, 0), pa + Vector3(0, topy, 0), fa, roof_col)
 			_quad("concrete", fa, pa + Vector3(0, topy, 0), pb + Vector3(0, topy, 0), fb2, roof_col.darkened(0.3))
+		# The roof's front edge: a deep fascia in the circuit's colours, a
+		# light strip under it.
+		var dn2 := Vector3(0, -0.9, 0)
+		var fascia := Color(0.1, 0.16, 0.32)
+		if side > 0:
+			_quad("concrete", fa + dn2, fb2 + dn2, fb2, fa, fascia)
+		else:
+			_quad("concrete", fb2 + dn2, fa + dn2, fa, fb2, fascia)
+		var st0 := Vector3(0, -0.72, 0)
+		var st1 := Vector3(0, -0.62, 0)
+		if side > 0:
+			_quad("concrete", fa + st0 - ri * 0.01, fb2 + st0 - rj * 0.01, fb2 + st1 - rj * 0.01, fa + st1 - ri * 0.01, Color(0.85, 0.2, 0.15))
+		else:
+			_quad("concrete", fb2 + st0 - rj * 0.01, fa + st0 - ri * 0.01, fa + st1 - ri * 0.01, fb2 + st1 - rj * 0.01, Color(0.85, 0.2, 0.15))
 		if k % (step * 3) == 0:
 			_box("metal", Transform3D(Basis(), pa + Vector3(0, topy * 0.5, 0) - ri * 0.4), Vector3(0.35, topy, 0.35), Color(0.55, 0.56, 0.6))
+			# A roof girder from the back post out to the front edge.
+			var g0 := pa + Vector3(0, topy - 0.35, 0) - ri * 0.4
+			var g1 := fa + Vector3(0, -0.5, 0)
+			var gd := g1 - g0
+			_box("metal", Transform3D(Basis.looking_at(gd.normalized(), Vector3.UP), (g0 + g1) * 0.5), Vector3(0.18, 0.5, gd.length()), Color(0.4, 0.42, 0.46))
 		_reserve(Transform3D(Basis.looking_at(-track.htangents[i], Vector3.UP), (track.points[i] + track.points[j]) * 0.5 + (ri + rj) * 0.5 * (off + depth * 0.5)), Vector3(depth + 2.0, 10.0, seg + 1.0))
 	return true
 
@@ -739,12 +822,12 @@ func _hills() -> void:
 			far_col = Color(0.5, 0.58, 0.62)
 			height = 160.0
 		"forest":
-			near_col = Color(0.1, 0.22, 0.09)
-			far_col = Color(0.32, 0.42, 0.42)
+			near_col = Color(0.12, 0.2, 0.11)
+			far_col = Color(0.26, 0.34, 0.3)
 			height = 110.0
 		_:
-			near_col = Color(0.16, 0.3, 0.12)
-			far_col = Color(0.4, 0.5, 0.48)
+			near_col = Color(0.17, 0.26, 0.13)
+			far_col = Color(0.3, 0.38, 0.3)
 	for k in range(seg):
 		var a0 := TAU * k / seg
 		var a1 := TAU * (k + 1) / seg
@@ -766,7 +849,7 @@ func _hills() -> void:
 	if track.style == "park" or track.style == "forest":
 		var crowns := 720
 		var c3 := Vector3(centre.x, (track.terrain_base if not track.terrain_h.is_empty() else Track.GROUND_Y) - 0.5, centre.y)
-		var dark := Color(0.09, 0.17, 0.07) if track.style == "forest" else Color(0.11, 0.2, 0.08)
+		var dark := Color(0.08, 0.14, 0.07) if track.style == "forest" else Color(0.1, 0.17, 0.08)
 		for row in 2:
 			var r := radius + 40.0 + row * 70.0
 			var prev := Vector3.ZERO

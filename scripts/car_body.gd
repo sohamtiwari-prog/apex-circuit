@@ -18,6 +18,7 @@ var _tail_mat: StandardMaterial3D
 var _brake_level := -1.0
 var _blob: MeshInstance3D
 var _far: MeshInstance3D
+var _fine: MeshInstance3D
 var _lod_wait := 0.0
 
 ## Beyond this distance (m) the car is drawn as one merged mesh.
@@ -48,6 +49,17 @@ func build(car_spec: Dictionary, car: RaceCar) -> void:
 		_build_road()
 	var mesh := ArrayMesh.new()
 	var tail_surface := -1
+	# Small parts (louvres, fences, strakes, suspension): only drawn close up,
+	# and left out of the far version.
+	if _tools.has("fine"):
+		var fm := MeshKit.finish(_tools["fine"])
+		fm.surface_set_material(0, _material("matte"))
+		_fine = MeshInstance3D.new()
+		_fine.mesh = fm
+		_fine.visibility_range_end = LOD_DISTANCE
+		_fine.visibility_range_end_margin = LOD_MARGIN
+		add_child(_fine)
+		_tools.erase("fine")
 	for key in _tools:
 		MeshKit.finish(_tools[key], mesh)
 		mesh.surface_set_material(mesh.get_surface_count() - 1, _material(key))
@@ -91,7 +103,7 @@ func build_far_lod() -> void:
 	var inv := global_transform.affine_inverse()
 	var parts: Array[MeshInstance3D] = []
 	for n in find_children("*", "MeshInstance3D", true, false):
-		if n != _blob:
+		if n != _blob and n != _fine:
 			parts.append(n as MeshInstance3D)
 	for mi in _wheel_mis:
 		if is_instance_valid(mi):
@@ -365,32 +377,14 @@ func _build_gp() -> void:
 		MeshKit.ellipsoid(paint, Vector3(0.48 * sx, 0.47, 0.72), Vector3(0.07, 0.035, 0.04), 10, base)
 		MeshKit.tube(matte, [Vector3(0.3 * sx, 0.34, 0.74), Vector3(0.44 * sx, 0.46, 0.73)], 0.012, 6, carbon)
 
-	# Floor, plank and diffuser.
-	MeshKit.box(matte, Vector3(1.5, 0.025, 3.0), Vector3(0, -0.11, -0.4), carbon)
-	MeshKit.box(matte, Vector3(0.3, 0.025, 3.4), Vector3(0, -0.125, -0.2), Color(0.45, 0.35, 0.2))
+	var fine := _st("fine")
+	_gp_floor(matte, fine, carbon)
+	_gp_front_wing(paint, matte, fine, base, accent, stripe, carbon)
+	_gp_rear_wing(paint, matte, fine, base, accent, stripe, carbon)
+	# Cooling louvres on the top of the sidepods and the engine cover.
 	for sx in [-1.0, 1.0]:
-		MeshKit.box(matte, Vector3(0.02, 0.08, 0.8), Vector3(0.75 * sx, -0.08, 0.7), carbon)
-	MeshKit.box(matte, Vector3(1.0, 0.2, 0.42), Vector3(0, -0.03, -2.2), carbon, Vector3(-14, 0, 0))
-
-	# Front wing: main plane and two flaps, endplates.
-	MeshKit.airfoil(matte, -0.98, 0.98, -0.1, 2.82, 0.34, 0.1, 0.05, 4.0, carbon)
-	MeshKit.airfoil(paint, -0.95, 0.95, -0.06, 2.55, 0.22, 0.1, 0.06, 14.0, accent)
-	MeshKit.airfoil(paint, -0.9, 0.9, -0.01, 2.38, 0.17, 0.1, 0.06, 26.0, base)
-	for sx in [-1.0, 1.0]:
-		MeshKit.box(paint, Vector3(0.025, 0.24, 0.6), Vector3(0.985 * sx, -0.02, 2.55), base)
-	# Nose pylons to the wing.
-	for sx in [-1.0, 1.0]:
-		MeshKit.box(matte, Vector3(0.02, 0.1, 0.25), Vector3(0.07 * sx, -0.03, 2.62), carbon)
-
-	# Rear wing: beam wing, main plane, DRS flap, endplates, swan-neck pylon.
-	MeshKit.airfoil(matte, -0.45, 0.45, 0.32, -2.15, 0.2, 0.12, 0.05, 8.0, carbon)
-	MeshKit.airfoil(matte, -0.5, 0.5, 0.78, -2.12, 0.3, 0.12, 0.06, 8.0, carbon)
-	MeshKit.airfoil(paint, -0.5, 0.5, 0.88, -2.36, 0.22, 0.1, 0.06, 28.0, base)
-	for sx in [-1.0, 1.0]:
-		MeshKit.box(paint, Vector3(0.025, 0.5, 0.62), Vector3(0.515 * sx, 0.7, -2.32), base)
-		MeshKit.box(paint, Vector3(0.026, 0.1, 0.62), Vector3(0.516 * sx, 0.9, -2.32), stripe)
-	MeshKit.tube(matte, [Vector3(0, 0.2, -2.05), Vector3(0, 0.55, -2.15), Vector3(0, 0.8, -2.25)], 0.025, 6, carbon)
-	MeshKit.box(_st("tail"), Vector3(0.12, 0.08, 0.03), Vector3(0, 0.22, -2.48), Color.WHITE)
+		for k in 5:
+			MeshKit.box(fine, Vector3(0.16, 0.012, 0.035), Vector3(0.47 * sx, 0.305 - k * 0.012, -0.32 - k * 0.075), carbon, Vector3(-6, 0, 0))
 
 	# Halo: hoop from behind the shoulders converging on a centre pillar.
 	var halo := []
@@ -402,7 +396,7 @@ func _build_gp() -> void:
 	MeshKit.tube(matte, [Vector3(0, 0.76, 0.82), Vector3(0, 0.6, 0.92), Vector3(0, 0.42, 0.96)], 0.025, 8, carbon)
 
 	# Steering wheel with a lit display.
-	MeshKit.box(matte, Vector3(0.28, 0.13, 0.03), Vector3(0, 0.45, 0.62), carbon, Vector3(-20, 0, 0))
+	MeshKit.box(_st("fine"), Vector3(0.28, 0.13, 0.03), Vector3(0, 0.45, 0.62), carbon, Vector3(-20, 0, 0))
 	MeshKit.box(_st("head"), Vector3(0.1, 0.04, 0.01), Vector3(0, 0.47, 0.603), Color.WHITE, Vector3(-20, 0, 0))
 
 	# Suspension: wishbones and push-rods to each upright.
@@ -412,8 +406,8 @@ func _build_gp() -> void:
 		for sx in [-1.0, 1.0]:
 			var outer := Vector3((tw - 0.13) * sx, 0.0, z)
 			for yy in [0.3, 0.1]:
-				MeshKit.tube(matte, [Vector3(0.28 * sx, yy, z + 0.22), outer + Vector3(0, yy, 0)], 0.016, 5, carbon)
-				MeshKit.tube(matte, [Vector3(0.28 * sx, yy, z - 0.22), outer + Vector3(0, yy, 0)], 0.016, 5, carbon)
+				MeshKit.tube(_st("fine"), [Vector3(0.28 * sx, yy, z + 0.22), outer + Vector3(0, yy, 0)], 0.016, 5, carbon)
+				MeshKit.tube(_st("fine"), [Vector3(0.28 * sx, yy, z - 0.22), outer + Vector3(0, yy, 0)], 0.016, 5, carbon)
 
 	# Driver's helmet (separate so the cockpit camera can hide it).
 	var hst := MeshKit.new_tool()
@@ -425,6 +419,102 @@ func _build_gp() -> void:
 	helmet = MeshInstance3D.new()
 	helmet.mesh = hmesh
 	add_child(helmet)
+
+
+## Floor: the plank, the floor edges with their fences, and a diffuser
+## with strakes under the rear.
+func _gp_floor(matte: SurfaceTool, fine: SurfaceTool, carbon: Color) -> void:
+	MeshKit.box(matte, Vector3(1.5, 0.025, 3.0), Vector3(0, -0.11, -0.4), carbon)
+	MeshKit.box(matte, Vector3(0.3, 0.025, 3.4), Vector3(0, -0.125, -0.2), Color(0.45, 0.35, 0.2))
+	var edge := carbon.lightened(0.04)
+	for sx in [-1.0, 1.0]:
+		# The edge of the floor curls up, with a slot cut in it.
+		MeshKit.box(matte, Vector3(0.05, 0.025, 2.3), Vector3(0.775 * sx, -0.09, -0.55), edge, Vector3(0, 0, -18 * sx))
+		MeshKit.box(matte, Vector3(0.015, 0.03, 0.5), Vector3(0.8 * sx, -0.07, -1.35), edge)
+		# Fences at the front of the floor, ahead of the sidepods.
+		for k in 3:
+			MeshKit.plate(fine, [Vector2(1.18 - k * 0.05, -0.11), Vector2(1.0 - k * 0.05, 0.02), Vector2(0.72 - k * 0.05, 0.03), Vector2(0.7 - k * 0.05, -0.11)],
+				(0.45 + k * 0.1) * sx, 0.012, carbon)
+	# Diffuser: the ramp up under the gearbox, its walls and strakes.
+	var ramp := [Vector2(-1.55, -0.12), Vector2(-2.42, 0.1), Vector2(-2.42, 0.14), Vector2(-1.55, -0.08)]
+	MeshKit.box(matte, Vector3(1.0, 0.02, 0.9), Vector3(0, -0.005, -1.98), carbon, Vector3(-14, 0, 0))
+	for x in [-0.5, -0.3, -0.12, 0.12, 0.3, 0.5]:
+		MeshKit.plate(fine, ramp, x, 0.012, carbon)
+
+
+## Front wing: four elements, the flaps sweeping up towards the nose,
+## carbon main plane with painted flaps, shaped endplates.
+func _gp_front_wing(paint: SurfaceTool, matte: SurfaceTool, fine: SurfaceTool, base: Color, accent: Color, stripe: Color, carbon: Color) -> void:
+	var elems := [
+		# y at the nose, rise, z, chord, aoa, colour, surface
+		[-0.105, 0.0, 2.86, 0.33, 3.0, carbon, matte],
+		[-0.075, 0.05, 2.6, 0.2, 12.0, accent, paint],
+		[-0.04, 0.1, 2.45, 0.16, 22.0, base, paint],
+		[0.0, 0.15, 2.32, 0.13, 32.0, base, paint],
+	]
+	var first := true
+	for e in elems:
+		var col: Color = e[5]
+		for sx in [-1.0, 1.0]:
+			var secs: Array = []
+			var x0 := 0.0 if first else 0.09
+			for k in 6:
+				var u := float(k) / 5.0
+				var x: float = lerpf(x0, 0.97, u) * sx
+				# The flaps rise towards the nose and fall to meet the endplate.
+				var rise := float(e[1]) * (1.0 - smoothstep(0.15, 0.95, absf(x)))
+				var sweep := 0.06 * u * u
+				secs.append([x, float(e[0]) + rise, float(e[2]) - sweep, float(e[3]), float(e[4]) + 6.0 * (1.0 - u)])
+			MeshKit.wing(e[6], secs, 0.1, 0.06, func(_x, upper): return col if upper else col.darkened(0.25))
+		first = false
+	# Endplates: low at the front, rising to the rear, carbon with the
+	# livery colour along the top.
+	var outline := [Vector2(2.98, -0.13), Vector2(2.96, -0.06), Vector2(2.82, 0.0), Vector2(2.6, 0.05), Vector2(2.38, 0.13),
+		Vector2(2.24, 0.15), Vector2(2.2, 0.08), Vector2(2.22, -0.13)]
+	for sx in [-1.0, 1.0]:
+		MeshKit.plate(matte, outline, 0.985 * sx, 0.016, carbon)
+		MeshKit.strip(paint, [Vector2(2.96, -0.06), Vector2(2.82, 0.0), Vector2(2.6, 0.05), Vector2(2.38, 0.13), Vector2(2.24, 0.15)], 0.05, 0.985 * sx, 0.02, base)
+		MeshKit.box(fine, Vector3(0.09, 0.015, 0.7), Vector3(0.95 * sx, -0.135, 2.6), carbon)
+	# Pylons from the nose to the wing.
+	for sx in [-1.0, 1.0]:
+		MeshKit.plate(fine, [Vector2(2.78, -0.09), Vector2(2.7, 0.0), Vector2(2.52, 0.02), Vector2(2.52, -0.09)], 0.06 * sx, 0.016, carbon)
+
+
+## Rear wing: shaped endplates (carbon, the livery colour at the top), a
+## main plane and the DRS flap in the livery, a two-element beam wing low
+## down, and twin swan-neck pylons; the rain light on the crash structure.
+func _gp_rear_wing(paint: SurfaceTool, matte: SurfaceTool, fine: SurfaceTool, base: Color, accent: Color, stripe: Color, carbon: Color) -> void:
+	var half := 0.5
+	# Main plane: dips slightly in the middle (a "spoon").
+	var main: Array = []
+	var flap: Array = []
+	for k in 7:
+		var x := lerpf(-half, half, float(k) / 6.0)
+		var dip := 0.025 * (1.0 - pow(absf(x) / half, 2.0))
+		main.append([x, 0.8 - dip, -2.1, 0.3, 9.0])
+		flap.append([x, 0.9 - dip * 0.6, -2.36, 0.22, 28.0])
+	MeshKit.wing(paint, main, 0.12, 0.06, func(_x, upper): return base if upper else carbon)
+	MeshKit.wing(paint, flap, 0.1, 0.06, func(_x, upper): return accent if upper else base.darkened(0.2))
+	# Beam wing: two small elements below, between the endplates' feet.
+	MeshKit.airfoil(fine, -0.42, 0.42, 0.36, -2.12, 0.16, 0.12, 0.05, 10.0, carbon)
+	MeshKit.airfoil(fine, -0.42, 0.42, 0.42, -2.28, 0.13, 0.12, 0.05, 24.0, carbon)
+	var outline := [Vector2(-1.98, 0.3), Vector2(-2.0, 0.62), Vector2(-2.04, 0.86), Vector2(-2.13, 1.0), Vector2(-2.3, 1.04),
+		Vector2(-2.55, 1.02), Vector2(-2.62, 0.94), Vector2(-2.6, 0.55), Vector2(-2.48, 0.3)]
+	for sx in [-1.0, 1.0]:
+		var x: float = (half + 0.012) * sx
+		MeshKit.plate(matte, outline, x, 0.018, carbon)
+		var top := [Vector2(-2.02, 0.8), Vector2(-2.04, 0.86), Vector2(-2.13, 1.0), Vector2(-2.3, 1.04), Vector2(-2.55, 1.02), Vector2(-2.62, 0.94)]
+		MeshKit.strip(paint, top, 0.1, x, 0.022, base)
+		var under: Array = []
+		for p in top:
+			under.append(p - Vector2(0, 0.1))
+		MeshKit.strip(paint, under, 0.035, x, 0.022, stripe)
+		# The DRS actuator pod in the middle, and the pylons.
+		MeshKit.plate(matte, [Vector2(-1.95, 0.22), Vector2(-2.05, 0.5), Vector2(-2.16, 0.8), Vector2(-2.26, 0.8), Vector2(-2.14, 0.22)], 0.07 * sx, 0.014, carbon)
+	MeshKit.ellipsoid(fine, Vector3(0, 0.88, -2.25), Vector3(0.035, 0.05, 0.1), 8, carbon)
+	# Crash structure with the rain light.
+	MeshKit.box(matte, Vector3(0.16, 0.12, 0.3), Vector3(0, 0.2, -2.36), carbon)
+	MeshKit.box(_st("tail"), Vector3(0.12, 0.07, 0.02), Vector3(0, 0.21, -2.515), Color.WHITE)
 
 
 # ------------------------------------------------------------ road cars
@@ -852,6 +942,76 @@ static func _band_mat(c: Color) -> StandardMaterial3D:
 	return _band_mats[key]
 
 
+static var _tyre_mats := {}
+
+## Rubber with the maker's name round the sidewall (light lettering on the
+## racing slicks, below the compound band; dark grey on road tyres).
+static func _tyre_material(rim_r: float, r: float, gp: bool) -> ShaderMaterial:
+	var key := "%.3f|%.3f|%s" % [rim_r, r, gp]
+	if _tyre_mats.has(key):
+		return _tyre_mats[key]
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/tyre.gdshader")
+	m.set_shader_parameter("letters", _letter_strip())
+	m.set_shader_parameter("rim_r", rim_r)
+	m.set_shader_parameter("tyre_r", r)
+	if gp:
+		m.set_shader_parameter("band_lo", 0.12)
+		m.set_shader_parameter("band_hi", 0.5)
+	else:
+		m.set_shader_parameter("band_lo", 0.3)
+		m.set_shader_parameter("band_hi", 0.72)
+		m.set_shader_parameter("letter_color", Color(0.2, 0.2, 0.21))
+	_tyre_mats[key] = m
+	return m
+
+
+const _GLYPHS := {
+	"A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+	"C": ["01111", "10000", "10000", "10000", "10000", "10000", "01111"],
+	"E": ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+	"I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"],
+	"K": ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
+	"L": ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+	"P": ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+	"R": ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+	"S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
+	"X": ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
+	"-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
+	" ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
+}
+
+static var _letters: ImageTexture
+
+## "APEX  -  RACE SLICK" twice round the tyre, in blocky lettering drawn
+## here (no font rendering needed).
+static func _letter_strip() -> ImageTexture:
+	if _letters != null:
+		return _letters
+	var w := 2048
+	var h := 64
+	var img := Image.create(w, h, false, Image.FORMAT_L8)
+	img.fill(Color(0, 0, 0))
+	var words := ["APEX", " - ", "RACE SLICK"]
+	var x := 180
+	for rep in 2:
+		for wi in words.size():
+			var big: bool = wi == 0
+			var cell := 8 if big else 6            # pixels per glyph dot
+			var y0 := (h - 7 * cell) / 2
+			for ch in String(words[wi]):
+				var g: Array = _GLYPHS.get(ch, _GLYPHS[" "])
+				for gy in 7:
+					for gx in 5:
+						if String(g[gy])[gx] == "1":
+							img.fill_rect(Rect2i(x + gx * cell, y0 + gy * cell, cell, cell), Color(1, 1, 1))
+				x += cell * 6
+		x = 180 + w / 2
+	img.generate_mipmaps()
+	_letters = ImageTexture.create_from_image(img)
+	return _letters
+
+
 static func _wheel_mesh(r: float, width: float, gp: bool) -> ArrayMesh:
 	var hw := width * 0.5
 	var rim_r := r * (0.6 if gp else 0.68)
@@ -888,7 +1048,7 @@ static func _wheel_mesh(r: float, width: float, gp: bool) -> ArrayMesh:
 		MeshKit.lathe(metal, [Vector2(face - 0.04, rim_r * 0.24), Vector2(face - 0.01, rim_r * 0.18), Vector2(face, 0.0)], 16, rim_col)
 		MeshKit.lathe(metal, [Vector2(face + 0.004, 0.04), Vector2(face + 0.006, 0.0)], 10, Color(0.15, 0.15, 0.17))
 	var mesh := MeshKit.finish(rubber)
-	mesh.surface_set_material(0, _material("rubber"))
+	mesh.surface_set_material(0, _tyre_material(rim_r, r, gp))
 	MeshKit.finish(metal, mesh)
 	mesh.surface_set_material(1, _material("metal"))
 	if gp:

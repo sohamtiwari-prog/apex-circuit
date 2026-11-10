@@ -585,6 +585,8 @@ tests/
   edge_test.gd       no invisible walls: leaving and rejoining the track
   handling_diag.gd   step-steer response, the numbers behind the handling
   car_showcase.gd    renders every car for visual review
+  gfx_shots.gd       screens for judging the graphics, no HUD: every camera, the car close up,
+                     the track at its side, ahead and from above (draw calls and triangles printed)
 ```
 
 Every push to `main` runs the tests and builds a signed APK via GitHub Actions

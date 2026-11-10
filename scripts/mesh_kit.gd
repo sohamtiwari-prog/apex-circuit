@@ -115,6 +115,92 @@ static func airfoil(st: SurfaceTool, x0: float, x1: float, y: float, z: float, c
 				_tri(st, xform * c, xform * Vector3(side, b.y, b.x), xform * Vector3(side, a.y, a.x), color)
 
 
+## Wing element along a span path: sections[k] = [x, y, z, chord, aoa]
+## (leading edge at x, y, z; chord running back towards -z; aoa degrees),
+## so an element can curve up, sweep and twist along its span.
+## color_fn(x: float, upper: bool) -> Color.
+static func wing(st: SurfaceTool, sections: Array, thick: float, camber: float, color_fn: Callable, xform := Transform3D.IDENTITY) -> void:
+	var m := 5
+	var prof: Array = []
+	for i in range(m, -1, -1):
+		prof.append([_foil_pt(float(i) / m, thick, camber, true), true])
+	for i in range(1, m + 1):
+		prof.append([_foil_pt(float(i) / m, thick, camber, false), false])
+	var rings: Array = []
+	for s in sections:
+		var rot := deg_to_rad(float(s[4]))
+		var ring := PackedVector3Array()
+		for p in prof:
+			var q: Vector2 = (p[0] as Vector2) * float(s[3])
+			ring.append(Vector3(float(s[0]), float(s[1]) + q.x * sin(rot) + q.y * cos(rot), float(s[2]) - q.x * cos(rot) + q.y * sin(rot)))
+		rings.append(ring)
+	for r in range(rings.size() - 1):
+		var r0: PackedVector3Array = rings[r]
+		var r1: PackedVector3Array = rings[r + 1]
+		var xm := (float(sections[r][0]) + float(sections[r + 1][0])) * 0.5
+		for i in range(prof.size() - 1):
+			var c: Color = color_fn.call(xm, prof[i][1])
+			if float(sections[r + 1][0]) > float(sections[r][0]):
+				_quad(st, xform * r0[i], xform * r1[i], xform * r1[i + 1], xform * r0[i + 1], c)
+			else:
+				_quad(st, xform * r0[i], xform * r0[i + 1], xform * r1[i + 1], xform * r1[i], c)
+	for end in [0, rings.size() - 1]:
+		var ring: PackedVector3Array = rings[end]
+		var centre := Vector3.ZERO
+		for p in ring:
+			centre += p
+		centre /= ring.size()
+		var c: Color = color_fn.call(float(sections[end][0]), true)
+		for i in range(ring.size() - 1):
+			if (end == 0) == (float(sections[rings.size() - 1][0]) > float(sections[0][0])):
+				_tri(st, xform * centre, xform * ring[i], xform * ring[i + 1], c)
+			else:
+				_tri(st, xform * centre, xform * ring[i + 1], xform * ring[i], c)
+
+
+## A flat panel (endplate, fin): the outline (Vector2(z, y), going round,
+## star-shaped about its centre) extruded `thick` across x, centred on x.
+static func plate(st: SurfaceTool, outline: Array, x: float, thick: float, color: Color, xform := Transform3D.IDENTITY) -> void:
+	_plate(st, outline, x, thick, func(_z, _y): return color, xform)
+
+
+## A band along the top of a panel: the strip from the line `top`
+## (Vector2(z, y) points) down by `depth`, `thick` across x.
+static func strip(st: SurfaceTool, top: Array, depth: float, x: float, thick: float, color: Color, xform := Transform3D.IDENTITY) -> void:
+	for i in range(top.size() - 1):
+		var a: Vector2 = top[i]
+		var b: Vector2 = top[i + 1]
+		var quad := [a, b, b - Vector2(0, depth), a - Vector2(0, depth)]
+		_plate(st, quad, x, thick, func(_z, _y): return color, xform)
+
+
+static func _plate(st: SurfaceTool, outline: Array, x: float, thick: float, color_fn: Callable, xform := Transform3D.IDENTITY) -> void:
+	var centre := Vector2.ZERO
+	for p in outline:
+		centre += p
+	centre /= outline.size()
+	var n := outline.size()
+	for side in [-1.0, 1.0]:
+		var xx: float = x + side * thick * 0.5
+		for i in n:
+			var a: Vector2 = outline[i]
+			var b: Vector2 = outline[(i + 1) % n]
+			var c: Color = color_fn.call((a.x + b.x + centre.x) / 3.0, (a.y + b.y + centre.y) / 3.0)
+			var pc := Vector3(xx, centre.y, centre.x)
+			var pa := Vector3(xx, a.y, a.x)
+			var pb := Vector3(xx, b.y, b.x)
+			if side > 0.0:
+				_tri(st, xform * pc, xform * pa, xform * pb, c)
+			else:
+				_tri(st, xform * pc, xform * pb, xform * pa, c)
+	for i in n:
+		var a: Vector2 = outline[i]
+		var b: Vector2 = outline[(i + 1) % n]
+		var c: Color = color_fn.call((a.x + b.x) * 0.5, (a.y + b.y) * 0.5)
+		_quad(st, xform * Vector3(x - thick * 0.5, a.y, a.x), xform * Vector3(x + thick * 0.5, a.y, a.x),
+			xform * Vector3(x + thick * 0.5, b.y, b.x), xform * Vector3(x - thick * 0.5, b.y, b.x), c)
+
+
 static func _foil_pt(t: float, thick: float, camber: float, upper: bool) -> Vector2:
 	# NACA-style thickness + simple parabolic camber line.
 	var yt := 5.0 * thick * (0.2969 * sqrt(t) - 0.126 * t - 0.3516 * t * t + 0.2843 * t * t * t - 0.1015 * t * t * t * t)

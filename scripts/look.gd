@@ -30,6 +30,84 @@ const NIGHT := {"top": Color(0.012, 0.02, 0.05), "horizon": Color(0.24, 0.19, 0.
 	"cloud": Color(0.16, 0.15, 0.17), "cloud_shade": Color(0.05, 0.05, 0.07)}
 
 
+## The far horizon behind each circuit (drawn in the sky): mountains, hills
+## or a city skyline. [kind, height (radians), tint, snow, seed]
+const HORIZONS := {
+	"styria": [1, 0.16, Color(0.26, 0.33, 0.3), 0.65, 3.0],
+	"riviera": [1, 0.2, Color(0.36, 0.38, 0.34), 0.0, 7.0],
+	"brianza": [1, 0.045, Color(0.4, 0.45, 0.52), 0.9, 1.0],
+	"ardennes": [2, 0.05, Color(0.16, 0.24, 0.16), 0.0, 4.0],
+	"pannonia": [2, 0.035, Color(0.24, 0.3, 0.2), 0.0, 6.0],
+	"isebay": [2, 0.06, Color(0.2, 0.3, 0.22), 0.0, 2.0],
+	"kestrel_park": [2, 0.04, Color(0.22, 0.3, 0.2), 0.0, 5.0],
+	"silvermoor": [2, 0.012, Color(0.24, 0.3, 0.22), 0.0, 8.0],
+	"lone_star": [2, 0.015, Color(0.3, 0.33, 0.24), 0.0, 9.0],
+	"duinen": [2, 0.025, Color(0.42, 0.42, 0.3), 0.0, 10.0],
+	"desert": [2, 0.02, Color(0.62, 0.5, 0.36), 0.0, 11.0],
+	"lakeside": [3, 0.035, Color(0.38, 0.42, 0.48), 0.0, 12.0],
+	"entrelagos": [3, 0.045, Color(0.38, 0.4, 0.42), 0.0, 13.0],
+	"ile_royale": [3, 0.05, Color(0.36, 0.4, 0.46), 0.0, 14.0],
+	"jiading": [3, 0.035, Color(0.4, 0.42, 0.46), 0.0, 15.0],
+	"caspian": [3, 0.04, Color(0.46, 0.44, 0.4), 0.0, 16.0],
+	"gulf": [3, 0.03, Color(0.3, 0.3, 0.32), 0.0, 17.0],
+	"marina": [3, 0.06, Color(0.3, 0.32, 0.36), 0.0, 18.0],
+	"red_sea": [3, 0.035, Color(0.34, 0.33, 0.32), 0.0, 19.0],
+}
+
+
+## The outline of the far land round the horizon (once per circuit): the
+## far range (red) and a nearer, lower one (green), 0..1 of the height.
+## Mountains are ridged and sharp; hills smooth.
+static func _horizon_profile(kind: int, seed: int) -> ImageTexture:
+	var n := 2048
+	var far_n := FastNoiseLite.new()
+	far_n.seed = seed
+	far_n.noise_type = FastNoiseLite.TYPE_PERLIN
+	far_n.fractal_octaves = 5 if kind == 1 else 3
+	far_n.frequency = 1.0
+	var near_n := FastNoiseLite.new()
+	near_n.seed = seed + 50
+	near_n.noise_type = FastNoiseLite.TYPE_PERLIN
+	near_n.fractal_octaves = 3 if kind == 1 else 2
+	near_n.frequency = 1.0
+	if kind == 1:
+		far_n.fractal_type = FastNoiseLite.FRACTAL_RIDGED
+	# Round a circle in the noise, so the outline joins up all the way round;
+	# then each outline stretched to fill 0..1.
+	var fs := PackedFloat32Array()
+	var ms := PackedFloat32Array()
+	for i in n:
+		var a := TAU * float(i) / n
+		var rad := 2.8 if kind == 1 else 1.9
+		var px := cos(a) * rad
+		var pz := sin(a) * rad
+		fs.append(far_n.get_noise_2d(px, pz))
+		ms.append(near_n.get_noise_2d(px * 1.5 + 30.0, pz * 1.5))
+	var f_lo := INF
+	var f_hi := -INF
+	var m_lo := INF
+	var m_hi := -INF
+	for i in n:
+		f_lo = minf(f_lo, fs[i])
+		f_hi = maxf(f_hi, fs[i])
+		m_lo = minf(m_lo, ms[i])
+		m_hi = maxf(m_hi, ms[i])
+	var img := Image.create(n, 1, false, Image.FORMAT_RGF)
+	for i in n:
+		var f := (fs[i] - f_lo) / maxf(f_hi - f_lo, 0.0001)
+		var m := (ms[i] - m_lo) / maxf(m_hi - m_lo, 0.0001)
+		var far_h: float
+		var near_h: float
+		if kind == 1:
+			far_h = 0.1 + 0.9 * pow(f, 1.7)
+			near_h = 0.42 * smoothstep(0.25, 0.9, m)
+		else:
+			far_h = 0.25 + 0.75 * smoothstep(0.1, 0.95, f)
+			near_h = 0.6 * smoothstep(0.3, 0.9, m)
+		img.set_pixel(i, 0, Color(far_h, near_h, 0.0))
+	return ImageTexture.create_from_image(img)
+
+
 ## "auto" picks the track's own time: night for the night races.
 static func resolve_time(time_of_day: String, track_id: String) -> String:
 	if time_of_day == "auto" or time_of_day == "":
@@ -38,7 +116,7 @@ static func resolve_time(time_of_day: String, track_id: String) -> String:
 
 
 ## Adds a WorldEnvironment and sun to `parent`; returns the sun.
-static func build(parent: Node, style: String, time_of_day := "day") -> DirectionalLight3D:
+static func build(parent: Node, style: String, time_of_day := "day", track_id := "") -> DirectionalLight3D:
 	var cfg: Dictionary = SKIES.get(style, SKIES["park"]).duplicate()
 	var sunset := time_of_day == "sunset" and style != "studio"
 	if sunset:
@@ -58,12 +136,24 @@ static func build(parent: Node, style: String, time_of_day := "day") -> Directio
 	sky_mat.set_shader_parameter("ground_color", Color(cfg["horizon"]).darkened(0.45))
 	sky_mat.set_shader_parameter("cloud_cover", cfg["cover"])
 	sky_mat.set_shader_parameter("night", 1.0 if night else 0.0)
+	if HORIZONS.has(track_id):
+		var hz: Array = HORIZONS[track_id]
+		sky_mat.set_shader_parameter("horizon_kind", int(hz[0]))
+		sky_mat.set_shader_parameter("horizon_height", float(hz[1]))
+		var tint: Color = hz[2]
+		if sunset:
+			tint = tint.lerp(Color(0.42, 0.3, 0.3), 0.4)
+		sky_mat.set_shader_parameter("horizon_tint", tint)
+		sky_mat.set_shader_parameter("snow", float(hz[3]))
+		sky_mat.set_shader_parameter("horizon_seed", float(hz[4]))
+		if int(hz[0]) != 3:
+			sky_mat.set_shader_parameter("horizon_profile", _horizon_profile(int(hz[0]), int(hz[4])))
 	if cfg.has("cloud"):
 		sky_mat.set_shader_parameter("cloud_color", cfg["cloud"])
 		sky_mat.set_shader_parameter("cloud_shade", cfg["cloud_shade"])
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
-	sky.radiance_size = Sky.RADIANCE_SIZE_128     # (sharper reflections in paint and glass)
+	sky.radiance_size = Sky.RADIANCE_SIZE_256     # (sharp reflections in paint and glass; the sky is still, so made once)
 
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY

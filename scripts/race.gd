@@ -394,7 +394,7 @@ static func _race_number(i: int, team: int) -> int:
 
 
 func _build_environment() -> void:
-	Look.build(self, track.style, _tod)
+	Look.build(self, track.style, _tod, track.track_id)
 
 
 ## Multiplayer grid from the host's start message: your car, your friends'

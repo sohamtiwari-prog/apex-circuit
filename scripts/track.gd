@@ -635,8 +635,8 @@ func _ground_color() -> Color:
 		"city":
 			return Color(0.36, 0.36, 0.38)
 		"forest":
-			return Color(0.15, 0.26, 0.1)
-	return Color(0.2, 0.32, 0.11)
+			return Color(0.15, 0.25, 0.1)
+	return Color(0.18, 0.29, 0.115)
 
 
 func _build_ground() -> void:
@@ -666,13 +666,16 @@ func _build_ground() -> void:
 		"forest":
 			mat.set_shader_parameter("alt_color", base.lightened(0.09))
 			mat.set_shader_parameter("far_color", base.lerp(Color(0.35, 0.45, 0.42), 0.35))
+			mat.set_shader_parameter("dryness", 0.12)
 			mat.set_shader_parameter("wild_color", Color(0.08, 0.17, 0.06))
 			mat.set_shader_parameter("wild_color2", Color(0.17, 0.15, 0.08))
 		_:
-			mat.set_shader_parameter("alt_color", base.lightened(0.17).lerp(Color(0.36, 0.44, 0.16), 0.15))
-			mat.set_shader_parameter("far_color", base.lerp(Color(0.45, 0.55, 0.5), 0.35))
-			mat.set_shader_parameter("wild_color", Color(0.19, 0.33, 0.11))
-			mat.set_shader_parameter("wild_color2", Color(0.33, 0.39, 0.15))
+			mat.set_shader_parameter("alt_color", base.lightened(0.1).lerp(Color(0.32, 0.4, 0.16), 0.12))
+			mat.set_shader_parameter("stripe_strength", 0.8)
+			mat.set_shader_parameter("dryness", 0.2)
+			mat.set_shader_parameter("far_color", base.lerp(Color(0.42, 0.5, 0.48), 0.35))
+			mat.set_shader_parameter("wild_color", Color(0.16, 0.27, 0.1))
+			mat.set_shader_parameter("wild_color2", Color(0.28, 0.33, 0.14))
 	_ground_mat = mat
 	var floor_y := GROUND_Y
 	if not terrain_h.is_empty():
@@ -1141,7 +1144,7 @@ func _build_road() -> void:
 	var faces := PackedVector3Array()
 
 	# Alpha = material code for the road shader.
-	var asphalt := Color(0.33, 0.33, 0.345, 1.0)
+	var asphalt := Color(0.25, 0.252, 0.265, 1.0)
 	var white := Color(0.93, 0.93, 0.93, 0.0)
 	var red := Color(0.82, 0.12, 0.09, 0.0)
 	var verge := _ground_color().lightened(0.06)
@@ -1152,8 +1155,8 @@ func _build_road() -> void:
 	var gravel := Color(0.78, 0.69, 0.52, 0.66)
 	if style == "desert":
 		gravel = Color(0.86, 0.74, 0.55, 0.66)
-	var runoff := Color(0.3, 0.305, 0.315, 0.33)
-	var green_paint := Color(0.2, 0.38, 0.27, 0.0)       # (the run-off paint: muted, not lime)
+	var runoff := Color(0.28, 0.283, 0.29, 0.33)
+	var green_paint := Color(0.15, 0.32, 0.22, 0.0)      # (the run-off paint: muted, not lime)
 	var h := road_half
 	var outer := h + KERB_W
 	var low := GROUND_Y + 0.012
@@ -1248,9 +1251,13 @@ func _build_road() -> void:
 			if i == z["detect"] or i == z["start"]:
 				_band(st, faces, i, j, -h + LINE_W, h - LINE_W, Color(0.93, 0.93, 0.93, 0.0), 0.3, 0.45, 0.006, 0.006)
 
+	_grid_boxes(st, white)
+
 	var mat := ShaderMaterial.new()
 	road_mat = mat
 	mat.shader = load("res://shaders/road.gdshader")
+	mat.set_shader_parameter("road_half", road_half)
+	mat.set_shader_parameter("kerb_w", KERB_W)
 	var grain := _noise_texture(0.06, Color(0, 0, 0), Color(1, 1, 1))
 	mat.set_shader_parameter("grain", grain)
 	# The same grain as a normal map (the road shader's fine bump), built
@@ -1291,6 +1298,32 @@ func _build_road() -> void:
 	cs.shape = shape
 	body.add_child(cs)
 	add_child(body)
+
+
+## The starting grid painted on the road: for each slot (where race.gd's
+## _grid_pose puts the cars) a white line across in front of the car and
+## short lines back along each side of it.
+func _grid_boxes(st: SurfaceTool, white: Color) -> void:
+	var n := points.size()
+	var paint := PackedVector3Array()          # (paint only: not part of the collision surface)
+	var lift := 0.006
+	for k in 20:
+		var back := 6.0 + (k / 2) * 8.0 + (k % 2) * 4.0
+		var idx := (n - int(back / SPACING)) % n
+		var side := (-1.0 if k % 2 == 0 else 1.0) * minf(road_half * 0.45, 3.2)
+		# The front line, 2.6 m ahead of the car's middle, 0.3 m deep.
+		var s0: float = cum[idx] + 2.6
+		var i := idx
+		while cum[(i + 1) % n] <= s0 and (i + 1) % n != 0:
+			i = (i + 1) % n
+		var j := (i + 1) % n
+		var seg: float = points[i].distance_to(points[j])
+		var t0 := clampf((s0 - cum[i]) / seg, 0.0, 0.85)
+		var t1 := minf(t0 + 0.3 / seg, 1.0)
+		_band(st, paint, i, j, side - 1.15, side + 1.15, white, t0, t1, lift, lift)
+		# Side lines, back from the front line.
+		for e in [-1.15, 1.0]:
+			_band(st, paint, idx, (idx + 1) % n, side + e, side + e + 0.15, white, 0.65, 1.0, lift, lift)
 
 
 # ------------------------------------------------------------ walls
@@ -1548,6 +1581,7 @@ static func _tree_mesh(kind: String) -> ArrayMesh:
 	if _tree_cache.has(kind):
 		return _tree_cache[kind]
 	var st := MeshKit.new_tool()
+	var cards: Array = []
 	var up := Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3.ZERO)   # lathe axis X -> Y
 	var bark := Color(0.33, 0.24, 0.16)
 	match kind:
@@ -1557,11 +1591,15 @@ static func _tree_mesh(kind: String) -> ArrayMesh:
 			# Branches into a lumpy crown of several clumps, darker underneath.
 			for b in [Vector3(1.1, 3.6, 0.5), Vector3(-0.9, 3.8, -0.7), Vector3(0.2, 4.4, 1.0)]:
 				MeshKit.tube(st, [Vector3(0, 2.4, 0), b], 0.1, 4, bark)
-			_canopy(st, Vector3(0, 4.7, 0), Vector3(2.5, 2.1, 2.5), leaf, 1)
-			_canopy(st, Vector3(1.3, 3.9, 0.6), Vector3(1.8, 1.5, 1.8), leaf.darkened(0.08), 2)
-			_canopy(st, Vector3(-1.1, 4.1, -0.9), Vector3(1.9, 1.6, 1.9), leaf.lightened(0.04), 3)
-			_canopy(st, Vector3(-0.2, 6.1, 0.3), Vector3(1.6, 1.3, 1.6), leaf.lightened(0.1), 4)
-			_canopy(st, Vector3(0.6, 5.3, -1.3), Vector3(1.4, 1.2, 1.4), leaf, 5)
+			var clumps := [[Vector3(0, 4.7, 0), Vector3(2.5, 2.1, 2.5), leaf], [Vector3(1.3, 3.9, 0.6), Vector3(1.8, 1.5, 1.8), leaf.darkened(0.08)],
+				[Vector3(-1.1, 4.1, -0.9), Vector3(1.9, 1.6, 1.9), leaf.lightened(0.04)], [Vector3(-0.2, 6.1, 0.3), Vector3(1.6, 1.3, 1.6), leaf.lightened(0.1)],
+				[Vector3(0.6, 5.3, -1.3), Vector3(1.4, 1.2, 1.4), leaf]]
+			var seed := 1
+			for cl in clumps:
+				# The solid crown sits a little inside the leaves.
+				_canopy(st, cl[0], cl[1] * 0.86, (cl[2] as Color).darkened(0.12), seed)
+				_leaf_cards(cards, cl[0], cl[1], Vector3(0, 4.9, 0), cl[2], 4, seed)
+				seed += 1
 		"conifer":
 			MeshKit.lathe(st, [Vector2(0.0, 0.25), Vector2(1.6, 0.18)], 6, bark, up)
 			var needle := Color(0.09, 0.2, 0.1)
@@ -1570,8 +1608,14 @@ static func _tree_mesh(kind: String) -> ArrayMesh:
 				var y0 := 1.0 + tier * 1.65
 				var r := 2.7 - tier * 0.48
 				var col := needle.lightened(tier * 0.05)
-				MeshKit.lathe(st, [Vector2(y0 - 0.25, r * 1.04), Vector2(y0, r), Vector2(y0 + 0.4, r * 0.86), Vector2(y0 + 2.6, 0.05)], 11, col, up)
-				MeshKit.lathe(st, [Vector2(y0 - 0.25, 0.1), Vector2(y0 - 0.25, r * 1.04)], 11, col.darkened(0.35), up)
+				MeshKit.lathe(st, [Vector2(y0 - 0.25, r * 0.92), Vector2(y0 + 0.4, r * 0.76), Vector2(y0 + 2.6, 0.05)], 8, col.darkened(0.1), up)
+				MeshKit.lathe(st, [Vector2(y0 - 0.25, 0.1), Vector2(y0 - 0.25, r * 0.92)], 8, col.darkened(0.35), up)
+				# Drooping boughs round the tier's edge: ragged, see-through.
+				for b in 6:
+					var ang := TAU * (b + 0.5 * (tier % 2)) / 6.0
+					var out := Vector3(cos(ang), 0, sin(ang))
+					var c := Vector3(0, y0 + 0.55, 0) + out * r * 0.62
+					_card(cards, c, out.lerp(Vector3.UP, 0.55).normalized(), out, Vector2(r * 1.15, r * 0.9), col.lightened(0.05), Vector3(0, y0 + 1.5, 0), 1)
 		"palm":
 			var path := []
 			for k in range(8):
@@ -1593,17 +1637,158 @@ static func _tree_mesh(kind: String) -> ArrayMesh:
 					prev = p2
 		# Far versions (~1/10 the triangles), shown beyond ~260 m.
 		"broad_far":
-			MeshKit.ellipsoid(st, Vector3(0, 4.5, 0), Vector3(2.9, 2.8, 2.9), 4, Color(0.2, 0.42, 0.14))
+			MeshKit.ellipsoid(st, Vector3(0, 5.1, 0), Vector3(2.9, 2.8, 2.9), 5, Color(0.16, 0.3, 0.1))
 			MeshKit.lathe(st, [Vector2(0.0, 0.3), Vector2(2.6, 0.2)], 3, bark, up)
 		"conifer_far":
-			MeshKit.lathe(st, [Vector2(0.6, 2.7), Vector2(9.6, 0.05)], 5, Color(0.11, 0.27, 0.13), up)
+			MeshKit.lathe(st, [Vector2(0.6, 2.6), Vector2(4.0, 1.7), Vector2(9.6, 0.05)], 5, Color(0.08, 0.19, 0.09), up)
 		"palm_far":
 			MeshKit.lathe(st, [Vector2(0.0, 0.22), Vector2(7.3, 0.18)], 3, Color(0.45, 0.36, 0.24), up)
 			MeshKit.lathe(st, [Vector2(6.0, 3.4), Vector2(7.8, 0.3)], 5, Color(0.25, 0.42, 0.14), up)
 	var mesh := MeshKit.finish(st)
 	mesh.surface_set_material(0, _foliage_material())
+	if not cards.is_empty():
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = cards[0]
+		arrays[Mesh.ARRAY_NORMAL] = cards[1]
+		arrays[Mesh.ARRAY_TEX_UV] = cards[2]
+		arrays[Mesh.ARRAY_COLOR] = cards[3]
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		mesh.surface_set_material(1, _leaf_material())
 	_tree_cache[kind] = mesh
 	return mesh
+
+
+## Leaf cards round a clump of the crown (centre, radii): quads facing out
+## at random angles, lit as if part of a round crown (their normals point
+## away from the middle of the tree), so the crown is ragged and soft.
+static func _leaf_cards(cards: Array, centre: Vector3, radii: Vector3, tree_mid: Vector3, col: Color, count: int, seed: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed * 7919
+	for k in count:
+		var u := rng.randf() * TAU
+		var v := rng.randf_range(-0.35, 1.0)          # mostly the top and sides
+		var dir := Vector3(cos(u) * sqrt(1.0 - v * v), v, sin(u) * sqrt(1.0 - v * v))
+		var c := centre + dir * radii * 0.72
+		var face := (dir + Vector3(rng.randf_range(-0.6, 0.6), rng.randf_range(-0.3, 0.6), rng.randf_range(-0.6, 0.6))).normalized()
+		var up := Vector3.UP.rotated(face, rng.randf_range(-0.8, 0.8)) if absf(face.y) < 0.95 else Vector3.FORWARD
+		var s := radii.x * rng.randf_range(1.15, 1.5)
+		_card(cards, c, face, up, Vector2(s, s), col.lightened(rng.randf_range(-0.06, 0.1)), tree_mid, 0)
+	# One across the middle each way, so the crown is never see-through.
+	_card(cards, centre, Vector3(1, 0, 0.2).normalized(), Vector3.UP, Vector2(radii.x * 1.8, radii.y * 1.8), col.darkened(0.05), tree_mid, 0)
+	_card(cards, centre, Vector3(-0.2, 0, 1).normalized(), Vector3.UP, Vector2(radii.x * 1.8, radii.y * 1.8), col.darkened(0.05), tree_mid, 0)
+
+
+## One leaf card (two triangles). half = 0: broadleaf texture (left half of
+## the atlas), 1: conifer bough (right half).
+static func _card(cards: Array, c: Vector3, face: Vector3, up: Vector3, size: Vector2, col: Color, tree_mid: Vector3, half: int) -> void:
+	if cards.is_empty():
+		cards.append_array([PackedVector3Array(), PackedVector3Array(), PackedVector2Array(), PackedColorArray()])
+	var right := up.cross(face).normalized()
+	var upv := face.cross(right).normalized()
+	var hx := right * size.x * 0.5
+	var hy := upv * size.y * 0.5
+	var corners := [c - hx - hy, c + hx - hy, c + hx + hy, c - hx + hy]
+	var u0 := 0.5 * half
+	var uvs := [Vector2(u0, 1), Vector2(u0 + 0.5, 1), Vector2(u0 + 0.5, 0), Vector2(u0, 0)]
+	# (Packed arrays are values: take them out, add, put them back.)
+	var vs: PackedVector3Array = cards[0]
+	var ns: PackedVector3Array = cards[1]
+	var ts: PackedVector2Array = cards[2]
+	var cs: PackedColorArray = cards[3]
+	for k in [0, 1, 2, 0, 2, 3]:
+		var p: Vector3 = corners[k]
+		vs.append(p)
+		# Normals from the middle of the crown, tipped towards the card's face.
+		ns.append(((p - tree_mid).normalized() * 0.75 + face * 0.25).normalized())
+		ts.append(uvs[k])
+		cs.append(col)
+	cards[0] = vs
+	cards[1] = ns
+	cards[2] = ts
+	cards[3] = cs
+
+
+static var _leaf_mat: StandardMaterial3D
+
+static func _leaf_material() -> StandardMaterial3D:
+	if _leaf_mat != null:
+		return _leaf_mat
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
+	m.albedo_texture = _leaf_texture()
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.alpha_scissor_threshold = 0.45
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.roughness = 0.9
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	# Light comes through the leaves a little.
+	m.backlight_enabled = true
+	m.backlight = Color(0.22, 0.3, 0.1)
+	_leaf_mat = m
+	return m
+
+
+static var _leaf_tex: ImageTexture
+
+## Atlas of two halves: a clump of broad leaves, and a conifer bough (a
+## stem with needles either side). Shades of grey-green to tint with the
+## vertex colour; the leaves are lighter on top.
+static func _leaf_texture() -> ImageTexture:
+	if _leaf_tex != null:
+		return _leaf_tex
+	var w := 256
+	var h := 128
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 42
+	# Broad leaves: small ellipses scattered over a rough disc, the outer
+	# ones sparser.
+	for k in 900:
+		var a := rng.randf() * TAU
+		var r := sqrt(rng.randf()) * 60.0
+		if r > 46.0 and rng.randf() < 0.75:
+			continue
+		var cx := 64.0 + cos(a) * r
+		var cy := 64.0 + sin(a) * r * 0.92
+		var lit := 0.55 + 0.45 * (1.0 - (cy - 4.0) / 120.0) + rng.randf_range(-0.15, 0.2)
+		_leaf_blob(img, cx, cy, rng.randf_range(2.6, 4.6), rng.randf_range(1.4, 2.4), rng.randf() * PI, lit, 0, w)
+	# Conifer bough: needles along a drooping stem, either side.
+	for k in 1400:
+		var t := rng.randf()
+		var sx := 128.0 + 8.0 + t * 112.0
+		var sy := 30.0 + t * t * 60.0
+		var side := -1.0 if rng.randf() < 0.5 else 1.0
+		var len := (1.0 - t * 0.6) * rng.randf_range(10.0, 26.0)
+		var ang := PI * 0.5 + side * rng.randf_range(0.5, 1.1) + t * 0.4
+		var d := rng.randf() * len
+		var lit := 0.6 + 0.4 * (1.0 - float(side > 0)) + rng.randf_range(-0.15, 0.15)
+		_leaf_blob(img, sx + cos(ang) * d, sy + sin(ang) * d * side, rng.randf_range(1.6, 3.2), 0.9, ang, lit, 128, w)
+	img.generate_mipmaps()
+	_leaf_tex = ImageTexture.create_from_image(img)
+	return _leaf_tex
+
+
+static func _leaf_blob(img: Image, cx: float, cy: float, rx: float, ry: float, ang: float, lit: float, x_lo: int, w: int) -> void:
+	var c := cos(ang)
+	var s := sin(ang)
+	var r := int(ceil(maxf(rx, ry))) + 1
+	var g := clampf(lit, 0.25, 1.3)
+	var col := Color(g * 0.95, g, g * 0.82, 1.0).clamp()
+	for y in range(int(cy) - r, int(cy) + r + 1):
+		if y < 0 or y >= img.get_height():
+			continue
+		for x in range(int(cx) - r, int(cx) + r + 1):
+			if x < x_lo or x >= x_lo + 128 or x >= w:
+				continue
+			var dx := x - cx
+			var dy := y - cy
+			var u := (dx * c + dy * s) / rx
+			var v := (-dx * s + dy * c) / ry
+			if u * u + v * v <= 1.0:
+				img.set_pixel(x, y, col.darkened(0.25 * (u * u + v * v)))
 
 
 static var _foliage_mat: StandardMaterial3D
@@ -1643,8 +1828,9 @@ static func _foliage_material() -> StandardMaterial3D:
 ## A lumpy clump of leaves: an ellipsoid pushed in and out by noise, shaded
 ## darker underneath and inside.
 static func _canopy(st: SurfaceTool, centre: Vector3, radii: Vector3, col: Color, seed: int) -> void:
-	var seg := 10
-	var rows := 6
+	# (Coarse: the leaf cards round it give the crown its outline.)
+	var seg := 7
+	var rows := 4
 	var pts := []
 	for i in rows + 1:
 		var v := PI * i / rows - PI / 2
