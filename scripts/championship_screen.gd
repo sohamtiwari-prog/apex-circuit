@@ -91,6 +91,8 @@ func _build_setup() -> void:
 		var id := String(c["id"])
 		var b := UIStyle.tile(String(c["name"]), " or ".join(cars), func():
 			_pick_class = id
+			if id != "gp" and _rounds > 6:
+				_rounds = 6                # (only the Grand Prix calendar has 10)
 			_refresh(), id == _pick_class, 24)
 		b.custom_minimum_size = Vector2(0, 70)
 		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -172,7 +174,14 @@ func _build_season(s: Dictionary) -> void:
 		n.clip_text = true
 		h.add_child(n)
 		if k < (s["results"] as Array).size():
-			var pos: int = (s["results"][k] as Array).find(0) + 1
+			# (Where you, driver 0, finished: by value, the saved numbers
+			# come back as floats and find(0) never matched: "P0".)
+			var pos := 0
+			var res: Array = s["results"][k]
+			for p in res.size():
+				if int(res[p]) == 0:
+					pos = p + 1
+					break
 			h.add_child(UIStyle.label("P%d" % pos, 20, UIStyle.APEX if pos <= 3 else UIStyle.PAPER, "bold", true))
 		elif k == r and not done:
 			h.add_child(UIStyle.label("Next", 20, UIStyle.GREEN, "bold", true))

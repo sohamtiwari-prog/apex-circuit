@@ -843,6 +843,13 @@ func update_pit_stop(t: float) -> void:
 	_stop_bar.size.x = 220.0 * clampf(t / maxf(_stop_need, 0.1), 0.0, 1.0)
 
 
+## A restart: no stop in progress any more.
+func hide_pit_stop() -> void:
+	if _stop != null:
+		_stop.visible = false
+		_stop_hide = 0.0
+
+
 func finish_pit_stop(t: float) -> void:
 	_stop_time.text = "%.1f s" % t
 	_stop_time.add_theme_color_override("font_color", UIStyle.GREEN if t < 3.0 else (UIStyle.YELLOW if t < 4.5 else UIStyle.RED))
@@ -1501,6 +1508,10 @@ func _refresh_menu() -> void:
 func set_paused(p: bool) -> void:
 	get_tree().paused = p and not net_mode
 	pause_panel.visible = p
+	if p:
+		# On top of everything made since (the running-order board, pit
+		# guide, penalty card): those would cover the menu and take its taps.
+		pause_panel.move_to_front()
 	touch.release_all()
 	if not p:
 		save.save()
@@ -1932,6 +1943,7 @@ func _set_live_visible(on: bool) -> void:
 ## results screen that keeps updating while others are still racing, with a
 ## Race stats tab (see _stats_row).
 func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_text := "Race again", rank: Dictionary = {}, on_replay: Callable = Callable(), reward: Dictionary = {}, live: Callable = Callable()) -> void:
+	results_panel.move_to_front()
 	_res_live = live
 	_res_tab = 0
 	_res_detail = ""

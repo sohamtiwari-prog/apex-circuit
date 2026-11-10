@@ -230,6 +230,8 @@ func refresh() -> void:
 		cs.border_color = col
 
 
+var _woke_ms := -1000
+
 func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch or event is InputEventMouseButton:
 		if event.pressed:
@@ -238,7 +240,12 @@ func _input(event: InputEvent) -> void:
 				_hidden_by_user = false
 				_shown = 1.0
 				_apply_shown()
+				_woke_ms = Time.get_ticks_msec()
 				get_viewport().set_input_as_handled()   # this tap only wakes the controls
+			elif Time.get_ticks_msec() - _woke_ms < 200:
+				# (The same tap's other half: a phone sends a touch and a
+				# mouse press. It mustn't press the button under the finger.)
+				get_viewport().set_input_as_handled()
 
 
 func _apply_shown() -> void:

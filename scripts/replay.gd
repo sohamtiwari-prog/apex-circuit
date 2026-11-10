@@ -253,11 +253,15 @@ func start(from_frame: int) -> void:
 		car.collision_layer = 0
 		car.collision_mask = 0
 	_race_saved = {"guide": race.line_guide.visible if race.line_guide != null else false,
-		"ghost": race.ghost_car.visible if race.ghost_car != null else false}
+		"ghost": race.ghost_car.visible if race.ghost_car != null else false,
+		"ideal": race.ideal_car.visible if race.ideal_car != null else false}
 	if race.line_guide != null:
 		race.line_guide.visible = false
 	if race.ghost_car != null:
 		race.ghost_car.visible = false
+	if race.ideal_car != null:
+		race.ideal_car.visible = false      # (it would stand still where you paused)
+	race.cam.set_blur_enabled(false)      # (the speed blur belongs to the race camera)
 	race.cam.current = false
 	race.cam.set_physics_process(false)
 	race.hud.visible = false
@@ -326,8 +330,12 @@ func stop() -> void:
 		race.line_guide.visible = _race_saved["guide"]
 	if race.ghost_car != null:
 		race.ghost_car.visible = _race_saved["ghost"]
+	if race.ideal_car != null:
+		race.ideal_car.visible = _race_saved.get("ideal", false)
+	race.cam.set_blur_enabled(true)
 	race.cam.current = true
 	race.cam.set_physics_process(true)
+	race.cam.set_mode(race.cam.mode)      # (hides your helmet again if you're onboard)
 	race.cam.snap()
 	race.hud.visible = true
 	if race.tyre_fx != null:

@@ -222,9 +222,19 @@ func _build_detail() -> void:
 		var sk := float(ev["skill"])
 		var lvl := "Easy" if sk < 0.89 else ("Medium" if sk < 0.93 else ("Hard" if sk < 0.955 else "Very hard"))
 		_detail.add_child(UIStyle.label("Opponents: %s" % lvl, 18, UIStyle.FOG, "semibold"))
-	var go := UIStyle.button("Start" if ev["type"] != "season" else "Start the season", _start, true, 38)
+	var label := "Start"
+	if ev["type"] == "season":
+		var cur := Championship.active(save)
+		var this_season: bool = not cur.is_empty() and not bool(cur.get("done", false)) and String(cur.get("career_event", "")) == String(ev["id"])
+		label = "Carry on with the season" if this_season else "Start the season"
+	var go := UIStyle.button(label, _start, true, 38)
 	go.custom_minimum_size = Vector2(0, 84)
 	_detail.add_child(go)
+	_go_btn = go
+
+
+var _go_btn: Button
+var _confirm_until := 0
 
 
 func _start() -> void:
@@ -232,6 +242,19 @@ func _start() -> void:
 	if _car_pick == "":
 		return
 	if ev["type"] == "season":
+		var cur := Championship.active(save)
+		var running: bool = not cur.is_empty() and not bool(cur.get("done", false))
+		if running and String(cur.get("career_event", "")) == String(ev["id"]):
+			# This season is under way: carry on with it (it was started
+			# again from round 1, points and all).
+			get_tree().change_scene_to_file("res://scenes/championship.tscn")
+			return
+		if running and Time.get_ticks_msec() > _confirm_until:
+			# Another season is under way: starting this one ends it. Ask.
+			_confirm_until = Time.get_ticks_msec() + 4000
+			if _go_btn != null:
+				_go_btn.text = "Tap again: ends your season in progress"
+			return
 		Championship.start(save, "gp", _car_pick, String(ev["id"]))
 		get_tree().change_scene_to_file("res://scenes/championship.tscn")
 		return

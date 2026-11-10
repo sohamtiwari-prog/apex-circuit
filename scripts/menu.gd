@@ -326,13 +326,22 @@ func _build_track_side(cols: Control) -> void:
 	_chips["go"] = go
 
 
+## Same setting value? (The save file is JSON: a number saved as 10 comes
+## back as 10.0, and str() of the two never matched: the chip showed its
+## first choice, "3 laps", for a 10-lap race.)
+static func _same(a: Variant, b: Variant) -> bool:
+	if (a is int or a is float) and (b is int or b is float):
+		return is_equal_approx(float(a), float(b))
+	return str(a) == str(b)
+
+
 ## A chip that cycles through `choices` ([value, label] pairs) for a setting.
 func _chip(parent: Node, key: String, choices: Array) -> void:
 	var b := UIStyle.button("", func():
-		var cur := str(save.get_setting(key))
+		var cur: Variant = save.get_setting(key)
 		var i := 0
 		for k in range(choices.size()):
-			if str(choices[k][0]) == cur:
+			if _same(choices[k][0], cur):
 				i = k
 		save.set_setting(key, choices[(i + 1) % choices.size()][0])
 		_refresh_mode(), false, 20)
@@ -357,10 +366,10 @@ func _refresh_mode() -> void:
 			continue
 		var b: Button = _chips[key][0]
 		var choices: Array = _chips[key][1]
-		var cur := str(save.get_setting(key))
+		var cur: Variant = save.get_setting(key)
 		b.text = choices[0][1]
 		for c in choices:
-			if str(c[0]) == cur:
+			if _same(c[0], cur):
 				b.text = c[1]
 		b.visible = mode == "race" or key == "time_of_day"
 	(_chips["go"] as Button).text = "Race" if mode == "race" else "Drive"

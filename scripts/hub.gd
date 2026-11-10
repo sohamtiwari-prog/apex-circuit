@@ -8,15 +8,22 @@ var ui: CanvasLayer
 var _tiles := {}
 
 
+static var _url_race_done := false
+
+
 func _ready() -> void:
 	save = get_node("/root/Save")
 	save.pending_event = {}
 	# (Browser checks: index.html?race=<track> starts a quick race.)
-	if WebBridge.is_web():
+	# Once per page load (the hub again after the race is the menu), and
+	# only for a real track.
+	if WebBridge.is_web() and not _url_race_done:
+		_url_race_done = true
 		var q := String(JavaScriptBridge.eval("location.search", true))
-		if q.contains("race="):
+		var tid := q.get_slice("race=", 1).get_slice("&", 0)
+		if q.contains("race=") and String(Track.catalog_entry(tid)["id"]) == tid:
 			var st: Dictionary = save.data["settings"]
-			st["mode"] = "race"; st["track"] = q.get_slice("race=", 1).get_slice("&", 0); st["qualifying"] = false
+			st["mode"] = "race"; st["track"] = tid; st["qualifying"] = false
 			if q.contains("saver"):
 				st["graphics"] = "saver"
 			get_tree().change_scene_to_file.call_deferred("res://scenes/race.tscn")

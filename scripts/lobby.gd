@@ -722,6 +722,11 @@ func _my_rp() -> int:
 	return int(save.data.get("rank_points", 0))
 
 
+## Android Back: the same as the ‹ button (leaves the game properly).
+func go_back() -> void:
+	_to_menu()
+
+
 func _to_menu() -> void:
 	Net.stop_discovery()
 	Net.leave()

@@ -251,7 +251,7 @@ func _ready() -> void:
 	hud = Hud.new()
 	add_child(hud)
 	hud.restart_requested.connect(_restart)
-	hud.reset_requested.connect(func(): _reset_to_track(player, true))
+	hud.reset_requested.connect(func(): if state != State.GRID: _reset_to_track(player, true))
 	hud.camera_requested.connect(_cycle_camera)
 	hud.settings_changed.connect(_apply_assists)
 	hud.menu_requested.connect(_quit_to_menu)
@@ -293,6 +293,41 @@ func _ready() -> void:
 	_restart()
 	if weekend != null and weekend.qualifying:
 		weekend.begin_qualifying()
+	_warm_up_effects()
+
+
+## On a phone, the first time an effect is drawn its shaders are compiled,
+## and that frame stalls (a visible stutter): the speed blur the first time
+## you pass ~140 km/h, tyre smoke at the first lock-up, spray and rain when
+## it starts to rain. All of them are drawn once here, in front of the
+## camera while the race is still loading, for a few frames, then removed.
+func _warm_up_effects() -> void:
+	if cam == null or car == null:
+		return
+	var holder := Node3D.new()
+	cam.add_child(holder)
+	holder.position = Vector3(0.0, 0.0, -7.0)
+	holder.scale = Vector3.ONE * 0.02      # (drawn, so compiled; too small to see)
+	var fx: Array = [tyre_fx._make_smoke(car)]
+	if weekend != null:
+		fx.append(weekend._make_spray(car))
+		fx.append(Weekend.rain_particles(4))
+	for p in fx:
+		var cp: CPUParticles3D = p
+		if cp.get_parent() != null:
+			cp.get_parent().remove_child(cp)
+		holder.add_child(cp)
+		cp.local_coords = true
+		cp.position = Vector3.ZERO
+		cp.amount = mini(cp.amount, 4)
+		cp.preprocess = 0.3
+		cp.emitting = true
+	cam.warm_blur = 4
+	for i in 4:
+		await get_tree().process_frame
+		if not is_instance_valid(holder):
+			return
+	holder.queue_free()
 
 
 func _spawn_opponents(player_team: int) -> void:
@@ -450,7 +485,15 @@ func _place(e: Entrant, xform: Transform3D) -> void:
 		input_driver.idx = e.idx
 
 
+var _cooldown_pilot := false        # the autopilot is only driving your cool-down lap
+var _session := 0                   # counts restarts (a timer from the last race checks it)
+
 func _restart() -> void:
+	_session += 1
+	if _cooldown_pilot:
+		# "Race again": the car is yours again, not the AI's.
+		autopilot = null
+		_cooldown_pilot = false
 	_results_shown = false
 	_ranked = false
 	_rewarded = false
@@ -548,6 +591,12 @@ func _restart() -> void:
 		e.idx = track.nearest_index(e.car.global_position, -1)
 		e.progress = track.cum[e.idx] - (track.total_length if e.idx > track.size() / 2 else 0.0)
 	_update_positions()
+	if engineer != null:
+		engineer.reset()
+	# Restarted during qualifying: qualifying again (not a race that still
+	# thinks it's qualifying, ending itself on the next lap).
+	if weekend != null and weekend.in_quali:
+		weekend.begin_qualifying()
 
 
 var reset_log: Array[String] = []     # why cars were put back on track (tests)
@@ -562,7 +611,7 @@ func _reset_to_track(e: Entrant, manual: bool) -> void:
 		return                          # (part-way through a pit stop: into the box, or out of the exit)
 	var idx := track.nearest_index(e.car.global_position, -1)
 	_place(e, track.pose_at(idx, e.car.spawn_height(), track.line_offset[idx]))
-	e.car.controls_enabled = state == State.RACING
+	e.car.controls_enabled = state == State.RACING or state == State.QUALI
 	if state != State.GRID:
 		e.ghost = 3.0
 		e.car.set_ghost(true)
@@ -586,8 +635,10 @@ func watch_replay(from_pause: bool) -> void:
 				return
 	_replay_from_pause = from_pause
 	var from := replay.race_start_frame()
-	if from_pause:
+	# (Never a replay frozen under a paused game.)
+	if from_pause or get_tree().paused:
 		hud.set_paused(false)
+	if from_pause:
 		from = maxi(replay.count - int(Replay.HZ * 30.0), 0)
 	replay.start(from)
 
@@ -663,6 +714,16 @@ func _quit_to_menu() -> void:
 ## off, a call). Not on a plain focus loss: on Android that also happens
 ## when an edge swipe shows the system bars over the full-screen game, or
 ## a gesture overlay pops up, while you're still driving.
+## Android Back: close the replay, leave the results, or pause / resume.
+func go_back() -> void:
+	if replay != null and replay.playing:
+		replay.stop()
+	elif _results_shown:
+		_quit_to_menu()
+	elif hud != null:
+		hud.set_paused(not hud.pause_panel.visible)
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		if replay != null and replay.playing:
@@ -683,7 +744,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_C:
 				_cycle_camera()
 			KEY_R:
-				_reset_to_track(player, true)
+				if state != State.GRID:
+					_reset_to_track(player, true)
 
 
 # ------------------------------------------------------------ per frame
@@ -1214,22 +1276,34 @@ func _player_lap(lap_time: float) -> void:
 func _player_finished() -> void:
 	state = State.FINISHED
 	if autopilot == null:
-		# Hand the car to the AI for the cool-down lap.
+		# Hand the car to the AI for the cool-down lap (taken back on a restart).
 		autopilot = AIDriver.new()
 		autopilot.speed_cap = 30.0
+		_cooldown_pilot = true
 	if ev_type == "time_trial":
 		hud.show_center("")
 	else:
 		hud.show_center("P%d" % player.position)
-		save.record_race(track_id, car_id, player.position, entrants.size())
-	get_tree().create_timer(2.5).timeout.connect(_show_results)
+	# (Waits while paused, and doesn't fire into a race restarted meanwhile.)
+	# With a time penalty still to add, until it has run out: anyone who
+	# crosses the line within it finishes ahead, before points and rewards
+	# are settled on the place you really finished in.
+	var session := _session
+	var wait := maxf(2.5, float(player.pen_pending) + 0.5)
+	get_tree().create_timer(wait, false).timeout.connect(func():
+		if session == _session:
+			_show_results())
 
 
 func _show_results() -> void:
-	if _results_shown:
+	if _results_shown or not player.finished:
 		return
 	_results_shown = true
 	hud.show_center("")
+	if ev_type != "time_trial":
+		if net == null or Net.is_host():
+			_update_positions()
+		save.record_race(track_id, car_id, player.position, entrants.size())
 	var rows := result_rows()
 	var fastest: Entrant = _fastest_lap()
 	var rank := _award_rank(fastest == player)

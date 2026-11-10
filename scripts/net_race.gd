@@ -787,7 +787,13 @@ func _apply_standings(rows: Array) -> void:
 
 
 func _on_peer_left(id: int) -> void:
-	if not Net.is_host() or not _slot_of_peer.has(id):
+	if not Net.is_host():
+		return
+	# Gone from the lobby too: back there they'd be listed, given a car at
+	# the next start that nobody drives, and waited for at every start.
+	var players: Dictionary = Net.get_meta("players", {})
+	players.erase(id)
+	if not _slot_of_peer.has(id):
 		return
 	var slot: int = _slot_of_peer[id]
 	_slot_of_peer.erase(id)

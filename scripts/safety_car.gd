@@ -135,9 +135,11 @@ func physics(dt: float) -> void:
 			if not out:
 				_try_come_out(leader)
 				return
-			_drive(dt)
+			_drive(dt, leader)
 			var gap := fposmod(s_pos() - float(track.cum[leader.idx]), L)
-			if gap < 60.0:
+			# (Counts once the queue has caught it, or after a minute and a
+			# half regardless: it never stays out for the rest of the race.)
+			if gap < 60.0 or _t > 90.0:
 				_dist += speed() * dt
 			if phase == 1 and _dist > minf(L * 0.6, 3200.0) and _t > 35.0:
 				phase = 2
@@ -201,8 +203,17 @@ func _track_pose(s: float) -> Transform3D:
 	return track.pose_at(i, car.spawn_height() if car != null else 0.6, track.line_offset[i])
 
 
-func _drive(_dt: float) -> void:
-	drv.speed_cap = 999.0
+## At a pace the field can catch: under the speed the bots are held to
+## behind it (80% of their car's), whatever they race. (It drove at its own
+## car's pace: in a field of road cars no faster than it, the leader never
+## got within reach, and it stayed out for the rest of the race.)
+func _drive(_dt: float, leader = null) -> void:
+	var cap := 999.0
+	if leader != null:
+		var prof := track.speed_profile(leader.car.spec)
+		if prof.size() > 0:
+			cap = prof[posmod(drv.idx, prof.size())] * 0.65
+	drv.speed_cap = cap
 	drv.update(car, track)
 
 

@@ -14,7 +14,7 @@ static func build(parent: Control, ui: CanvasLayer, save: Node) -> void:
 	card.custom_minimum_size = Vector2(400, 0)
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.gui_input.connect(func(ev: InputEvent):
-		if (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventScreenTouch and ev.pressed):
+		if ev is InputEventMouseButton and ev.pressed:     # (a tap arrives as both a touch and a mouse press: once)
 			show_ladder(ui, save))
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 10)
@@ -57,7 +57,7 @@ static func show_ladder(ui: CanvasLayer, save: Node) -> void:
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	ui.add_child(shade)
 	shade.gui_input.connect(func(ev: InputEvent):
-		if (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventScreenTouch and ev.pressed):
+		if ev is InputEventMouseButton and ev.pressed:     # (a tap arrives as both a touch and a mouse press: once)
 			shade.queue_free())
 	var panel := PanelContainer.new()
 	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.97), false, UIStyle.APEX, 8)

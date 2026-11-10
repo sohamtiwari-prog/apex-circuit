@@ -32,6 +32,21 @@ var _flag_t := 0.0
 var _slow := {}                          # entrant -> seconds crawling
 
 
+## A new race (restart / race again): forget the last one's places and calls.
+func reset() -> void:
+	_last_pos = 0
+	_pos_since = 0.0
+	_said_pos = 0
+	_close_said_lap = -1
+	_tyre_said = false
+	_wet_said = false
+	_fastest = INF
+	_flag = ""
+	_flag_text = ""
+	_flag_t = 0.0
+	_slow.clear()
+
+
 func setup(r: Node) -> void:
 	race = r
 	race.car_contact.connect(_on_contact)

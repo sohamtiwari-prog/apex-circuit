@@ -85,24 +85,12 @@ func setup(r: Node) -> void:
 		player_compound = "medium"
 	if weather == "wet":
 		player_compound = "wet"
-	var laps := float(maxi(int(r.total_laps), 1))
-	var k := 0
 	for e in r.entrants:
 		e.wear = 0.0
 		e.stops = 0
 		e.pit_phase = 0
 		e.pit_req = false
-		if e.is_player:
-			e.compound = player_compound
-		else:
-			# A spread of strategies: most on the tyre that lasts the race.
-			var best := Tyres.best_for(wetness, laps, track.total_length)
-			e.compound = best
-			if best != "wet":
-				var opts := ["soft", "medium", "hard"]
-				var shift: int = [0, 0, 0, 1, -1][k % 5]
-				e.compound = opts[clampi(opts.find(best) + shift, 0, 2)]
-			k += 1
+	_starting_tyres()
 	for n in r.find_children("*", "DirectionalLight3D", true, false):
 		_sun = n
 		_sun_energy = _sun.light_energy
@@ -120,6 +108,24 @@ func setup(r: Node) -> void:
 	if weather != "dry":
 		_build_rain()
 	_apply_weather()
+
+
+## Everyone's starting tyres: yours as chosen; the bots a spread of
+## strategies, most on the tyre that lasts the race.
+func _starting_tyres() -> void:
+	var laps := float(maxi(int(race.total_laps), 1))
+	var k := 0
+	for e in race.entrants:
+		if e.is_player:
+			e.compound = player_compound
+		else:
+			var best := Tyres.best_for(wetness, laps, track.total_length)
+			e.compound = best
+			if best != "wet":
+				var opts := ["soft", "medium", "hard"]
+				var shift: int = [0, 0, 0, 1, -1][k % 5]
+				e.compound = opts[clampi(opts.find(best) + shift, 0, 2)]
+			k += 1
 
 
 ## Reset tyres for a restart (same weather).
@@ -143,6 +149,14 @@ func reset() -> void:
 	crew.clear()
 	if weather == "changing":
 		wetness = 0.0
+	# The bots start on fresh tyres for this race's weather, not on whatever
+	# they finished the last one on (wets after a shower: the whole field
+	# pitting at the end of lap 1).
+	_starting_tyres()
+	# Nothing of a stop in progress left on screen.
+	_box_marker(race.player, false)
+	race.hud.set_pit_guide("", UIStyle.YELLOW)
+	race.hud.hide_pit_stop()
 	_apply_weather()
 
 
@@ -274,7 +288,8 @@ func physics(delta: float) -> void:
 			continue
 		var c: RaceCar = e.car
 		var v := absf(c.forward_speed())
-		if racing:
+		if racing and race.mode == "race":
+			# (Not in a time trial: lap after lap on the same tyres, no stops.)
 			e.wear = minf(e.wear + Tyres.wear(e.compound, v * delta, c.tyre_slip, wetness), 1.0)
 		c.grip_scale = Tyres.grip(e.compound, e.wear, wetness)
 		if e.ai != null:
@@ -771,6 +786,8 @@ func _end_service(e) -> void:
 	if crew.has(e):
 		(crew[e] as PitCrew).release()
 		crew.erase(e)
+	if e.is_player and e.car.freeze and not e.car.remote:
+		_hold(e, false)                # (held in the box and pit mode switched meanwhile)
 	if e.is_player:
 		race.hud.finish_pit_stop(e.pit_timer)
 		race.hud.show_banner("%s tyres on: go, go, go!" % Tyres.NAMES[e.compound], UIStyle.GREEN, 2.5)
@@ -855,17 +872,24 @@ func _apply_weather() -> void:
 
 
 func _build_rain() -> void:
-	_rain = CPUParticles3D.new()
-	_rain.amount = 1400
-	_rain.lifetime = 0.9
-	_rain.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	_rain.emission_box_extents = Vector3(22, 1, 22)
-	_rain.direction = Vector3(0.08, -1, 0.04)
-	_rain.spread = 2.0
-	_rain.gravity = Vector3(0, -12, 0)
-	_rain.initial_velocity_min = 22.0
-	_rain.initial_velocity_max = 28.0
-	_rain.local_coords = false
+	_rain = rain_particles(1400)
+	_rain.emitting = false
+	add_child(_rain)
+
+
+## Rain streaks (also used, a few of them, to get the shader ready before a race).
+static func rain_particles(amount: int) -> CPUParticles3D:
+	var rp := CPUParticles3D.new()
+	rp.amount = amount
+	rp.lifetime = 0.9
+	rp.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	rp.emission_box_extents = Vector3(22, 1, 22)
+	rp.direction = Vector3(0.08, -1, 0.04)
+	rp.spread = 2.0
+	rp.gravity = Vector3(0, -12, 0)
+	rp.initial_velocity_min = 22.0
+	rp.initial_velocity_max = 28.0
+	rp.local_coords = false
 	var q := QuadMesh.new()
 	q.size = Vector2(0.018, 0.55)
 	var m := StandardMaterial3D.new()
@@ -875,9 +899,8 @@ func _build_rain() -> void:
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	q.material = m
-	_rain.mesh = q
-	_rain.emitting = false
-	add_child(_rain)
+	rp.mesh = q
+	return rp
 
 
 func _process(_delta: float) -> void:

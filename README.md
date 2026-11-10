@@ -576,6 +576,8 @@ tests/
   bot_probe.gd       bot behaviour over a race: resets, twitches, offs, stops
   contact_test.gd    racing contact with drivers at the wheel; brushing the barrier
   crash_audit.gd     full races raced hard against the bots: what every contact did to you
+  flow_test.gd       finishing, pausing at the flag, Race again, restarting in qualifying
+  error_sweep.gd     a full race on every track, every car and condition: errors, stuck cars
   net_contact_test.gd  multiplayer contact through the network code at 10-150 ms
   recovery_probe.gd  a full-grid race: every car put back on track, and why
   engineer_test.gd   radio lap reports, yellow/blue flags, vibration

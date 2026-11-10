@@ -30,6 +30,25 @@ func _ready() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED:
 		save()
+	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		_go_back()
+
+
+## Android's Back button / gesture (project setting quit_on_go_back is off,
+## so it no longer closes the game from anywhere, mid-race included): the
+## screen's own back if it has one (a race pauses; the lobby leaves the
+## game properly), otherwise to the main menu; on the main menu it quits.
+func _go_back() -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	if scene.has_method("go_back"):
+		scene.go_back()
+	elif scene.scene_file_path.ends_with("hub.tscn"):
+		save()
+		get_tree().quit()
+	else:
+		get_tree().change_scene_to_file("res://scenes/hub.tscn")
 
 
 func default_profile() -> Dictionary:

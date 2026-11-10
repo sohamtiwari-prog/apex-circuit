@@ -9,7 +9,7 @@ extends SceneTree
 ##   - under the VSC, bots don't pass a slow you;
 ##   - pass the Safety Car yourself and you're told to drop back, then
 ##     penalised.
-##   godot --headless --fixed-fps 120 --script res://tests/safety_car_test.gd
+##   godot --headless --fixed-fps 120 --script res://tests/safety_car_test.gd [-- car]
 
 var failures: Array[String] = []
 
@@ -29,7 +29,9 @@ func _race(laps: int, opponents: int, track := "silvermoor") -> Node:
 	save.data = save.default_profile()
 	var st: Dictionary = save.data["settings"]
 	st["mode"] = "race"; st["laps"] = laps; st["opponents"] = opponents; st["track"] = track
-	st["car"] = "gp26"; st["qualifying"] = false; st["weather"] = "dry"; st["race_control"] = true
+	# (Any car: the Safety Car must be catchable by a field of road cars too.)
+	var args := OS.get_cmdline_user_args()
+	st["car"] = args[0] if args.size() > 0 else "gp26"; st["qualifying"] = false; st["weather"] = "dry"; st["race_control"] = true
 	var race: Node = (load("res://scenes/race.tscn") as PackedScene).instantiate()
 	root.add_child(race)
 	await physics_frame
@@ -95,7 +97,7 @@ func _safety_car() -> void:
 	await _until(func(): return race.race_time > 40.0, 90.0)
 	rc.deploy_sc("test")
 	_check(sc.phase == 1, "Safety Car deployed")
-	var ok: bool = await _until(func(): return sc.out, 120.0)
+	var ok: bool = await _until(func(): return sc.out, 200.0)   # (a lap, in the slowest cars)
 	_check(ok, "it comes out on track")
 	var leader = sc._leader()
 	var L := tr.total_length

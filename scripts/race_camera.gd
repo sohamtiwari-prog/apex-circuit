@@ -15,6 +15,7 @@ var _lag := 0.0                   # chase: how far the car has pulled away / clo
 var _blur: MeshInstance3D         # speed blur over the picture
 var _blur_mat: ShaderMaterial
 var speed_fx := true              # speed blur (graphics: off in battery saver)
+var warm_blur := 0                 # frames to draw the blur (with nothing to blur) so its shader is ready
 
 
 func _ready() -> void:
@@ -46,6 +47,15 @@ func set_target(car: RaceCar) -> void:
 	_modes = [{"name": "Chase", "chase": 1.0}, {"name": "Far chase", "chase": 1.45}]
 	for c in car.spec["cams"]:
 		_modes.append(c)
+
+
+## The speed blur off while something else is on screen (the replay).
+var _blur_on := true
+
+func set_blur_enabled(on: bool) -> void:
+	_blur_on = on
+	if not on:
+		_blur.visible = false
 
 
 func set_mode(m: int) -> void:
@@ -142,10 +152,15 @@ var _shake_t := 0.0
 ## The speed blur: none below about 140 km/h, full flat out; gentler
 ## onboard (you're looking past the car, not at it).
 func _update_blur(spd: float, chase: bool) -> void:
-	var on := speed_fx and target != null
+	var on := speed_fx and target != null and _blur_on
 	var amt := clampf((spd - 38.0) / 52.0, 0.0, 1.0)
 	amt = amt * amt * (1.0 if chase else 0.7)
 	_blur.visible = on and amt > 0.01
+	if warm_blur > 0 and speed_fx:
+		warm_blur -= 1
+		_blur.visible = true
+		_blur_mat.set_shader_parameter("amount", 0.0)
+		return
 	if not _blur.visible:
 		return
 	_blur_mat.set_shader_parameter("amount", amt)

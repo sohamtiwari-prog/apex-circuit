@@ -232,6 +232,10 @@ func _behind_sc(p) -> void:
 	var L := track.total_length
 	var gap := fposmod(sc.s_pos() - float(track.cum[p.idx]) + L * 0.5, L) - L * 0.5
 	var st: Array = _sc_pass.get(p, [true, -1.0])
+	if sc.phase == 2 and not sc.drv.path_lat.is_null():
+		# It's peeling off into the pit lane: going past it is the restart.
+		_sc_pass[p] = [true, -1.0]
+		return
 	var behind := gap > 0.0
 	if absf(gap) < 80.0 and bool(st[0]) and not behind and p.pit_phase == 0:
 		st[1] = float(race.race_time) + 6.0
@@ -267,6 +271,7 @@ func _stopped_cars(dt: float) -> void:
 func deploy_sc(why: String) -> void:
 	if not authority or race.mode != "race" or sc_phase > 0 or vsc or sc.count >= 2:
 		return
+	_sc_pass.clear()                 # (nothing owed from the last one)
 	var lead := 0.0
 	for e in race.entrants:
 		lead = maxf(lead, float(e.progress))
@@ -369,8 +374,15 @@ func _overtakes(p) -> void:
 	var owe: Dictionary = _owe[p]
 	var t := float(race.race_time)
 	for o in race.entrants:
+		if o == p or o.finished or o.dnf or o.eliminated or o.pit_phase > 0:
+			# (A place that can't be given back any more: it pitted, retired
+			# or finished. No penalty for it.)
+			if owe.has(o):
+				owe.erase(o)
+			if o.pit_phase == 0:
+				order.erase(o)
+				continue
 		if o == p or o.finished or o.dnf or o.eliminated:
-			order.erase(o)
 			continue
 		var gap: float = float(o.progress) - float(p.progress)
 		var ahead := gap > 0.0
