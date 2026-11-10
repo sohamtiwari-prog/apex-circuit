@@ -91,6 +91,40 @@ static func apply_paint(s: Dictionary, p: Dictionary) -> Dictionary:
 	return s
 
 
+## Car setup (scripts/setup_screen.gd), each a step either side of the
+## car's own (0): wing -5..5 (downforce and drag), gearing -3..3 (longer:
+## more top speed, less pick-up), brake balance 50..70 % front, handling
+## balance -3..3 (anti-roll bars: + steadier, - more rotation), tyre
+## pressure -3..3 (lower: more grip, more wear).
+const SETUP_RANGE := {"wing": [-5, 5], "gearing": [-3, 3], "bias": [50, 70], "balance": [-3, 3], "pressure": [-3, 3]}
+
+static func apply_setup(s: Dictionary, st: Dictionary) -> Dictionary:
+	if st.is_empty():
+		return s
+	var wing := clampi(int(st.get("wing", 0)), -5, 5)
+	var gearing := clampi(int(st.get("gearing", 0)), -3, 3)
+	var balance := clampi(int(st.get("balance", 0)), -3, 3)
+	var pressure := clampi(int(st.get("pressure", 0)), -3, 3)
+	s["downforce"] = float(s["downforce"]) * (1.0 + 0.05 * wing)
+	s["drag"] = float(s["drag"]) * (1.0 + 0.04 * wing)
+	var g: Array = []
+	for r in s["gears"]:
+		g.append(float(r) * (1.0 - 0.03 * gearing))
+	s["gears"] = g
+	if st.has("bias"):
+		s["brake_bias"] = clampf(float(st["bias"]) / 100.0, 0.5, 0.7)
+	s["arb_front"] = float(s["arb_front"]) * (1.0 + 0.1 * balance)
+	s["arb_rear"] = float(s["arb_rear"]) * (1.0 - 0.1 * balance)
+	s["mu_front"] = float(s["mu_front"]) * (1.0 - 0.012 * pressure)
+	s["mu_rear"] = float(s["mu_rear"]) * (1.0 - 0.012 * pressure)
+	s["wear_mul"] = 1.0 - 0.07 * pressure
+	if s.has("top_kmh"):
+		# (Road cars quote a top speed; with more or less wing and gearing it moves.)
+		s["top_kmh"] = float(s["top_kmh"]) * pow(1.0 / (1.0 + 0.04 * wing), 1.0 / 3.0) * (1.0 + 0.02 * gearing)
+	s["setup"] = st
+	return s
+
+
 static func display_name(id: String) -> String:
 	return get_spec(id)["name"]
 

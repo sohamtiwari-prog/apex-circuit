@@ -127,6 +127,18 @@ func _build_panel() -> void:
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_panel.add_child(sp)
 
+	# Make it yours: paint and setup.
+	var mods := HBoxContainer.new()
+	mods.add_theme_constant_override("separation", 10)
+	_panel.add_child(mods)
+	for m in [["Paint", "res://scenes/paint.tscn"], ["Setup", "res://scenes/setup.tscn"]]:
+		var scene: String = m[1]
+		var mb := UIStyle.button(String(m[0]), func():
+			save.set_setting("paint_car", car_id)
+			get_tree().change_scene_to_file(scene), false, 24)
+		mb.custom_minimum_size = Vector2(0, 64)
+		mb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mods.add_child(mb)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	_panel.add_child(row)
@@ -138,12 +150,6 @@ func _build_panel() -> void:
 	hb.custom_minimum_size = Vector2(0, 76)
 	hb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(hb)
-	var paint := UIStyle.button("Paint", func():
-		save.set_setting("paint_car", car_id)
-		get_tree().change_scene_to_file("res://scenes/paint.tscn"), false, 24)
-	paint.custom_minimum_size = Vector2(0, 76)
-	paint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(paint)
 	var drive := UIStyle.button("Drive it", func():
 		save.set_setting("car", car_id)
 		get_tree().change_scene_to_file("res://scenes/menu.tscn"), true, 30)

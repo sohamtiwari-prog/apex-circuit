@@ -130,6 +130,16 @@ The car on the turntable changes as you tap; **Team colours** / **Factory
 paint** switches back. Your paint is used wherever you drive that car, and
 friends see it too (it goes with your car in the lobby).
 
+## Car setup
+
+Garage → **Setup**, per car, a step at a time either side of the car's own:
+**Wing** (-5..+5: downforce for fast corners against drag on the straights),
+**Gearing** (-3..+3: pick-up against top speed), **Brake balance** (50-70 %
+front), **Handling** (-3..+3, the anti-roll bars: steadier against more
+rotation) and **Tyre pressure** (-3..+3: grip against wear). The screen shows
+what it comes to (top speed, grip at 200 km/h, against the car's own);
+**Car's own setup** puts it back.
+
 ## Racing with friends
 
 **Party modes** (the host's last chip in the lobby):
@@ -617,6 +627,7 @@ tests/
   race_types_test.gd checkpoint run (the clock, the gates, the best), eliminator, duel, from the back
   party_test.gd      party modes with friends: team split, eliminator settings, series points, rematch grid
   paint_test.gd      your own paint: on your car, off again, sent to friends
+  setup_test.gd      car setup: each setting does what it says; a clean lap at the extremes
   paint_shots.gd     the paint shop, for review
   error_sweep.gd     a full race on every track, every car and condition: errors, stuck cars
   net_contact_test.gd  multiplayer contact through the network code at 10-150 ms

@@ -116,6 +116,7 @@ const _DEFAULTS := {
 	"trophies": [],                  # finished seasons: {series, position, year}
 	"checkpoint_best": {},           # "track|car" -> metres, the furthest checkpoint run
 	"paint": {},                     # car id -> your own paint (CarSpecs.apply_paint)
+	"setup": {},                     # car id -> your setup (CarSpecs.apply_setup)
 }
 
 
@@ -265,7 +266,19 @@ func _migrate(profile: Dictionary) -> void:
 ## A car's spec (every car races as it comes).
 ## Your car: its spec, in your own paint if you've made one for it.
 func car_spec(car_id: String, team := 0) -> Dictionary:
-	return CarSpecs.apply_paint(CarSpecs.get_spec(car_id, team), my_paint(car_id))
+	return CarSpecs.apply_setup(CarSpecs.apply_paint(CarSpecs.get_spec(car_id, team), my_paint(car_id)), my_setup(car_id))
+
+
+## Your setup for a car (CarSpecs.apply_setup), {} for the car's own.
+func my_setup(car_id: String) -> Dictionary:
+	return data.get("setup", {}).get(car_id, {})
+
+
+func set_setup(car_id: String, st: Dictionary) -> void:
+	if not data.has("setup"):
+		data["setup"] = {}
+	data["setup"][car_id] = st
+	save()
 
 
 ## Your paint for a car (scripts/paint_shop.gd), {} if none.

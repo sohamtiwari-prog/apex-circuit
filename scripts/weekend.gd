@@ -290,7 +290,7 @@ func physics(delta: float) -> void:
 		var v := absf(c.forward_speed())
 		if racing and race.mode == "race":
 			# (Not in a time trial: lap after lap on the same tyres, no stops.)
-			e.wear = minf(e.wear + Tyres.wear(e.compound, v * delta, c.tyre_slip, wetness), 1.0)
+			e.wear = minf(e.wear + Tyres.wear(e.compound, v * delta, c.tyre_slip, wetness) * float(c.spec.get("wear_mul", 1.0)), 1.0)
 		c.grip_scale = Tyres.grip(e.compound, e.wear, wetness)
 		if e.ai != null:
 			e.ai.grip_scale = c.grip_scale
