@@ -123,6 +123,14 @@ other's ranks in the lobby.
 
 ## Racing with friends
 
+**Rematch:** at the flag the host gets **Rematch** (the same race again,
+straight away, everyone still in: the players line up in reverse of how they
+finished, so the winner starts behind) as well as **Lobby**; friends get
+**Ask for a rematch**, which pops up on the host's screen. **Quick chat**
+(eight phrases: "Let's go!", "GG", "Nice move!", "Sorry!", "Rematch?",
+"Close one!", "Too fast!", "Wait for me!") shows at the top of everyone's
+screen and as a bubble over the sender's car.
+
 Everyone needs the app on an Android phone. One person taps **Friends** and
 hosts; the others join. The host's phone runs the bots, the start lights and
 the timing, so the host should have a decent connection and keep the app open.

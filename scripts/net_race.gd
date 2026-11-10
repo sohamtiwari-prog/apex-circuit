@@ -746,6 +746,14 @@ func _on_message(from: int, m: Dictionary) -> void:
 		"to_lobby":
 			ended = true
 			race.go_to_lobby()
+		"start":
+			# The host called a rematch: straight into the next race.
+			if Net.is_host():
+				return
+			ended = true
+			Net.start_info = m["info"]
+			race.get_tree().paused = false
+			race.get_tree().change_scene_to_file("res://scenes/race.tscn")
 
 
 ## How late packets arrive: the delay covers nine in ten of them. The odd
@@ -834,6 +842,28 @@ func send_rc(text: String) -> void:
 
 
 ## Host: everyone back to the lobby for the next race.
+## Host: the same race again, now, with everyone still here: same track and
+## settings, the players lined up in reverse of how they finished (the
+## winner starts at the back of them).
+func rematch() -> void:
+	var humans: Array = []
+	for e in race.entrants:
+		if e.net_id > 0:
+			humans.append(e)
+	humans.sort_custom(func(a, b): return a.position < b.position)
+	var order: Array = []
+	for i in range(humans.size() - 1, -1, -1):
+		order.append(humans[i].net_id)
+	var players: Dictionary = Net.get_meta("players", {})
+	var settings: Dictionary = Net.get_meta("settings", race.net_settings())
+	var info: Dictionary = load("res://scripts/lobby.gd").make_start(settings, players, order)
+	ended = true
+	Net.start_info = info
+	Net.send(0, {"t": "start", "info": info})
+	race.get_tree().paused = false
+	race.get_tree().change_scene_to_file("res://scenes/race.tscn")
+
+
 func back_to_lobby() -> void:
 	ended = true
 	Net.send(0, {"t": "to_lobby"})

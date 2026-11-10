@@ -687,6 +687,33 @@ func _on_chat(from: int, text: String) -> void:
 	if players.has(from):
 		who = String(players[from].get("name", who))
 	hud.show_chat(who, text)
+	# A bubble over their car too.
+	for e in entrants:
+		if e.net_id == from and e.car != null:
+			_chat_bubble(e.car, text)
+
+
+func _chat_bubble(c: Node3D, text: String) -> void:
+	var old := c.get_node_or_null("ChatBubble")
+	if old != null:
+		old.free()
+	var l := Label3D.new()
+	l.name = "ChatBubble"
+	l.text = text
+	l.font = UIStyle.font("extrabold", true)
+	l.font_size = 64
+	l.pixel_size = 0.01
+	l.outline_size = 14
+	l.modulate = UIStyle.YELLOW
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.fixed_size = false
+	l.position = Vector3(0, 2.9, 0)
+	l.visibility_range_end = 220.0
+	c.add_child(l)
+	get_tree().create_timer(3.5).timeout.connect(func():
+		if is_instance_valid(l):
+			l.queue_free())
 
 
 ## Car-to-car contact between the cars simulated on this phone
@@ -1346,9 +1373,10 @@ func _show_results() -> void:
 	elif net == null:
 		hud.show_results(rows, func(): _restart(), func(): _quit_to_menu(), "Try again" if not event.is_empty() else "Race again", rank, watch, reward, live)
 	elif Net.is_host():
-		hud.show_results(rows, func(): net.back_to_lobby(), func(): _quit_to_menu(), "Back to lobby", rank, watch, {}, live)
+		hud.show_results(rows, func(): net.rematch(), func(): _quit_to_menu(), "Rematch", rank, watch, {}, live, func(): net.back_to_lobby())
 	else:
-		hud.show_results(rows, Callable(), func(): _quit_to_menu(), "Race again", rank, watch, {}, live)
+		# Friends can't start it, but they can ask for one.
+		hud.show_results(rows, func(): Net.chat(Net.CHAT.find("Rematch?")), func(): _quit_to_menu(), "Ask for a rematch", rank, watch, {}, live, Callable(), true)
 	if net != null and hud.replay_button != null:
 		hud.replay_button.disabled = true      # until every car is home (see _physics_process)
 

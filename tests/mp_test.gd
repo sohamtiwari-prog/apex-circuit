@@ -228,8 +228,10 @@ func _run() -> void:
 		print("  client: connection: ping %d ms, %d updates from the host (%.1f a second), longest wait %.2f s, %d waits over 0.25 s" % [net.my_ping, race.net.rx_count, race.net.rx_count / maxf(race_secs, 1.0), race.net.rx_max_gap, race.net.rx_stalls])
 	print("  %s: drawing the other phone's cars took %.1f ms per second of racing" % [role, race.net.cost_us / 1000.0 / maxf(race_secs, 1.0)])
 	print("  %s: finished P%d, other player P%d (automatic recoveries on this phone: %d)" % [role, race.player.position, other.position, race.recoveries]); print("  %s: interpolation delay %.2f s, jitter %.3f s" % [role, race.net.delay, race.net._jitter])
-	# Host: back to the lobby together.
+	# Host: a rematch (the friend asks for one), then back to the lobby together.
 	if role == "host":
+		var asked := [false]
+		net.chat_received.connect(func(_f, t): if t == "Rematch?": asked[0] = true)
 		_check(await _wait(func(): return other.finished, 120.0), "host: the friend finishes too")
 		# Replays open once every car is home.
 		var all_home := func():
@@ -244,7 +246,17 @@ func _run() -> void:
 		await _wait(func(): return false, 2.0)
 		_check(race.replay.playing, "host: the replay plays")
 		race.replay.stop()
-		await _wait(func(): return false, 4.0)
+		_check(await _wait(func(): return asked[0], 90.0), "host: the friend's \"Rematch?\" arrives")
+		var old := race
+		race.net.rematch()
+		_check(await _wait(func(): return current_scene != null and current_scene != old and current_scene.name == "Race" and current_scene.get("player") != null, 20.0), "host: the rematch starts")
+		race = current_scene
+		var pl: Array = []
+		for e in race.entrants:
+			if e.net_id > 0:
+				pl.append(e)
+		_check(pl.size() == 2, "host: both players are on the rematch grid (%d)" % pl.size())
+		await _wait(func(): return false, 8.0)
 		race.net.back_to_lobby()
 		_check(await _wait(func(): return current_scene != null and current_scene.name == "Lobby", 10.0), "host: back to the lobby")
 		await _wait(func(): return false, 4.0)
@@ -256,13 +268,19 @@ func _run() -> void:
 			return true
 		await _wait(all_home, 90.0)
 		await _wait(func(): return false, 1.0)
+		net.chat(net.CHAT.find("Rematch?"))
 		race.watch_replay(false)
 		var watching: bool = race.replay.playing
 		if watching:
 			race.replay.cycle_speed()
 			race.replay.cycle_speed()      # 1/4 speed: sound slowed until the replay closes
 		_check(watching, "client: watching the replay when the host heads back")
-		_check(await _wait(func(): return current_scene != null and current_scene.name == "Lobby", 40.0), "client: the host brings everyone back to the lobby")
+		var saw_rematch := [false]
+		_check(await _wait(func():
+			if current_scene != null and current_scene != race and current_scene.name == "Race":
+				saw_rematch[0] = true
+			return current_scene != null and current_scene.name == "Lobby", 70.0), "client: the host brings everyone back to the lobby")
+		_check(saw_rematch[0], "client: joined the host's rematch on the way")
 		_check(is_equal_approx(AudioServer.playback_speed_scale, 1.0) and not AudioServer.is_bus_mute(0), "client: sound back to normal after leaving mid-replay")
 	print("ALL CHECKS PASSED" if failures.is_empty() else "%d CHECK(S) FAILED" % failures.size())
 	net.leave()

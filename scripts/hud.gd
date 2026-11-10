@@ -1890,6 +1890,7 @@ func show_chat(who: String, text: String) -> void:
 		return
 	_chat_toast_lbl.text = "%s:  %s" % [who, text]
 	_chat_toast.visible = true
+	_chat_toast.move_to_front()           # (over the results too: "Rematch?")
 	_chat_toast.reset_size()
 	_chat_time = 3.5
 
@@ -2022,7 +2023,10 @@ func _set_live_visible(on: bool) -> void:
 ## live (optional): returns {"rows": rows, "stats": stats rows} for a
 ## results screen that keeps updating while others are still racing, with a
 ## Race stats tab (see _stats_row).
-func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_text := "Race again", rank: Dictionary = {}, on_replay: Callable = Callable(), reward: Dictionary = {}, live: Callable = Callable()) -> void:
+## on_lobby: a "Lobby" button too (the host, racing friends); ask_once:
+## the main button is a request (a friend asking for a rematch), so it
+## stays on this screen and can only be tapped once.
+func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_text := "Race again", rank: Dictionary = {}, on_replay: Callable = Callable(), reward: Dictionary = {}, live: Callable = Callable(), on_lobby: Callable = Callable(), ask_once := false) -> void:
 	results_panel.move_to_front()
 	_res_live = live
 	_res_tab = 0
@@ -2081,7 +2085,16 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	left.add_child(sp)
-	if on_restart.is_valid():
+	if on_restart.is_valid() and ask_once:
+		var ask: Button
+		ask = UIStyle.button(again_text, func():
+			on_restart.call()
+			ask.disabled = true
+			ask.text = "Asked: the host decides", true, 26)
+		ask.custom_minimum_size = Vector2(0, 74)
+		ask.add_theme_color_override("font_disabled_color", Color(UIStyle.INK, 0.6))
+		left.add_child(ask)
+	elif on_restart.is_valid():
 		var again := UIStyle.button(again_text, func():
 			touch.visible = true
 			_set_live_visible(true)
@@ -2108,6 +2121,11 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 		rp.add_theme_stylebox_override("disabled", UIStyle.panel(Color(UIStyle.TARMAC, 0.5)))
 		lower.add_child(rp)
 		replay_button = rp
+	if on_lobby.is_valid():
+		var lb := UIStyle.button("Lobby", func(): on_lobby.call(), false, 26)
+		lb.custom_minimum_size = Vector2(0, 64)
+		lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lower.add_child(lb)
 	var menu := UIStyle.button("Menu", func(): on_menu.call(), false, 26)
 	menu.custom_minimum_size = Vector2(0, 64)
 	menu.size_flags_horizontal = Control.SIZE_EXPAND_FILL

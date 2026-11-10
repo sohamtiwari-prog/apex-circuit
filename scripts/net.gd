@@ -25,7 +25,7 @@ signal chat_received(from_id: int, text: String)
 ## into 45, then 23: a phone on one reading the other's cars put them anywhere).
 ## Phones on a different one can't join each other; both are told to update.
 ## (APEX_PROTO: tests pretend to be another version.)
-static var PROTOCOL: int = int(OS.get_environment("APEX_PROTO")) if OS.has_environment("APEX_PROTO") else 4
+static var PROTOCOL: int = int(OS.get_environment("APEX_PROTO")) if OS.has_environment("APEX_PROTO") else 5
 
 
 ## This build's version (set by CI before export, e.g. "0.1.54").
@@ -34,7 +34,7 @@ static func game_version() -> String:
 
 
 ## Quick-chat phrases (sent as an index, so they're short and clean).
-const CHAT := ["Let's go!", "GG", "Nice move!", "Sorry!", "Rematch?"]
+const CHAT := ["Let's go!", "GG", "Nice move!", "Sorry!", "Rematch?", "Close one!", "Too fast!", "Wait for me!"]
 
 const GAME_PORT := 47010
 const BEACON_PORT := 47011          # joiners listen here (host announcements, probe replies)

@@ -646,10 +646,26 @@ func _on_message(from: int, m: Dictionary) -> void:
 
 ## Host: grid with everyone mid-field and bots around them, then go.
 func _start_race() -> void:
-	var st := _settings()
-	var ps := _players()
-	var ids := ps.keys()
-	ids.sort()
+	var info := make_start(_settings(), _players())
+	Net.start_info = info
+	Net.send(0, {"t": "start", "info": info})
+	get_tree().change_scene_to_file("res://scenes/race.tscn")
+
+
+## The start message: the grid (players mid-field, bots round them) and the
+## settings. order: the players' ids in the order they line up (a rematch
+## puts the last race's winner at the back of them); else by id.
+static func make_start(st: Dictionary, ps: Dictionary, order: Array = []) -> Dictionary:
+	var ids: Array = []
+	for id in order:
+		if ps.has(id) or ps.has(int(id)) or ps.has(str(id)):
+			ids.append(int(id))
+	var rest := ps.keys()
+	rest.sort()
+	for id in rest:
+		if not ids.has(int(id)):
+			ids.append(int(id))
+	ps = _int_keys(ps)
 	var total := maxi(int(st.get("grid", 20)), ids.size())
 	var first_human := clampi(total / 2 - ids.size(), 0, total - ids.size())
 	var base_skill: float = {"easy": 0.86, "medium": 0.93, "hard": 0.985}.get(String(st.get("difficulty")), 0.93)
@@ -673,10 +689,14 @@ func _start_race() -> void:
 			bot += 1
 	var go := st.duplicate()
 	go["rain_from"] = rng.randf_range(0.2, 0.5)
-	var info := {"settings": go, "grid": grid}
-	Net.start_info = info
-	Net.send(0, {"t": "start", "info": info})
-	get_tree().change_scene_to_file("res://scenes/race.tscn")
+	return {"settings": go, "grid": grid}
+
+
+static func _int_keys(d: Dictionary) -> Dictionary:
+	var out := {}
+	for k in d:
+		out[int(k)] = d[k]
+	return out
 
 
 ## Host: put everyone's ping in the lobby (when it changes noticeably).
