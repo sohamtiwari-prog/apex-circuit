@@ -746,6 +746,9 @@ func _on_message(from: int, m: Dictionary) -> void:
 		"to_lobby":
 			ended = true
 			race.go_to_lobby()
+		"elim":
+			if not Net.is_host():
+				race.apply_elimination(int(m.get("slot", -1)))
 		"start":
 			# The host called a rematch: straight into the next race.
 			if Net.is_host():
@@ -846,6 +849,30 @@ func send_rc(text: String) -> void:
 ## settings, the players lined up in reverse of how they finished (the
 ## winner starts at the back of them).
 func rematch() -> void:
+	var settings: Dictionary = Net.get_meta("settings", race.net_settings()).duplicate(true)
+	settings.erase("series")
+	_start_next(settings)
+
+
+## Host: the eliminator has knocked a car out; everyone hides it (and the
+## phone driving it ends its race).
+func send_elim(e) -> void:
+	Net.send(0, {"t": "elim", "slot": e.slot})
+
+
+## Host, in a series: on to the next track with the points so far.
+func next_round(totals: Dictionary) -> void:
+	var settings: Dictionary = Net.get_meta("settings", race.net_settings()).duplicate(true)
+	var s: Dictionary = race.net_settings().get("series", {}).duplicate(true)
+	s["round"] = int(s.get("round", 0)) + 1
+	s["points"] = totals
+	settings["series"] = s
+	settings["track"] = String(s["tracks"][int(s["round"])])
+	Net.set_meta("settings", settings)
+	_start_next(settings)
+
+
+func _start_next(settings: Dictionary) -> void:
 	var humans: Array = []
 	for e in race.entrants:
 		if e.net_id > 0:
@@ -854,9 +881,7 @@ func rematch() -> void:
 	var order: Array = []
 	for i in range(humans.size() - 1, -1, -1):
 		order.append(humans[i].net_id)
-	var players: Dictionary = Net.get_meta("players", {})
-	var settings: Dictionary = Net.get_meta("settings", race.net_settings())
-	var info: Dictionary = load("res://scripts/lobby.gd").make_start(settings, players, order)
+	var info: Dictionary = load("res://scripts/lobby.gd").make_start(settings, Net.get_meta("players", {}), order)
 	ended = true
 	Net.start_info = info
 	Net.send(0, {"t": "start", "info": info})

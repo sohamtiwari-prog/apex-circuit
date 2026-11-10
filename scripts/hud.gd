@@ -1789,6 +1789,54 @@ func _reward_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void
 		tw.tween_callback(func(): stars.stars = s)
 
 
+## Party modes with friends: the teams' points, or the series table.
+func _party_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void:
+	var col := VBoxContainer.new()
+	col.custom_minimum_size = Vector2(340, 0)
+	col.add_theme_constant_override("separation", 6)
+	cols.add_child(col)
+	var squads: Array = load("res://scripts/race.gd").SQUADS
+	if reward["party"] == "teams":
+		col.add_child(UIStyle.label("Team race", 34, UIStyle.PAPER, "extrabold", true))
+		var win := int(reward["winner"])
+		var mine := int(reward["mine"])
+		var head := "Your team wins!" if win == mine else ("Team %s wins" % squads[win][0])
+		col.add_child(UIStyle.label(head, 34, squads[win][1], "extrabold", true))
+		for s in 2:
+			var h := HBoxContainer.new()
+			col.add_child(h)
+			var n := UIStyle.label("Team %s%s" % [squads[s][0], "  (you)" if s == mine else ""], 26, squads[s][1], "bold", true)
+			n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			h.add_child(n)
+			h.add_child(UIStyle.label("%d pts" % int(reward["points"][s]), 30, UIStyle.PAPER, "extrabold", true))
+		col.add_child(UIStyle.label("25-18-15-12-10-8-6-4-2-1 for the top 10", 18, UIStyle.FOG, "medium"))
+	else:
+		var fin: bool = reward["final"]
+		col.add_child(UIStyle.label("Series  ·  race %d of %d" % [int(reward["round"]) + 1, int(reward["rounds"])], 26, UIStyle.FOG, "bold", true))
+		var table: Array = reward["table"]
+		if fin and not table.is_empty():
+			col.add_child(UIStyle.label("%s is champion!" % String(table[0][0]) if not table[0][3] else "You're the champion!", 32, UIStyle.YELLOW, "extrabold", true))
+		for k in table.size():
+			var r: Array = table[k]
+			var h := HBoxContainer.new()
+			col.add_child(h)
+			var n := UIStyle.label("%d  %s" % [k + 1, String(r[0])], 24, UIStyle.APEX if r[3] else UIStyle.PAPER, "bold", true)
+			n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			h.add_child(n)
+			h.add_child(UIStyle.label("+%d" % int(r[2]), 20, UIStyle.GREEN, "bold", true))
+			var tot := UIStyle.label("%d" % int(r[1]), 26, UIStyle.PAPER, "extrabold", true)
+			tot.custom_minimum_size = Vector2(60, 0)
+			tot.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			h.add_child(tot)
+		if not fin and String(reward.get("next_track", "")) != "":
+			col.add_child(UIStyle.label("Next: %s" % Track.catalog_name(String(reward["next_track"])), 20, UIStyle.FOG, "semibold"))
+	var sp := Control.new()
+	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(sp)
+	if not rank.is_empty():
+		col.add_child(UIStyle.label("+%d RP   %s" % [int(rank["after"]) - int(rank["before"]), Ranks.tier_name(int(rank["after"]))], 22, Ranks.tier_color(int(rank["after"])), "bold", true))
+
+
 ## Checkpoint run: how far, against your best, gates passed, and stars
 ## (daily challenge).
 func _checkpoint_column(cols: Control, reward: Dictionary) -> void:
@@ -2138,6 +2186,8 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 		_champ_column(cols, reward, rank)
 	elif reward.has("event"):
 		_reward_column(cols, reward, rank)
+	elif reward.has("party"):
+		_party_column(cols, reward, rank)
 	elif not rank.is_empty():
 		_rank_column(cols, rank)
 	_res_mid = cols.get_child(kids) if cols.get_child_count() > kids else null

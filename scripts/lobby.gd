@@ -90,7 +90,7 @@ func _settings() -> Dictionary:
 func _default_settings() -> Dictionary:
 	return {"track": String(save.get_setting("track")), "laps": int(save.get_setting("laps")),
 		"grid": 20, "difficulty": String(save.get_setting("difficulty")), "tod": String(save.get_setting("time_of_day")),
-		"pits": "on", "weather": "dry", "rules": "on"}
+		"pits": "on", "weather": "dry", "rules": "on", "party": "race"}
 
 
 func _my_name() -> String:
@@ -432,6 +432,10 @@ func _build_lobby_view() -> void:
 	_settings_box.add_child(chips3)
 	_chip(chips3, "pits", [["on", "Tyre wear & pit stops"], ["off", "No tyre wear"]])
 	_chip(chips3, "weather", [["dry", "Dry"], ["changing", "Rain on the way"], ["wet", "Wet"]])
+	var chips4 := HBoxContainer.new()
+	chips4.add_theme_constant_override("separation", 8)
+	_settings_box.add_child(chips4)
+	_chip(chips4, "party", PARTY)
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	rv.add_child(sp)
@@ -447,6 +451,18 @@ func _build_lobby_view() -> void:
 		_show_connect(), false, 24)
 	leave.custom_minimum_size = Vector2(0, 56)
 	rv.add_child(leave)
+
+
+## Party modes with friends (scripts/race.gd: party).
+const PARTY := [["race", "Normal race"], ["eliminator", "Eliminator"], ["teams", "Team race"],
+	["series3", "Series: 3 races"], ["series5", "Series: 5 races"]]
+const PARTY_RULES := {
+	"race": "",
+	"eliminator": "Eliminator: the last cars are out at the end of every lap.",
+	"teams": "Team race: Orange against Blue (bots too). Points for the top 10 add up for your team.",
+	"series3": "Series: 3 races on different tracks, points for every race, a champion at the end.",
+	"series5": "Series: 5 races on different tracks, points for every race, a champion at the end.",
+}
 
 
 func _chip(parent: Node, key: String, choices: Array) -> void:
@@ -520,6 +536,10 @@ func _refresh_lobby() -> void:
 	var grid := int(st.get("grid", 20))
 	var bots := maxi(grid - ps.size(), 0)
 	var info := UIStyle.label("%d bot%s fill the grid to %d cars" % [bots, "" if bots == 1 else "s", maxi(grid, ps.size())], 20, UIStyle.FOG, "medium")
+	var rule := String(PARTY_RULES.get(String(st.get("party", "race")), ""))
+	if rule != "":
+		info.text += ".  " + rule
+		info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_players_box.add_child(info)
 	_track_label.text = Track.catalog_name(String(st.get("track", "silvermoor")))
 	for key in _chips:
@@ -646,7 +666,21 @@ func _on_message(from: int, m: Dictionary) -> void:
 
 ## Host: grid with everyone mid-field and bots around them, then go.
 func _start_race() -> void:
-	var info := make_start(_settings(), _players())
+	var st := _settings()
+	st.erase("series")
+	var party := String(st.get("party", "race"))
+	if party.begins_with("series"):
+		# The tracks: this one first, then others at random.
+		var rounds := 5 if party == "series5" else 3
+		var tracks: Array = [String(st.get("track", "silvermoor"))]
+		var pool: Array = []
+		for t in Track.CATALOG:
+			if not tracks.has(String(t["id"])):
+				pool.append(String(t["id"]))
+		pool.shuffle()
+		tracks.append_array(pool.slice(0, rounds - 1))
+		st["series"] = {"round": 0, "rounds": rounds, "tracks": tracks, "points": {}}
+	var info := make_start(st, _players())
 	Net.start_info = info
 	Net.send(0, {"t": "start", "info": info})
 	get_tree().change_scene_to_file("res://scenes/race.tscn")
@@ -689,6 +723,27 @@ static func make_start(st: Dictionary, ps: Dictionary, order: Array = []) -> Dic
 			bot += 1
 	var go := st.duplicate()
 	go["rain_from"] = rng.randf_range(0.2, 0.5)
+	var party := String(st.get("party", "race"))
+	if party == "eliminator":
+		# Out at the end of every lap but the last, several a lap on a big
+		# grid, down to the last two or three.
+		var laps := maxi(int(st.get("laps", 3)), 3)
+		go["laps"] = laps
+		go["elim_per_lap"] = maxi(1, int(ceil(float(total - 2) / float(laps - 1))))
+	elif party == "teams":
+		# Players alternate between the teams; bots even the numbers up.
+		var counts := [0, 0]
+		var h := 0
+		for g in grid:
+			if g["kind"] == "player":
+				g["squad"] = h % 2
+				counts[h % 2] += 1
+				h += 1
+		for g in grid:
+			if g["kind"] == "bot":
+				var s := 0 if counts[0] <= counts[1] else 1
+				g["squad"] = s
+				counts[s] += 1
 	return {"settings": go, "grid": grid}
 
 

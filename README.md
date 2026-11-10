@@ -123,6 +123,18 @@ other's ranks in the lobby.
 
 ## Racing with friends
 
+**Party modes** (the host's last chip in the lobby):
+- **Normal race.**
+- **Eliminator:** the last cars are out at the end of every lap (several a
+  lap on a big grid, so it's down to the last two or three for the final
+  lap). The host's phone decides who's out and tells everyone.
+- **Team race:** Orange against Blue. The players are split between the
+  teams and the bots even the numbers up; name tags show your team's colour.
+  Points for the top 10 (25-18-15-12-10-8-6-4-2-1) add up for each team.
+- **Series (3 or 5 races):** this track and then others at random, points
+  for every race, a table after each one and a champion at the end; the host
+  taps **Next race** to go straight on to the next track.
+
 **Rematch:** at the flag the host gets **Rematch** (the same race again,
 straight away, everyone still in: the players line up in reverse of how they
 finished, so the winner starts behind) as well as **Lobby**; friends get
@@ -594,6 +606,7 @@ tests/
   crash_audit.gd     full races raced hard against the bots: what every contact did to you
   flow_test.gd       finishing, pausing at the flag, Race again, restarting in qualifying
   race_types_test.gd checkpoint run (the clock, the gates, the best), eliminator, duel, from the back
+  party_test.gd      party modes with friends: team split, eliminator settings, series points, rematch grid
   error_sweep.gd     a full race on every track, every car and condition: errors, stuck cars
   net_contact_test.gd  multiplayer contact through the network code at 10-150 ms
   recovery_probe.gd  a full-grid race: every car put back on track, and why

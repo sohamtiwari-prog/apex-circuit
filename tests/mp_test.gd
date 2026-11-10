@@ -62,6 +62,8 @@ func _run() -> void:
 		lobby._settings()["pits"] = "on"
 		lobby._settings()["track"] = "styria"
 		lobby._settings()["grid"] = 20
+		if OS.has_environment("APEX_PARTY"):
+			lobby._settings()["party"] = OS.get_environment("APEX_PARTY")     # (by hand: party modes)
 		lobby._broadcast_lobby()
 		await _wait(func(): return false, 1.0)
 		lobby._start_race()

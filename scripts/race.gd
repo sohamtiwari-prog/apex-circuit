@@ -43,6 +43,7 @@ class Entrant:
 	var mini := 0               # minisector being driven (0..MINIS-1)
 	var outside := 0.0          # seconds spent beyond the barriers
 	var eliminated := false     # eliminator events: out of the race
+	var squad := -1             # team race with friends: 0 Orange, 1 Blue
 	var driver := -1            # championship: index in the season's driver list
 	# Race weekend (scripts/weekend.gd): tyres and pit stops.
 	var compound := "medium"
@@ -151,6 +152,11 @@ var event: Dictionary = {}
 var ev_type := ""
 var tt_targets: Array = []
 var _elim_lap := 0
+## With friends: the host's party mode (race, eliminator, teams, series3/5).
+var party := "race"
+var _elim_per_lap := 1
+const SQUADS := [["Orange", Color(1.0, 0.45, 0.05)], ["Blue", Color(0.2, 0.5, 1.0)]]
+const POINTS := [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
 # Checkpoint run: a clock that runs down, topped up at every gate (six a
 # lap) by about what that stretch takes; each gate gives a little less. The
 # run ends when the clock does: how far did you get?
@@ -189,6 +195,10 @@ func _ready() -> void:
 		_tod = String(st.get("tod", "day"))
 		_difficulty = String(st.get("difficulty", "medium"))
 		mode = "race"
+		party = String(st.get("party", "race"))
+		if party == "eliminator":
+			ev_type = "eliminator"
+			_elim_per_lap = int(st.get("elim_per_lap", 1))
 		for g in net_info["grid"]:
 			if g["kind"] == "player" and int(g["id"]) == Net.my_id:
 				car_id = String(g["car"])
@@ -420,6 +430,7 @@ func _spawn_net_grid(info: Dictionary) -> void:
 		e.car = c
 		e.team = String(c.spec.get("team_name", c.spec["name"]))
 		e.team_idx = int(g["team"])
+		e.squad = int(g.get("squad", -1))
 		if g["kind"] == "player":
 			e.net_id = int(g["id"])
 		if g["kind"] == "player" and e.net_id == Net.my_id:
@@ -444,7 +455,7 @@ func _spawn_net_grid(info: Dictionary) -> void:
 				tag.font_size = 64
 				tag.pixel_size = 0.012
 				tag.outline_size = 14
-				tag.modulate = UIStyle.PAPER
+				tag.modulate = UIStyle.PAPER if e.squad < 0 else SQUADS[e.squad][1]
 				tag.outline_modulate = Color(0, 0, 0, 0.7)
 				tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 				tag.no_depth_test = true
@@ -1291,9 +1302,11 @@ func _complete_lap(e: Entrant) -> void:
 	if ev_type == "eliminator" and e.lap > _elim_lap and e.lap < total_laps and not e.eliminated:
 		_elim_lap = e.lap
 		# (Quick races can knock out more than one a lap, so a big grid is
-		# down to the last few by the final lap.)
-		for k in int(event.get("elim_per_lap", 1)):
-			_eliminate_last()
+		# down to the last few by the final lap. With friends the host
+		# decides, and tells everyone.)
+		if net == null or Net.is_host():
+			for k in int(event.get("elim_per_lap", _elim_per_lap)):
+				_eliminate_last()
 	if e.is_player and not e.eliminated:
 		_player_lap(lap_time)
 		if e.finished:
@@ -1373,10 +1386,20 @@ func _show_results() -> void:
 	elif net == null:
 		hud.show_results(rows, func(): _restart(), func(): _quit_to_menu(), "Try again" if not event.is_empty() else "Race again", rank, watch, reward, live)
 	elif Net.is_host():
-		hud.show_results(rows, func(): net.rematch(), func(): _quit_to_menu(), "Rematch", rank, watch, {}, live, func(): net.back_to_lobby())
+		var pr := party_result()
+		if pr.get("party", "") == "series" and not pr["final"]:
+			hud.show_results(rows, func(): net.next_round(pr["totals"]), func(): _quit_to_menu(), "Next race (%d of %d)" % [int(pr["round"]) + 2, int(pr["rounds"])], rank, watch, pr, live, func(): net.back_to_lobby())
+		elif pr.get("party", "") == "series":
+			hud.show_results(rows, func(): net.back_to_lobby(), func(): _quit_to_menu(), "Back to the lobby", rank, watch, pr, live)
+		else:
+			hud.show_results(rows, func(): net.rematch(), func(): _quit_to_menu(), "Rematch", rank, watch, pr, live, func(): net.back_to_lobby())
 	else:
 		# Friends can't start it, but they can ask for one.
-		hud.show_results(rows, func(): Net.chat(Net.CHAT.find("Rematch?")), func(): _quit_to_menu(), "Ask for a rematch", rank, watch, {}, live, Callable(), true)
+		var pr := party_result()
+		if pr.get("party", "") == "series":
+			hud.show_results(rows, Callable(), func(): _quit_to_menu(), "", rank, watch, pr, live)
+		else:
+			hud.show_results(rows, func(): Net.chat(Net.CHAT.find("Rematch?")), func(): _quit_to_menu(), "Ask for a rematch", rank, watch, pr, live, Callable(), true)
 	if net != null and hud.replay_button != null:
 		hud.replay_button.disabled = true      # until every car is home (see _physics_process)
 
@@ -1614,11 +1637,79 @@ func _eliminate_last() -> void:
 	last.car.controls_enabled = false
 	last.car.freeze = true
 	_update_positions()
+	if net != null and Net.is_host():
+		net.send_elim(last)
 	if last.is_player:
 		hud.show_banner("You're out!  P%d" % last.position, UIStyle.RED)
 		_player_finished()
 	else:
 		hud.show_banner("%s is out" % last.name, UIStyle.RED, 2.5)
+
+
+## With friends, on the other phones: the host has knocked this car out.
+func apply_elimination(slot: int) -> void:
+	for e in entrants:
+		if e.slot != slot or e.eliminated:
+			continue
+		e.eliminated = true
+		e.finished = true
+		e.finish_time = race_time
+		e.car.set_ghost(true)
+		e.car.visible = false
+		e.car.controls_enabled = false
+		if e.is_player:
+			e.car.freeze = true
+			hud.show_banner("You're out!  P%d" % e.position, UIStyle.RED)
+			_player_finished()
+		else:
+			hud.show_banner("%s is out" % e.name, UIStyle.RED, 2.5)
+
+
+## Party modes with friends, at the flag: the teams' points, or the series
+## standings after this race (worked out the same on every phone, from the
+## finishing order and the points so far in the start message).
+func party_result() -> Dictionary:
+	# (By the positions on the tower: the host's, the same on every phone.)
+	var ordered := entrants.duplicate()
+	ordered.sort_custom(func(a, b): return a.position < b.position)
+	if party == "teams":
+		var pts := [0, 0]
+		var best := [99, 99]
+		for i in ordered.size():
+			var e: Entrant = ordered[i]
+			if e.squad < 0 or e.dnf:
+				continue
+			if i < POINTS.size():
+				pts[e.squad] += POINTS[i]
+			best[e.squad] = mini(best[e.squad], i + 1)
+		var win := 0 if pts[0] > pts[1] or (pts[0] == pts[1] and best[0] < best[1]) else 1
+		return {"party": "teams", "points": pts, "winner": win, "mine": player.squad}
+	if party.begins_with("series"):
+		var s: Dictionary = _net_cfg.get("series", {})
+		var before: Dictionary = s.get("points", {})
+		var totals := {}
+		for k in before:
+			totals[str(k)] = before[k]
+		var names := {}
+		var gained := {}
+		for i in ordered.size():
+			var e: Entrant = ordered[i]
+			if e.net_id <= 0:
+				continue
+			var key := str(e.net_id)
+			names[key] = e.name
+			var p: int = POINTS[i] if i < POINTS.size() and not e.dnf else 0
+			gained[key] = p
+			totals[key] = int(totals.get(key, 0)) + p
+		var table: Array = []
+		for key in names:
+			table.append([String(names[key]), int(totals[key]), int(gained[key]), key == str(player.net_id)])
+		table.sort_custom(func(a, b): return a[1] > b[1])
+		var rnd := int(s.get("round", 0))
+		var rounds := int(s.get("rounds", 3))
+		return {"party": "series", "round": rnd, "rounds": rounds, "table": table, "totals": totals,
+			"final": rnd + 1 >= rounds, "next_track": String((s.get("tracks", []) as Array)[rnd + 1]) if rnd + 1 < (s.get("tracks", []) as Array).size() else ""}
+	return {}
 
 
 ## Rank points for this finish (races only, once per race).
