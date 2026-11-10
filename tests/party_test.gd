@@ -92,5 +92,9 @@ func _run() -> void:
 	_check(not pr["final"] and String(pr["next_track"]) == "isebay", "series: race 2 of 3, Ise Bay next")
 	race.queue_free()
 	await process_frame
+	# (Leave a clean profile behind: the next test in the same run reads it.)
+	var sv: Node = root.get_node("Save")
+	sv.data = sv.default_profile()
+	sv.save()
 	print("ALL CHECKS PASSED" if failures.is_empty() else "%d CHECK(S) FAILED" % failures.size())
 	quit(0 if failures.is_empty() else 1)

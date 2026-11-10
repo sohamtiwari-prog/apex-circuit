@@ -63,5 +63,9 @@ func _run() -> void:
 		t += 1
 	_check(not race.replay.reel and race.replay.paused, "the reel stops after the last moment (%.0f s, %d events)" % [t / 120.0, race.replay.events.size()])
 	race.replay.stop()
+	# (Leave a clean profile behind: the next test in the same run reads it.)
+	var sv: Node = root.get_node("Save")
+	sv.data = sv.default_profile()
+	sv.save()
 	print("ALL CHECKS PASSED" if failures.is_empty() else "%d CHECK(S) FAILED" % failures.size())
 	quit(0 if failures.is_empty() else 1)

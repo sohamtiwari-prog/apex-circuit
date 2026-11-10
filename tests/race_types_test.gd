@@ -94,5 +94,9 @@ func _run() -> void:
 	_check(race.player.grid == race.entrants.size(), "from the back: you start last (P%d of %d)" % [race.player.grid, race.entrants.size()])
 	race.queue_free()
 	await process_frame
+	# (Leave a clean profile behind: the next test in the same run reads it.)
+	var sv: Node = root.get_node("Save")
+	sv.data = sv.default_profile()
+	sv.save()
 	print("ALL CHECKS PASSED" if failures.is_empty() else "%d CHECK(S) FAILED" % failures.size())
 	quit(0 if failures.is_empty() else 1)

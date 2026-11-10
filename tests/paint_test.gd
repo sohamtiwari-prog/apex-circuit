@@ -50,5 +50,9 @@ func _run() -> void:
 		if g["kind"] == "player":
 			mine = g
 	_check(String(mine.get("paint", {}).get("base", "")) == "#14b8b0", "your paint goes to friends in the start message")
+	# (Leave a clean profile behind: the next test in the same run reads it.)
+	var sv: Node = root.get_node("Save")
+	sv.data = sv.default_profile()
+	sv.save()
 	print("ALL CHECKS PASSED" if failures.is_empty() else "%d CHECK(S) FAILED" % failures.size())
 	quit(0 if failures.is_empty() else 1)
