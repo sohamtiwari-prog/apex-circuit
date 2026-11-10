@@ -1560,7 +1560,8 @@ func _build_scenery() -> void:
 	for kind in kinds:
 		if kinds[kind].is_empty():
 			continue
-		_chunked_multimesh(_tree_mesh(kind), kinds[kind], tints[kind], _tree_mesh(kind + "_far"))
+		# (Leaf cards only with the high graphics setting.)
+		_chunked_multimesh(_tree_mesh(kind, detail >= 0.99), kinds[kind], tints[kind], _tree_mesh(kind + "_far"))
 
 
 ## True if pos is inside (or within margin of) any reserved scenery box.
@@ -1577,9 +1578,10 @@ func _reserved(pos: Vector3, margin: float) -> bool:
 static var _tree_cache := {}
 
 ## Low-poly tree models: broadleaf, conifer, palm (vertex-coloured, ~150 tris).
-static func _tree_mesh(kind: String) -> ArrayMesh:
-	if _tree_cache.has(kind):
-		return _tree_cache[kind]
+static func _tree_mesh(kind: String, leaves := true) -> ArrayMesh:
+	var key := kind if leaves else kind + "|bare"
+	if _tree_cache.has(key):
+		return _tree_cache[key]
 	var st := MeshKit.new_tool()
 	var cards: Array = []
 	var up := Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3.ZERO)   # lathe axis X -> Y
@@ -1597,7 +1599,7 @@ static func _tree_mesh(kind: String) -> ArrayMesh:
 			var seed := 1
 			for cl in clumps:
 				# The solid crown sits a little inside the leaves.
-				_canopy(st, cl[0], cl[1] * 0.86, (cl[2] as Color).darkened(0.12), seed)
+				_canopy(st, cl[0], cl[1] * (0.86 if leaves else 1.0), (cl[2] as Color).darkened(0.12 if leaves else 0.0), seed)
 				_leaf_cards(cards, cl[0], cl[1], Vector3(0, 4.9, 0), cl[2], 4, seed)
 				seed += 1
 		"conifer":
@@ -1646,7 +1648,7 @@ static func _tree_mesh(kind: String) -> ArrayMesh:
 			MeshKit.lathe(st, [Vector2(6.0, 3.4), Vector2(7.8, 0.3)], 5, Color(0.25, 0.42, 0.14), up)
 	var mesh := MeshKit.finish(st)
 	mesh.surface_set_material(0, _foliage_material())
-	if not cards.is_empty():
+	if not cards.is_empty() and leaves:
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = cards[0]
@@ -1655,7 +1657,7 @@ static func _tree_mesh(kind: String) -> ArrayMesh:
 		arrays[Mesh.ARRAY_COLOR] = cards[3]
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		mesh.surface_set_material(1, _leaf_material())
-	_tree_cache[kind] = mesh
+	_tree_cache[key] = mesh
 	return mesh
 
 

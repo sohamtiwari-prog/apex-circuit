@@ -412,8 +412,25 @@ func _build_gp() -> void:
 	# Driver's helmet (separate so the cockpit camera can hide it).
 	var hst := MeshKit.new_tool()
 	var hcol: Color = lv["helmet"]
-	MeshKit.ellipsoid(hst, Vector3(0, 0.53, 0.24), Vector3(0.125, 0.13, 0.14), 16, hcol)
-	MeshKit.box(hst, Vector3(0.2, 0.05, 0.05), Vector3(0, 0.55, 0.36), Color(0.02, 0.02, 0.03))
+	var hc := Vector3(0, 0.53, 0.24)
+	MeshKit.ellipsoid(hst, hc, Vector3(0.125, 0.13, 0.14), 16, hcol)
+	# The design: a band round it in the team's stripe colour, a stripe
+	# over the top, and the visor, curved round the front.
+	var ring: Array = []
+	for k in 17:
+		var a := TAU * k / 16.0
+		ring.append(hc + Vector3(sin(a) * 0.124, 0.02, cos(a) * 0.139))
+	MeshKit.tube(hst, ring, 0.011, 5, stripe)
+	var crown: Array = []
+	for k in 9:
+		var a := lerpf(-1.2, 1.35, k / 8.0)
+		crown.append(hc + Vector3(0, cos(a) * 0.131, sin(a) * 0.141))
+	MeshKit.tube(hst, crown, 0.014, 5, accent)
+	var visor: Array = []
+	for k in 9:
+		var a := lerpf(-1.05, 1.05, k / 8.0)
+		visor.append(hc + Vector3(sin(a) * 0.118, 0.03, cos(a) * 0.132))
+	MeshKit.tube(hst, visor, 0.026, 6, Color(0.02, 0.02, 0.03))
 	var hmesh := MeshKit.finish(hst)
 	hmesh.surface_set_material(0, _material("paint"))
 	helmet = MeshInstance3D.new()
