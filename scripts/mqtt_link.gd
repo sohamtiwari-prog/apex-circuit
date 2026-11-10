@@ -67,12 +67,12 @@ func subscribe(topic: String) -> void:
 	_send(_packet(0x82, body))
 
 
-func publish(topic: String, payload: PackedByteArray) -> void:
+func publish(topic: String, payload: PackedByteArray, retain := false) -> void:
 	if not _ready:
 		return
 	var body := _str(topic)
 	body.append_array(payload)
-	_send(_packet(0x30, body))
+	_send(_packet(0x31 if retain else 0x30, body))      # (retained: kept for later subscribers)
 
 
 ## Clean goodbye: the broker does NOT send the last will.

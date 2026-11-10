@@ -20,6 +20,9 @@ var data: Dictionary = {}
 ## The career/championship event about to be raced (not saved): the race
 ## scene reads it, and clears it when you leave.
 var pending_event: Dictionary = {}
+## A friend's lap to race (scripts/ghost_share.gd), for the next time trial
+## only (not kept in the save file).
+var challenge: Dictionary = {}
 
 
 func _ready() -> void:

@@ -332,6 +332,24 @@ func _build_track_side(cols: Control) -> void:
 	_chip(chips4, "racing_line", [[false, "No racing line"], [true, "Racing line"]])
 	_chip(chips4, "ideal_ghost", [[false, "No ghost"], [true, "Ideal-lap ghost"]])
 
+	# Time trial: race a friend's lap (a ghost code they sent you).
+	_ghost_row = HBoxContainer.new()
+	_ghost_row.add_theme_constant_override("separation", 8)
+	v.add_child(_ghost_row)
+	_ghost_code = LineEdit.new()
+	_ghost_code.placeholder_text = "Friend's ghost code"
+	_ghost_code.max_length = 8
+	_ghost_code.add_theme_font_override("font", UIStyle.font("bold", true))
+	_ghost_code.add_theme_font_size_override("font_size", 24)
+	_ghost_code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_ghost_code.custom_minimum_size = Vector2(0, 52)
+	_ghost_row.add_child(_ghost_code)
+	var gb := UIStyle.button("Race their lap", _fetch_ghost, false, 22)
+	gb.custom_minimum_size = Vector2(0, 52)
+	_ghost_row.add_child(gb)
+	_ghost_status = UIStyle.label("", 18, UIStyle.FOG, "semibold")
+	_ghost_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(_ghost_status)
 	var go := UIStyle.button("Race", _start, true, 46)
 	go.custom_minimum_size = Vector2(0, 76)
 	v.add_child(go)
@@ -405,6 +423,11 @@ func _refresh_mode() -> void:
 			if _same(c[0], cur):
 				b.text = c[1]
 		b.visible = (mode == "race" and not (off.get(rt, []) as Array).has(key)) or key == "time_of_day"
+	if _ghost_row != null:
+		_ghost_row.visible = mode == "time_trial"
+		_ghost_status.visible = mode == "time_trial"
+		if _ghost_status.text == "":
+			_ghost_status.text = "A friend's code races their best lap as a ghost: their track, their car. Share yours from the results."
 	if _type_rule != null:
 		_type_rule.visible = mode == "race"
 		_type_rule.text = String(TYPE_HINTS.get(rt, ""))
@@ -503,8 +526,38 @@ func _refresh_info() -> void:
 	best_label.add_theme_color_override("font_color", UIStyle.PURPLE if best >= 0 else UIStyle.FOG)
 
 
+var _ghost_row: HBoxContainer
+var _ghost_code: LineEdit
+var _ghost_status: Label
+
+
+## Fetch a friend's lap by its code, then race it.
+func _fetch_ghost() -> void:
+	var code := GhostShare.clean_code(_ghost_code.text)
+	if code.length() < 6:
+		_ghost_status.text = "Codes are 6 letters and numbers."
+		return
+	_ghost_status.text = "Fetching %s..." % code
+	var gs := GhostShare.new()
+	add_child(gs)
+	gs.done.connect(func(ok, res):
+		gs.queue_free()
+		if not ok:
+			_ghost_status.text = String(res)
+			return
+		var ch: Dictionary = res
+		if String(Track.catalog_entry(String(ch.get("track", "")))["id"]) != String(ch.get("track", "")) or not CarSpecs.CATALOG.has(String(ch.get("car", ""))):
+			_ghost_status.text = "That lap is on a track or car this version doesn't have: update the game."
+			return
+		save.challenge = ch
+		save.pending_event = {}
+		get_tree().change_scene_to_file("res://scenes/race.tscn"))
+	gs.download(code)
+
+
 func _start() -> void:
 	save.pending_event = {}
+	save.challenge = {}
 	var rt := String(save.get_setting("race_type"))
 	if String(save.get_setting("mode")) == "race" and rt != "race":
 		save.pending_event = quick_event(save)

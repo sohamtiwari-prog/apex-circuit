@@ -1789,6 +1789,21 @@ func _reward_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void
 		tw.tween_callback(func(): stars.stars = s)
 
 
+var _res_lower: HBoxContainer
+
+
+## One more button on the results screen, beside Replay and Menu.
+func add_results_button(text: String) -> Button:
+	if _res_lower == null or not is_instance_valid(_res_lower):
+		return null
+	var b := UIStyle.button(text, Callable(), false, 24)
+	b.custom_minimum_size = Vector2(0, 64)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.add_theme_color_override("font_disabled_color", Color(UIStyle.PAPER, 0.8))
+	_res_lower.add_child(b)
+	return b
+
+
 ## Party modes with friends: the teams' points, or the series table.
 func _party_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void:
 	var col := VBoxContainer.new()
@@ -2178,6 +2193,7 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 	menu.custom_minimum_size = Vector2(0, 64)
 	menu.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lower.add_child(menu)
+	_res_lower = lower
 
 	var kids := cols.get_child_count()
 	if cp:

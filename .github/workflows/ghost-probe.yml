@@ -1,0 +1,33 @@
+name: Ghost challenge probe
+
+# Sends a lap to each real public server under a code, fetches it back
+# straight away, and again ten minutes later from a fresh copy of the game
+# (do the servers keep it?). Run by hand (Actions tab).
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        url: ["wss://broker.hivemq.com:8884/mqtt", "wss://broker.emqx.io:8084/mqtt", "wss://test.mosquitto.org:8081/mqtt"]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download Godot
+        run: |
+          mkdir -p ~/godot
+          curl -sSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+          mv ~/godot/Godot_v4.3-stable_linux.x86_64 ~/godot/godot
+      - name: Import project
+        run: timeout 300 ~/godot/godot --headless --import || true
+      - name: Send and fetch
+        run: |
+          timeout 200 ~/godot/godot --headless --script res://tests/ghost_test.gd -- "${{ matrix.url }}" | tee /tmp/g.log
+          grep -oE "code: [A-Z0-9]+" /tmp/g.log | head -1 | cut -d' ' -f2 > /tmp/code.txt || true
+      - name: Ten minutes later
+        run: |
+          sleep 600
+          timeout 200 ~/godot/godot --headless --script res://tests/ghost_test.gd -- "${{ matrix.url }}" fetch "$(cat /tmp/code.txt)"

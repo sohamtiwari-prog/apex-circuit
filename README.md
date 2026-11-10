@@ -130,6 +130,17 @@ The car on the turntable changes as you tap; **Team colours** / **Factory
 paint** switches back. Your paint is used wherever you drive that car, and
 friends see it too (it goes with your car in the lobby).
 
+## Ghost challenges
+
+After a time trial, **Share lap** on the results sends your best lap on that
+track in that car to the free relay servers under a 6-character code (copied,
+and on a phone WhatsApp opens with a message). A friend types the code in
+Quick race → Time trial → **Race their lap**: their track and car load, your
+lap drives as a ghost in your paint, and each lap they're told how far off
+(or ahead of) you they were. No need to be online at the same time.
+(The lap is the car's path ten times a second, about 10 KB;
+.github/workflows/ghost-probe.yml checks the real servers keep it.)
+
 ## Car setup
 
 Garage → **Setup**, per car, a step at a time either side of the car's own:
@@ -628,6 +639,7 @@ tests/
   party_test.gd      party modes with friends: team split, eliminator settings, series points, rematch grid
   paint_test.gd      your own paint: on your car, off again, sent to friends
   setup_test.gd      car setup: each setting does what it says; a clean lap at the extremes
+  ghost_test.gd      ghost challenges: a lap packed small and back, sent under a code and fetched
   paint_shots.gd     the paint shop, for review
   error_sweep.gd     a full race on every track, every car and condition: errors, stuck cars
   net_contact_test.gd  multiplayer contact through the network code at 10-150 ms

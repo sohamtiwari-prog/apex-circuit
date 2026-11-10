@@ -110,6 +110,8 @@ var _ideal_dist := PackedFloat32Array()     # metres into the lap at each sample
 var ideal_time := -1.0                      # its lap time
 var ideal_car: RaceCar
 var _ghost_play := PackedFloat32Array()
+var _my_best_ghost := PackedFloat32Array()
+var challenge: Dictionary = {}          # a friend's lap to race (save.challenge)
 var ghost_car: RaceCar
 var session_sectors := [INF, INF, INF]   # fastest of anyone this session
 var _my_session_sectors := [INF, INF, INF]
@@ -202,6 +204,12 @@ func _ready() -> void:
 		for g in net_info["grid"]:
 			if g["kind"] == "player" and int(g["id"]) == Net.my_id:
 				car_id = String(g["car"])
+	if net_info.is_empty() and not save.challenge.is_empty():
+		# A friend's ghost: their track and car, a time trial.
+		challenge = save.challenge
+		track_id = String(challenge["track"])
+		car_id = String(challenge["car"])
+		mode = "time_trial"
 	if net_info.is_empty() and not save.pending_event.is_empty():
 		event = save.pending_event
 		ev_type = String(event["type"])
@@ -611,6 +619,9 @@ func _restart() -> void:
 		get_tree().create_timer(3.2).timeout.connect(func():
 			hud.show_banner("Gold %s   Silver %s   Bronze %s" % [UIStyle.fmt_time(tt_targets[0]), UIStyle.fmt_time(tt_targets[1]), UIStyle.fmt_time(tt_targets[2])], UIStyle.YELLOW, 4.0))
 	hud.show_banner("%s, %s" % [track.track_name, title], UIStyle.PAPER, 3.0)
+	if not challenge.is_empty():
+		get_tree().create_timer(3.2).timeout.connect(func():
+			hud.show_banner("Ghost challenge: beat %s's %s" % [String(challenge.get("name", "your friend")), UIStyle.fmt_time(float(challenge.get("lap_ms", 0)) / 1000.0)], UIStyle.PURPLE, 4.5))
 	hud.show_center("")
 	for e in entrants:
 		e.idx = track.nearest_index(e.car.global_position, -1)
@@ -759,6 +770,7 @@ func _quit_to_menu() -> void:
 	get_tree().paused = false
 	var back := String(event.get("return_to", "res://scenes/menu.tscn"))
 	save.pending_event = {}
+	save.challenge = {}
 	get_tree().change_scene_to_file(back if net == null else "res://scenes/hub.tscn")
 
 
@@ -1319,8 +1331,19 @@ func _player_lap(lap_time: float) -> void:
 		var prev_best: int = save.get_best_lap(lap_key)
 		var is_best: bool = save.submit_lap(lap_key, ms)
 		if is_best and mode == "time_trial" and _ghost_rec.size() > 14 * 7:
-			_ghost_play = _ghost_rec.duplicate()
-			_save_ghost()
+			_my_best_ghost = _ghost_rec.duplicate()
+			if challenge.is_empty():
+				_ghost_play = _my_best_ghost      # (racing a friend's ghost: theirs stays)
+			_save_ghost_data(_my_best_ghost)
+		if not challenge.is_empty() and mode == "time_trial" and lap_valid:
+			var theirs := float(challenge.get("lap_ms", 0)) / 1000.0
+			var who := String(challenge.get("name", "your friend"))
+			if theirs > 0.0:
+				get_tree().create_timer(2.2).timeout.connect(func():
+					if lap_time < theirs:
+						hud.show_banner("You beat %s's lap by %.3f s!" % [who, theirs - lap_time], UIStyle.GREEN, 4.0)
+					else:
+						hud.show_banner("%.3f s off %s's lap" % [lap_time - theirs, who], UIStyle.YELLOW, 3.0))
 		if is_best:
 			var msg := "New best lap  " + Hud.fmt_time(lap_time)
 			if prev_best >= 0:
@@ -1385,6 +1408,8 @@ func _show_results() -> void:
 		hud.show_results(rows, func(): _quit_to_menu(), func(): _quit_to_menu(), "Standings", rank, watch, reward, live)
 	elif net == null:
 		hud.show_results(rows, func(): _restart(), func(): _quit_to_menu(), "Try again" if not event.is_empty() else "Race again", rank, watch, reward, live)
+		if mode == "time_trial" and ev_type == "":
+			_add_share_button()
 	elif Net.is_host():
 		var pr := party_result()
 		if pr.get("party", "") == "series" and not pr["final"]:
@@ -1985,6 +2010,9 @@ func _ghost_path() -> String:
 
 
 func _load_ghost() -> void:
+	if not challenge.is_empty():
+		_ghost_play = challenge["samples"]
+		return
 	if FileAccess.file_exists(_ghost_path()):
 		var f := FileAccess.open(_ghost_path(), FileAccess.READ)
 		var v: Variant = f.get_var()
@@ -1993,10 +2021,68 @@ func _load_ghost() -> void:
 
 
 func _save_ghost() -> void:
+	_save_ghost_data(_ghost_play)
+
+
+func _save_ghost_data(d: PackedFloat32Array) -> void:
 	DirAccess.make_dir_recursive_absolute("user://ghosts")
 	var f := FileAccess.open(_ghost_path(), FileAccess.WRITE)
 	if f != null:
-		f.store_var(_ghost_play)
+		f.store_var(d)
+
+
+## Your saved best lap here (the ghost file), for sharing.
+func best_ghost() -> PackedFloat32Array:
+	if _my_best_ghost.size() > 14 * 7:
+		return _my_best_ghost
+	if FileAccess.file_exists(_ghost_path()):
+		var f := FileAccess.open(_ghost_path(), FileAccess.READ)
+		var v: Variant = f.get_var()
+		if v is PackedFloat32Array:
+			return v
+	return PackedFloat32Array()
+
+
+func _add_share_button() -> void:
+	var b: Button = hud.add_results_button("Share lap")
+	if b == null:
+		return
+	b.pressed.connect(func():
+		b.disabled = true
+		b.text = "Sending..."
+		share_lap(func(ok: bool, res: Variant):
+			if not is_instance_valid(b):
+				return
+			if ok:
+				var code := String(res)
+				DisplayServer.clipboard_set(code)
+				b.text = "Code %s" % code
+				hud.show_banner("Code %s copied: a friend types it in Time trial to race your lap" % code, UIStyle.PURPLE, 6.0)
+				var text := "Beat my %s lap at %s in Apex Circuit! Quick race, Time trial, type ghost code %s" % [UIStyle.fmt_time(float(save.get_best_lap(lap_key)) / 1000.0), track.track_name, code]
+				if OS.has_feature("mobile"):
+					OS.shell_open("https://wa.me/?text=" + text.uri_encode())
+			else:
+				b.disabled = false
+				b.text = "Share lap"
+				hud.show_banner(String(res), UIStyle.YELLOW, 4.0)))
+
+
+## Time trial: send your best lap here to a friend as a code.
+func share_lap(on_done: Callable) -> void:
+	var g := best_ghost()
+	var best: int = save.get_best_lap(lap_key)
+	if g.size() <= 14 * 7 or best < 0:
+		on_done.call(false, "Set a clean lap first")
+		return
+	var name := String(save.get_setting("player_name"))
+	var info := {"v": 1, "track": track_id, "car": car_id, "team": int(save.get_setting("team")),
+		"paint": save.my_paint(car_id), "name": name if name != "" else "A friend", "lap_ms": best}
+	var gs := GhostShare.new()
+	add_child(gs)
+	gs.done.connect(func(ok, res):
+		on_done.call(ok, res)
+		gs.queue_free())
+	gs.upload(GhostShare.pack(g, GHOST_HZ, info))
 
 
 func ghost_ready() -> bool:
@@ -2005,7 +2091,11 @@ func ghost_ready() -> bool:
 
 func _make_ghost_car() -> void:
 	ghost_car = RaceCar.new()
-	ghost_car.setup(CarSpecs.get_spec(car_id, int(save.get_setting("team")) if car_id == "gp26" else 0))
+	if not challenge.is_empty():
+		# Your friend's car, in their paint.
+		ghost_car.setup(CarSpecs.apply_paint(CarSpecs.get_spec(car_id, int(challenge.get("team", 0)) if car_id == "gp26" else 0), challenge.get("paint", {})))
+	else:
+		ghost_car.setup(CarSpecs.get_spec(car_id, int(save.get_setting("team")) if car_id == "gp26" else 0))
 	ghost_car.freeze = true
 	ghost_car.collision_layer = 0
 	ghost_car.collision_mask = 0
