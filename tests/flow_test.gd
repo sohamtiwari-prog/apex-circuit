@@ -64,8 +64,14 @@ func _run() -> void:
 		await process_frame
 	_check(not race._results_shown, "results wait while the game is paused")
 	race.hud.set_paused(false)
-	await _secs(3.5)
-	_check(race._results_shown, "and come up once it's resumed")
+	# They come up 2.5 s after the flag, or once a time penalty has been
+	# added on (pen_pending + 0.5 s), whichever is later.
+	var due := maxf(2.5, float(race.player.pen_pending) + 0.5) + 1.0
+	t = 0
+	while not race._results_shown and t < int(due * 120.0):
+		await physics_frame
+		t += 1
+	_check(race._results_shown, "and come up once it's resumed (due within %.1f s)" % due)
 	# 2. Race again: the car is yours, not the AI's.
 	race._restart()
 	await physics_frame
