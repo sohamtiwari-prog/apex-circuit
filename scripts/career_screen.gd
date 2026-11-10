@@ -185,6 +185,20 @@ func _build_detail() -> void:
 	_detail.add_child(rules)
 	if ev["type"] != "season":
 		_detail.add_child(UIStyle.label(_where(ev), 19, UIStyle.FOG, "semibold"))
+	# This series' rival and how you stand.
+	var rv: Dictionary = Career.RIVALS.get(String(Career.SERIES[si]["id"]), {})
+	if not rv.is_empty():
+		var rec: Dictionary = save.data.get("rivals", {}).get(String(Career.SERIES[si]["id"]), {})
+		var line := "Rival: %s  ·  you %d - %d" % [String(rv["name"]), int(rec.get("won", 0)), int(rec.get("lost", 0))]
+		_detail.add_child(UIStyle.label(line, 20, UIStyle.RED, "bold", true))
+		var bl := UIStyle.label(String(rv["blurb"]), 17, UIStyle.FOG, "medium")
+		bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_detail.add_child(bl)
+	var nr: Array = Career.next_reward(save)
+	if not nr.is_empty():
+		var rl := UIStyle.label("At %d stars: %s" % [int(nr[0]), String(nr[1])], 17, UIStyle.YELLOW, "semibold")
+		rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_detail.add_child(rl)
 	var st := StarRow.new()
 	st.custom_minimum_size = Vector2(160, 40)
 	st.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN

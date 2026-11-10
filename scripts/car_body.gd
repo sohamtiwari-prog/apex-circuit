@@ -357,6 +357,13 @@ func _build_gp() -> void:
 				if absf(th) < 0.12:
 					return stripe
 				return accent if th < 0.0 else base
+			"chequer":
+				# The chequered flag over the top, the accent underneath.
+				if th < -0.4:
+					return accent
+				var cz := floori(p.z / 0.26)
+				var ct := floori((th + PI) / (TAU / 14.0))
+				return base if (cz + ct) % 2 == 0 else stripe
 		if absf(p.x) < 0.035 and th > 0.3 and p.z > -0.1:
 			return stripe                      # centre stripe along the nose
 		if th < -0.4:

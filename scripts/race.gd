@@ -44,6 +44,7 @@ class Entrant:
 	var outside := 0.0          # seconds spent beyond the barriers
 	var eliminated := false     # eliminator events: out of the race
 	var squad := -1             # team race with friends: 0 Orange, 1 Blue
+	var rival := false          # career: the series' rival
 	var driver := -1            # championship: index in the season's driver list
 	# Race weekend (scripts/weekend.gd): tyres and pit stops.
 	var compound := "medium"
@@ -407,6 +408,13 @@ func _spawn_opponents(player_team: int) -> void:
 		if ev_type == "duel":
 			e.ai.skill = base_skill               # one rival: no spread
 		e.name = DRIVER_NAMES[i % DRIVER_NAMES.size()]
+		if i == 0 and not rival_info().is_empty():
+			# The series' rival: quicker than the rest, named, tagged.
+			var rv := rival_info()
+			e.name = String(rv["name"])
+			e.ai.skill = clampf(base_skill + float(rv["skill"]), 0.75, 1.0)
+			e.rival = true
+			_tag(c, "RIVAL  " + e.name, UIStyle.RED)
 		if not drv.is_empty():
 			e.ai.skill = float(drv["skill"])
 			e.name = String(drv["name"])
@@ -1524,9 +1532,16 @@ func _settle_rewards() -> Dictionary:
 	else:
 		stars = Career.stars_for_position(ev_type, player.position)
 	var prev: int = save.career_stars(String(event["id"]))
+	var had: Array = Career.rewards_unlocked(save)
 	var fresh: int = save.set_career_stars(String(event["id"]), stars)
+	var now: Array = Career.rewards_unlocked(save)
+	var rewards: Array = []
+	for r in Career.REWARDS:
+		if now.has(String(r[1])) and not had.has(String(r[1])):
+			rewards.append(String(r[2]))
 	return {"event": event, "stars": stars, "prev": prev, "new": fresh,
-		"targets": tt_targets, "best": player.best_lap, "position": player.position}
+		"targets": tt_targets, "best": player.best_lap, "position": player.position,
+		"rival": _rival_result(), "rewards": rewards}
 
 
 # ------------------------------------------------------------ checkpoint run
@@ -1639,6 +1654,58 @@ func _build_gates() -> Node3D:
 	var holder := Node3D.new()
 	holder.add_child(mi)
 	return holder
+
+
+## Career races: this series' rival, {} otherwise (quick races, the daily
+## challenge, time trials, the championship).
+func rival_info() -> Dictionary:
+	if event.is_empty() or ev_type in ["time_trial", "checkpoint", "season", "champ_round"]:
+		return {}
+	var id := String(event.get("id", ""))
+	if id == "" or id.begins_with("daily"):
+		return {}
+	var si := int(event.get("series", -1))
+	if si < 0 or si >= Career.SERIES.size():
+		return {}
+	return Career.RIVALS.get(String(Career.SERIES[si]["id"]), {})
+
+
+func _tag(c: Node3D, text: String, col: Color) -> void:
+	var tag := Label3D.new()
+	tag.text = text
+	tag.font = UIStyle.font("bold", true)
+	tag.font_size = 56
+	tag.pixel_size = 0.012
+	tag.outline_size = 14
+	tag.modulate = col
+	tag.outline_modulate = Color(0, 0, 0, 0.7)
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.no_depth_test = true
+	tag.position = Vector3(0, 1.9, 0)
+	tag.visibility_range_end = 120.0
+	c.add_child(tag)
+
+
+## The rival's result against yours, kept as a head-to-head record.
+func _rival_result() -> Dictionary:
+	var rv := rival_info()
+	if rv.is_empty():
+		return {}
+	var them: Entrant = null
+	for e in entrants:
+		if e.rival:
+			them = e
+	if them == null:
+		return {}
+	var beat: bool = player.position < them.position
+	var sid := String(Career.SERIES[int(event["series"])]["id"])
+	if not save.data.has("rivals"):
+		save.data["rivals"] = {}
+	var rec: Dictionary = save.data["rivals"].get(sid, {"won": 0, "lost": 0})
+	rec[("won" if beat else "lost")] = int(rec.get("won" if beat else "lost", 0)) + 1
+	save.data["rivals"][sid] = rec
+	save.save()
+	return {"name": rv["name"], "beat": beat, "won": int(rec["won"]), "lost": int(rec["lost"]), "their_pos": them.position}
 
 
 ## Eliminator: the last car still running is out.

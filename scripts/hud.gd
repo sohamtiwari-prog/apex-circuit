@@ -1776,6 +1776,15 @@ func _reward_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void
 	else:
 		col.add_child(UIStyle.label(String(Career.TYPE_RULES.get(String(ev["type"]), "")), 18, UIStyle.FOG, "medium"))
 		(col.get_child(col.get_child_count() - 1) as Label).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var rv: Dictionary = reward.get("rival", {})
+	if not rv.is_empty():
+		var txt := ("You beat %s (P%d)" if rv["beat"] else "%s beat you (P%d)") % [String(rv["name"]), int(rv["their_pos"])]
+		col.add_child(UIStyle.label(txt, 24, UIStyle.GREEN if rv["beat"] else UIStyle.RED, "bold", true))
+		col.add_child(UIStyle.label("Head to head: you %d - %d" % [int(rv["won"]), int(rv["lost"])], 19, UIStyle.FOG, "semibold"))
+	for r in reward.get("rewards", []):
+		var rl := UIStyle.label("Unlocked: " + String(r), 20, UIStyle.YELLOW, "bold", true)
+		rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(rl)
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(sp)

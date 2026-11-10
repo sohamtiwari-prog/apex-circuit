@@ -68,6 +68,47 @@ const SERIES := [
 		]},
 ]
 
+## Each series has a rival: a named driver a little quicker than the rest
+## of the field, in every race of it (the duel is against them), with a
+## head-to-head record kept (save "rivals").
+const RIVALS := {
+	"club": {"name": "Marco Vella", "skill": 0.025, "blurb": "Local hero. Brakes late, never lifts."},
+	"sports": {"name": "Ingrid Saar", "skill": 0.025, "blurb": "Smooth and patient; waits for your mistake."},
+	"super": {"name": "Theo Okoye", "skill": 0.025, "blurb": "Factory driver. Hates being passed."},
+	"hyper": {"name": "Sofia Navarro", "skill": 0.025, "blurb": "Fearless at 400 km/h."},
+	"gp": {"name": "Kai Lindgren", "skill": 0.02, "blurb": "Reigning champion. The one to beat."},
+}
+
+## Rewards for career stars (total): paint colours and patterns for the
+## paint shop.
+const REWARDS := [
+	[10, "colours", "Metallic colours: gunmetal, copper, mint and pearl"],
+	[25, "carbon", "Carbon pattern: bare carbon with your colours as trim"],
+	[45, "gold", "Champion's gold paint"],
+	[70, "chequer", "Chequered flag pattern"],
+]
+const REWARD_COLOURS := {"colours": ["#3b4048", "#b0623a", "#8de0c4", "#f4efe6"], "gold": ["#d4af37"]}
+
+
+## Rewards you have (by their id), from your career stars.
+static func rewards_unlocked(save: Node) -> Array:
+	var stars := total_stars(save)
+	var out: Array = []
+	for r in REWARDS:
+		if stars >= int(r[0]):
+			out.append(String(r[1]))
+	return out
+
+
+## The next reward: [stars needed, what], or [] when you have them all.
+static func next_reward(save: Node) -> Array:
+	var stars := total_stars(save)
+	for r in REWARDS:
+		if stars < int(r[0]):
+			return [int(r[0]), String(r[2])]
+	return []
+
+
 const TYPE_NAMES := {
 	"race": "Race", "duel": "Duel", "overtake": "Overtake", "eliminator": "Eliminator",
 	"time_trial": "Time trial", "season": "World Championship", "checkpoint": "Checkpoint run",

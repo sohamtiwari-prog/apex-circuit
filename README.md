@@ -121,6 +121,19 @@ Your rank is on the main menu (tap it for the whole ladder), the results
 screen shows what you earned and animates your progress, and friends see each
 other's ranks in the lobby.
 
+## Career rivals and rewards
+
+Every career series has a **rival**: Marco Vella (Club Muscle Cup), Ingrid
+Saar (Sports Car Trophy), Theo Okoye (Supercar Series), Sofia Navarro
+(Hypercar Challenge) and Kai Lindgren (Grand Prix). They're on the grid of
+every race in their series, a little quicker than the rest and tagged RIVAL
+over their car; the series' duel is against them. The results say whether
+you beat them, and the career screen keeps your head-to-head record.
+
+Career stars unlock things for the paint shop: metallic colours at 10 stars,
+the **Carbon** pattern at 25, champion's gold at 45 and the **Chequered**
+pattern at 70 (the next one is shown on the career screen).
+
 ## Paint shop
 
 Garage → **Paint**: your own livery for each car. Body, accent and stripe
@@ -640,6 +653,7 @@ tests/
   paint_test.gd      your own paint: on your car, off again, sent to friends
   setup_test.gd      car setup: each setting does what it says; a clean lap at the extremes
   ghost_test.gd      ghost challenges: a lap packed small and back, sent under a code and fetched
+  rival_test.gd      career rivals (on the grid, quicker, the duel, head to head) and star rewards
   paint_shots.gd     the paint shop, for review
   error_sweep.gd     a full race on every track, every car and condition: errors, stuck cars
   net_contact_test.gd  multiplayer contact through the network code at 10-150 ms

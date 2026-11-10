@@ -120,6 +120,7 @@ const _DEFAULTS := {
 	"checkpoint_best": {},           # "track|car" -> metres, the furthest checkpoint run
 	"paint": {},                     # car id -> your own paint (CarSpecs.apply_paint)
 	"setup": {},                     # car id -> your setup (CarSpecs.apply_setup)
+	"rivals": {},                    # series id -> {"won": n, "lost": n} against its rival
 }
 
 

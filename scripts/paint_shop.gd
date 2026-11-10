@@ -10,7 +10,9 @@ const PALETTE := [
 	"#38b6ff", "#1f5cd6", "#121c4a", "#6b2ccf", "#ff5fb0", "#f2f2f2", "#a9adb5", "#14181f",
 	"#c9a227", "#5a3b22",
 ]
-const PATTERNS := [["classic", "Classic"], ["stripes", "Twin stripes"], ["split", "Two-tone"]]
+const PATTERNS := [["classic", "Classic"], ["stripes", "Twin stripes"], ["split", "Two-tone"],
+	["carbon", "Carbon"], ["chequer", "Chequered"]]
+const LOCKED_PATTERNS := {"carbon": "carbon", "chequer": "chequer"}     # pattern -> career reward
 
 var save: Node
 var room: Showroom
@@ -146,11 +148,16 @@ func _refresh() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	_panel.add_child(row)
+	var have: Array = Career.rewards_unlocked(save)
 	for pt in PATTERNS:
 		var key: String = pt[0]
-		var b := UIStyle.button(String(pt[1]), func(): set_value("pattern", key), String(p.get("pattern", "classic")) == key, 20)
+		var locked: bool = LOCKED_PATTERNS.has(key) and not have.has(String(LOCKED_PATTERNS[key]))
+		var b := UIStyle.button(String(pt[1]), func(): set_value("pattern", key), String(p.get("pattern", "classic")) == key, 18)
 		b.custom_minimum_size = Vector2(0, 50)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if locked:
+			b.disabled = true
+			b.text = "%s  %d★" % [String(pt[1]), _stars_for(String(LOCKED_PATTERNS[key]))]
 		row.add_child(b)
 	if gp:
 		var nr := HBoxContainer.new()
@@ -184,6 +191,13 @@ func _refresh() -> void:
 	_panel.add_child(go)
 
 
+func _stars_for(reward: String) -> int:
+	for r in Career.REWARDS:
+		if String(r[1]) == reward:
+			return int(r[0])
+	return 0
+
+
 ## A row of colour swatches for one part of the paint.
 func _swatches(title: String, key: String, p: Dictionary) -> void:
 	var h := HBoxContainer.new()
@@ -193,7 +207,10 @@ func _swatches(title: String, key: String, p: Dictionary) -> void:
 	l.custom_minimum_size = Vector2(86, 0)
 	h.add_child(l)
 	var cur := String(p.get(key, "")).trim_prefix("#").to_lower()
-	for hex in PALETTE:
+	var colours: Array = PALETTE.duplicate()
+	for r in Career.rewards_unlocked(save):
+		colours.append_array(Career.REWARD_COLOURS.get(r, []))
+	for hex in colours:
 		var col := Color.html(hex)
 		var chosen: bool = hex.trim_prefix("#").to_lower() == cur.substr(0, 6)
 		var b := Button.new()

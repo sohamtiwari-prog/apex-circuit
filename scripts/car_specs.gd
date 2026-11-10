@@ -70,6 +70,11 @@ static func apply_paint(s: Dictionary, p: Dictionary) -> Dictionary:
 	var stripe := Color.html(String(p.get("stripe", "#2699ff")))
 	var helmet := Color.html(String(p.get("helmet", "#ffd919")))
 	var pattern := String(p.get("pattern", "classic"))
+	if pattern == "carbon":
+		# Bare carbon, your colours as the trim.
+		stripe = base
+		accent = base.darkened(0.25)
+		base = Color(0.05, 0.05, 0.06)
 	if s["body"] == "gp":
 		var lv: Dictionary = (s["livery"] as Dictionary).duplicate()
 		lv["base"] = base
@@ -82,7 +87,7 @@ static func apply_paint(s: Dictionary, p: Dictionary) -> Dictionary:
 		s["color"] = base
 		s["accent"] = accent
 		var shape: Dictionary = (s["shape"] as Dictionary).duplicate()
-		shape["stripes"] = pattern == "stripes"
+		shape["stripes"] = pattern == "stripes" or pattern == "chequer" or pattern == "carbon"
 		shape["two_tone"] = pattern == "split"
 		s["shape"] = shape
 	s["pattern"] = pattern
