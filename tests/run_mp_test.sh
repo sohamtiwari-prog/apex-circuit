@@ -18,7 +18,7 @@ echo "== host (exit $HC)"; grep -E "PASS|FAIL|finished P|SCRIPT ERROR|at: res" $
 echo "== client (exit $CC)"; grep -E "PASS|FAIL|finished P|SCRIPT ERROR|at: res" $LOGDIR/mp_client.log
 if [ $HC -ne 0 ] || [ $CC -ne 0 ]; then
   # (What happened, for a failure on a machine we can't look at.)
-  echo "== host log, the end"; grep -vE "PASS|ALSA|alsa" $LOGDIR/mp_host.log | tail -40
-  echo "== client log, the end"; grep -vE "PASS|ALSA|alsa" $LOGDIR/mp_client.log | tail -40
+  echo "== host log, the end"; grep -E "\[[0-9.]+ s\]|FAIL|SCRIPT|closed|left" $LOGDIR/mp_host.log | tail -40
+  echo "== client log, the end"; grep -E "\[[0-9.]+ s\]|FAIL|SCRIPT|closed|left" $LOGDIR/mp_client.log | tail -40
 fi
 [ $HC -eq 0 ] && [ $CC -eq 0 ]
