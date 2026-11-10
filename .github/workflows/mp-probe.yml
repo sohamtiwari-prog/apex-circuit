@@ -1,0 +1,34 @@
+name: Multiplayer test probe
+
+# Just the two-phone multiplayer tests (Wi-Fi, a mobile-data-like link,
+# the relay, the public-server stand-in), with the logs printed: quicker
+# than the whole build when multiplayer needs looking at. Run by hand.
+on:
+  workflow_dispatch:
+
+jobs:
+  mp:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download Godot
+        run: |
+          mkdir -p ~/godot
+          curl -sSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+          mv ~/godot/Godot_v4.3-stable_linux.x86_64 ~/godot/godot
+      - name: Import project
+        run: timeout 300 ~/godot/godot --headless --import || true
+      - name: Start the relay and the public-server stand-in
+        run: |
+          cd server && npm install --no-audit --no-fund
+          PORT=8090 nohup node relay.js > /tmp/relay.log 2>&1 &
+          cd test-broker && npm install --no-audit --no-fund
+          PORT=8091 nohup node broker.js > /tmp/broker.log 2>&1 &
+          sleep 2
+      - name: Wi-Fi
+        run: LOGDIR=/tmp bash tests/run_mp_test.sh ~/godot/godot lan || true
+      - name: Mobile-data-like link
+        run: NETEM_CLIENT="lat=0.15,jit=0.10,loss=0.03,stall=0.02,stallmax=0.6" NETEM_HOST="lat=0.15,jit=0.10,loss=0.03,stall=0.02,stallmax=0.6" LOGDIR=/tmp bash tests/run_mp_test.sh ~/godot/godot lan || true
+      - name: Public-server stand-in
+        run: LOGDIR=/tmp bash tests/run_mp_test.sh ~/godot/godot public ws://127.0.0.1:8091/mqtt || true

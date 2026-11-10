@@ -233,7 +233,11 @@ func _run() -> void:
 	# Host: a rematch (the friend asks for one), then back to the lobby together.
 	if role == "host":
 		var asked := [false]
-		net.chat_received.connect(func(_f, t): if t == "Rematch?": asked[0] = true)
+		net.chat_received.connect(func(_f, t):
+			print("  [%.1f s] host: chat from %d: %s" % [secs_now(go_time), _f, t])
+			if t == "Rematch?":
+				asked[0] = true)
+		net.peer_left.connect(func(id): print("  [%.1f s] host: peer %d left" % [secs_now(go_time), id]))
 		_check(await _wait(func(): return other.finished, 120.0), "host: the friend finishes too")
 		# Replays open once every car is home.
 		var all_home := func():
@@ -268,9 +272,16 @@ func _run() -> void:
 				if not e.finished:
 					return false
 			return true
-		await _wait(all_home, 90.0)
+		net.closed.connect(func(r): print("  [%.1f s] client: session closed: %s" % [secs_now(go_time), r]))
+		var home: bool = await _wait(all_home, 90.0)
+		var left: Array = []
+		for e in race.entrants:
+			if not e.finished:
+				left.append("%s(slot %d)" % [e.name, e.slot])
+		print("  [%.1f s] client: all home %s %s" % [secs_now(go_time), home, str(left)])
 		await _wait(func(): return false, 1.0)
 		net.chat(net.CHAT.find("Rematch?"))
+		print("  [%.1f s] client: asked for a rematch (my id %d, role %s)" % [secs_now(go_time), net.my_id, net.role])
 		race.watch_replay(false)
 		var watching: bool = race.replay.playing
 		if watching:
