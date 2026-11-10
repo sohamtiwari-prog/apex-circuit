@@ -16,6 +16,8 @@ signal chat_requested(index: int)
 signal replay_requested
 signal box_requested
 signal box_choice(compound: String)     # "" = stay out
+signal spectate_step(dir: int)
+signal spectate_close
 var replay_button: Button             # on the results screen
 var replay_available := true:          # pause menu "Watch replay" (single player)
 	set(v):
@@ -1801,15 +1803,72 @@ func _reward_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void
 var _res_lower: HBoxContainer
 
 
+var _spec_bar: PanelContainer
+var _spec_lbl: Label
+var _spec_swatch: ColorRect
+
+
+## Watching the race after your finish: the results make way for a bar
+## with the car you're watching, arrows to change, and back to the results.
+func show_spectate(on: bool) -> void:
+	results_panel.visible = not on
+	if _spec_bar == null:
+		_spec_bar = PanelContainer.new()
+		_spec_bar.add_theme_stylebox_override("panel", UIStyle.panel(Color(UIStyle.TARMAC, 0.9), true, UIStyle.APEX))
+		_spec_bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		_spec_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_spec_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		_spec_bar.offset_bottom = -24
+		add_child(_spec_bar)
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 14)
+		_spec_bar.add_child(h)
+		var prev := UIStyle.button("‹", func(): spectate_step.emit(-1), false, 40)
+		prev.custom_minimum_size = Vector2(76, 64)
+		h.add_child(prev)
+		_spec_swatch = ColorRect.new()
+		_spec_swatch.custom_minimum_size = Vector2(10, 44)
+		_spec_swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		h.add_child(_spec_swatch)
+		_spec_lbl = UIStyle.label("", 30, UIStyle.PAPER, "extrabold", true)
+		_spec_lbl.custom_minimum_size = Vector2(360, 0)
+		_spec_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		h.add_child(_spec_lbl)
+		var next := UIStyle.button("›", func(): spectate_step.emit(1), false, 40)
+		next.custom_minimum_size = Vector2(76, 64)
+		h.add_child(next)
+		var back := UIStyle.button("Results", func(): spectate_close.emit(), true, 26)
+		back.custom_minimum_size = Vector2(0, 64)
+		h.add_child(back)
+	_spec_bar.visible = on
+	_spec_bar.move_to_front()
+
+
+func set_spectate_label(text: String, col: Color) -> void:
+	if _spec_lbl != null:
+		_spec_lbl.text = text
+		_spec_swatch.color = col
+
+
 ## One more button on the results screen, beside Replay and Menu.
 func add_results_button(text: String) -> Button:
 	if _res_lower == null or not is_instance_valid(_res_lower):
 		return null
+	# (A row of their own, under Replay and Menu.)
+	var row := _res_lower.get_parent().get_node_or_null("Extra") as HBoxContainer
+	if row == null:
+		var gap := Control.new()
+		gap.custom_minimum_size = Vector2(0, 10)
+		_res_lower.get_parent().add_child(gap)
+		row = HBoxContainer.new()
+		row.name = "Extra"
+		row.add_theme_constant_override("separation", 12)
+		_res_lower.get_parent().add_child(row)
 	var b := UIStyle.button(text, Callable(), false, 24)
-	b.custom_minimum_size = Vector2(0, 64)
+	b.custom_minimum_size = Vector2(0, 60)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.add_theme_color_override("font_disabled_color", Color(UIStyle.PAPER, 0.8))
-	_res_lower.add_child(b)
+	row.add_child(b)
 	return b
 
 

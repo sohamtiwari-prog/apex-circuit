@@ -121,6 +121,14 @@ Your rank is on the main menu (tap it for the whole ladder), the results
 screen shows what you earned and animates your progress, and friends see each
 other's ranks in the lobby.
 
+## After the flag
+
+- **Watch** (on the results while cars are still racing): the camera goes to
+  the leader still running; arrows change car, **Results** comes back.
+- **Highlights**: the replay as a reel: the start, overtakes, contacts and
+  the finish, each from a few seconds before, one after another (in the
+  replay, **Highlights** skips to the next one).
+
 ## Career rivals and rewards
 
 Every career series has a **rival**: Marco Vella (Club Muscle Cup), Ingrid
@@ -654,6 +662,7 @@ tests/
   setup_test.gd      car setup: each setting does what it says; a clean lap at the extremes
   ghost_test.gd      ghost challenges: a lap packed small and back, sent under a code and fetched
   rival_test.gd      career rivals (on the grid, quicker, the duel, head to head) and star rewards
+  spectate_test.gd   watching the race after your finish, and the replay's highlights reel
   paint_shots.gd     the paint shop, for review
   error_sweep.gd     a full race on every track, every car and condition: errors, stuck cars
   net_contact_test.gd  multiplayer contact through the network code at 10-150 ms

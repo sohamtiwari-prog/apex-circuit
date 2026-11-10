@@ -426,6 +426,35 @@ func next_highlight() -> void:
 			set_focus(int(ev["car"]))
 
 
+## The highlights reel: each moment in turn (from 3 s before it to 5 s
+## after), then the next, to the end. Any other control stops it.
+var reel := false
+var _reel_end := -1.0
+
+
+func start_reel() -> void:
+	if events.is_empty():
+		return
+	reel = true
+	t = 0.0
+	_reel_next()
+
+
+func _reel_next() -> void:
+	var now := int(t) + int(HZ * 0.5) if _reel_end >= 0.0 else -1
+	for ev in events:
+		if int(ev["f"]) > now:
+			seek(maxf(float(int(ev["f"])) - HZ * 3.0, 0.0))
+			if int(ev["car"]) >= 0:
+				set_focus(int(ev["car"]))
+			set_paused(false)
+			_reel_end = float(int(ev["f"])) + HZ * 5.0
+			return
+	reel = false
+	_reel_end = -1.0
+	set_paused(true)
+
+
 func frame_index() -> int:
 	return clampi(int(t), 0, count - 1)
 
@@ -458,7 +487,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if not paused:
 		t += delta * HZ * SPEEDS[speed_i]
-		if t >= float(count - 1):
+		if reel and (t >= _reel_end or t >= float(count - 1)):
+			_reel_next()                 # (at the very end: no more, it stops)
+		elif t >= float(count - 1):
 			t = float(count - 1)
 			set_paused(true)
 	_pose_all()

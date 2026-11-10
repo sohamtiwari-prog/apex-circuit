@@ -147,6 +147,9 @@ jobs:
       - name: Career rivals and star rewards
         run: bash .github/run_test.sh res://tests/rival_test.gd
 
+      - name: Watching after your finish, and the highlights reel
+        run: bash .github/run_test.sh res://tests/spectate_test.gd
+
       - name: Ise Bay's figure of eight (over the bridge and under it, 20 cars)
         run: bash .github/run_test.sh res://tests/crossover_test.gd
 

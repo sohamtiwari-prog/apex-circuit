@@ -153,7 +153,11 @@ func _build_bottom() -> void:
 		replay.seek(frac * float(replay.count - 1))
 		_idle = 0.0)
 	row.add_child(_timeline)
-	var hl := UIStyle.button("Highlights", func(): replay.next_highlight(), true, 26)
+	var hl := UIStyle.button("Highlights", func():
+		if replay.reel:
+			replay._reel_next()
+		else:
+			replay.start_reel(), true, 26)
 	hl.custom_minimum_size = Vector2(0, 68)
 	hl.visible = not replay.events.is_empty()
 	row.add_child(hl)

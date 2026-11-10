@@ -317,6 +317,8 @@ func _ready() -> void:
 	replay.setup(self)
 	replay.finished.connect(_on_replay_closed)
 	hud.replay_requested.connect(func(): watch_replay(true))
+	hud.spectate_step.connect(spectate_step)
+	hud.spectate_close.connect(func(): spectate(false))
 	hud.replay_available = net == null
 
 	_restart()
@@ -526,6 +528,8 @@ var _cooldown_pilot := false        # the autopilot is only driving your cool-do
 var _session := 0                   # counts restarts (a timer from the last race checks it)
 
 func _restart() -> void:
+	if spectating:
+		spectate(false)
 	_session += 1
 	if _cooldown_pilot:
 		# "Race again": the car is yours again, not the AI's.
@@ -685,6 +689,84 @@ func watch_replay(from_pause: bool) -> void:
 	if from_pause:
 		from = maxi(replay.count - int(Replay.HZ * 30.0), 0)
 	replay.start(from)
+
+
+## Results: watch the rest of the race (cars still running), and the
+## highlights reel (when the replay can play).
+func _add_watch_buttons() -> void:
+	if mode != "race":
+		return
+	var running := false
+	for e in entrants:
+		running = running or (not e.finished and not e.dnf and e.car.visible)
+	if running:
+		var w: Button = hud.add_results_button("Watch")
+		if w != null:
+			w.pressed.connect(func(): spectate(true))
+	if net == null and not replay.events.is_empty():
+		var h: Button = hud.add_results_button("Highlights")
+		if h != null:
+			h.pressed.connect(watch_highlights)
+
+
+## The results' Highlights: the replay as a reel of the race's moments.
+func watch_highlights() -> void:
+	watch_replay(false)
+	if replay.playing:
+		replay.start_reel()
+
+
+# ------------------------------------------------------------ spectating
+
+## After your finish: watch the rest of the race live from any car.
+var spectating := false
+var _spec_i := 0
+
+
+var _spec_prev_mode := 0
+
+
+func spectate(on: bool) -> void:
+	if on == spectating:
+		return
+	spectating = on
+	if on:
+		_spec_prev_mode = cam.mode
+		if car.body != null:
+			car.body.set_cockpit_view(false)
+		# Start on the leader still running, else the leader.
+		var ordered := entrants.duplicate()
+		ordered.sort_custom(_by_position)
+		_spec_i = entrants.find(ordered[0])
+		for e in ordered:
+			if not e.finished and e.car.visible:
+				_spec_i = entrants.find(e)
+				break
+		_spec_show()
+		hud.show_spectate(true)
+	else:
+		cam.set_target(car)
+		cam.set_mode(_spec_prev_mode)
+		cam.snap()
+		hud.show_spectate(false)
+
+
+func spectate_step(d: int) -> void:
+	var n := entrants.size()
+	for k in range(1, n + 1):
+		var i := posmod(_spec_i + d * k, n)
+		if entrants[i].car.visible:
+			_spec_i = i
+			break
+	_spec_show()
+
+
+func _spec_show() -> void:
+	var e: Entrant = entrants[_spec_i]
+	cam.set_target(e.car)
+	cam.set_mode(0)
+	cam.snap()
+	hud.set_spectate_label("P%d  %s%s" % [e.position, e.name, "  (finished)" if e.finished else ""], e.car.spec["color"])
 
 
 func _on_replay_closed() -> void:
@@ -1040,6 +1122,9 @@ func _physics_process(delta: float) -> void:
 		hud.replay_button.text = "Replay" if done else "Replay soon"
 	if _tick % 3 == 0:
 		_update_hud()
+	if spectating and _tick % 30 == 0:
+		var se: Entrant = entrants[_spec_i]
+		hud.set_spectate_label("P%d  %s%s" % [se.position, se.name, "  (finished)" if se.finished else ""], se.car.spec["color"])
 	replay.capture(delta)
 
 
@@ -1435,6 +1520,7 @@ func _show_results() -> void:
 			hud.show_results(rows, func(): Net.chat(Net.CHAT.find("Rematch?")), func(): _quit_to_menu(), "Ask for a rematch", rank, watch, pr, live, Callable(), true)
 	if net != null and hud.replay_button != null:
 		hud.replay_button.disabled = true      # until every car is home (see _physics_process)
+	_add_watch_buttons()
 
 
 func _fastest_lap() -> Entrant:
