@@ -22,6 +22,7 @@ var _title: Label
 
 
 func _ready() -> void:
+	UIStyle.use("garage")
 	save = get_node("/root/Save")
 	room = Showroom.new()
 	add_child(room)
@@ -107,10 +108,10 @@ func _build_ui() -> void:
 		var b := UIStyle.button("‹" if d < 0 else "›", func(): _step_car(dd), false, 44)
 		b.custom_minimum_size = Vector2(76, 64)
 		cars.add_child(b)
-	_title = UIStyle.label("", 36, UIStyle.PAPER, "extrabold", true)
+	_title = UIStyle.label("", 26, UIStyle.PAPER, "display")
 	cars.add_child(_title)
 	var panel := PanelContainer.new()
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.93), false, UIStyle.APEX, 8)
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.93), false)
 	sb.set_content_margin_all(16)
 	panel.add_theme_stylebox_override("panel", sb)
 	panel.custom_minimum_size = Vector2(600, 0)
@@ -172,7 +173,7 @@ func _refresh() -> void:
 			var b := UIStyle.button(str(d), func(): set_value("number", clampi(n + dd, 1, 99)), false, 22)
 			b.custom_minimum_size = Vector2(64, 50)
 			nr.add_child(b)
-		var nv := UIStyle.label(str(n), 40, UIStyle.APEX, "extrabold", true)
+		var nv := UIStyle.label(str(n), 30, UIStyle.PAPER, "display")
 		nv.custom_minimum_size = Vector2(70, 0)
 		nv.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		nr.add_child(nv)
@@ -187,6 +188,7 @@ func _refresh() -> void:
 	var go := UIStyle.button("Drive it", func():
 		save.set_setting("car", car_id)
 		get_tree().change_scene_to_file("res://scenes/menu.tscn"), true, 30)
+	UIStyle.make_go(go, 30)
 	go.custom_minimum_size = Vector2(0, 70)
 	_panel.add_child(go)
 

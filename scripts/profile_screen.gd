@@ -7,6 +7,7 @@ var ui: CanvasLayer
 
 
 func _ready() -> void:
+	UIStyle.use("garage")
 	save = get_node("/root/Save")
 	var room := Showroom.new()
 	add_child(room)
@@ -69,7 +70,7 @@ func _build_ui() -> void:
 
 	# Right: track records and trophies.
 	var right := _panel(body, 520)
-	right.add_child(UIStyle.label("Best laps", 26, UIStyle.PAPER, "extrabold", true))
+	right.add_child(UIStyle.label("Best laps", 20, UIStyle.PAPER, "display"))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -105,7 +106,7 @@ func _build_ui() -> void:
 			h.add_child(UIStyle.label("-", 20, UIStyle.FOG, "bold"))
 	if not any:
 		list.add_child(UIStyle.label("Set a lap anywhere to start your records.", 18, UIStyle.FOG, "medium"))
-	right.add_child(UIStyle.label("Trophy cabinet", 26, UIStyle.PAPER, "extrabold", true))
+	right.add_child(UIStyle.label("Trophy cabinet", 20, UIStyle.PAPER, "display"))
 	var cabinet := HFlowContainer.new()
 	cabinet.add_theme_constant_override("h_separation", 8)
 	cabinet.add_theme_constant_override("v_separation", 8)
@@ -121,14 +122,14 @@ func _build_ui() -> void:
 		var cv := VBoxContainer.new()
 		cv.add_theme_constant_override("separation", -4)
 		card.add_child(cv)
-		cv.add_child(UIStyle.label("P%d" % pos if pos > 1 else "Champion", 20, col, "extrabold", true))
+		cv.add_child(UIStyle.label("P%d" % pos if pos > 1 else "Champion", 20, UIStyle.PAPER, "extrabold", true))
 		cv.add_child(UIStyle.label(String(tr["series"]).replace(" World Championship", "").replace("Championship", ""), 15, UIStyle.PAPER, "semibold"))
 		cabinet.add_child(card)
 
 
 func _panel(parent: Control, min_w: float) -> VBoxContainer:
 	var p := PanelContainer.new()
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.92), false, UIStyle.APEX, 8)
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.92), false)
 	sb.set_content_margin_all(16)
 	p.add_theme_stylebox_override("panel", sb)
 	p.custom_minimum_size = Vector2(min_w, 0)

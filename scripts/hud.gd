@@ -143,7 +143,7 @@ func _build_tower(root: Control) -> void:
 	h.add_theme_constant_override("separation", 6)
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hv.add_child(h)
-	_pos_big = UIStyle.label("P1", 44, UIStyle.PAPER, "extrabold", true)
+	_pos_big = UIStyle.label("P1", 32, UIStyle.PAPER, "display")
 	h.add_child(_pos_big)
 	_pos_of = UIStyle.label("/20", 22, UIStyle.FOG, "bold", true)
 	_pos_of.size_flags_vertical = Control.SIZE_SHRINK_END
@@ -208,7 +208,7 @@ func cycle_tower() -> void:
 
 func _show_tower_mode() -> void:
 	if _tower_mode_lbl != null:
-		_tower_mode_lbl.text = ("TAP: CLOSE" if tower_leader else "TAP: GAP TO LEADER") if tower_full else "TAP: WHOLE FIELD"
+		_tower_mode_lbl.text = ("Tap to close" if tower_leader else "Tap: gap to leader") if tower_full else "Tap: whole field"
 	if _board != null:
 		_board.visible = tower_full and gauge.visible
 	if _rows_box != null:
@@ -371,7 +371,7 @@ func _update_board(rows: Array) -> void:
 	_board.visible = tower_full and gauge.visible
 	if not _board.visible:
 		return
-	_board_title.text = "RUNNING ORDER  ·  " + ("GAP TO THE LEADER" if tower_leader else "INTERVAL TO THE CAR AHEAD") + "  ·  tap to " + ("close" if tower_leader else "show gaps to the leader")
+	_board_title.text = "Running order, " + ("gap to the leader" if tower_leader else "interval to the car ahead") + ". Tap to " + ("close" if tower_leader else "show gaps to the leader")
 	var per_col := int(ceil(rows.size() / 2.0))
 	while _board_slots.size() < rows.size():
 		var k := _board_slots.size()
@@ -1129,7 +1129,7 @@ func show_penalty(secs: int, why: String) -> void:
 		_pen_why = UIStyle.label("", 15, UIStyle.FOG, "semibold")
 		v.add_child(_pen_why)
 	_pen_big.text = "+%ds" % secs
-	_pen_why.text = (why[0].to_upper() + why.substr(1) if why.length() > 0 else "") + "  ·  served at your next stop"
+	_pen_why.text = (why[0].to_upper() + why.substr(1) if why.length() > 0 else "") + ", served at your next stop"
 	_pen_card.visible = gauge.visible
 	# (Under the running order board when that's open.)
 	_pen_card.offset_top = (_board.offset_top + _board.size.y + 10.0) if _board != null and _board.visible else 122.0
@@ -1199,7 +1199,7 @@ func show_quali(rows: Array, compound: String, weather: String, on_start: Callab
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	left.add_child(sp)
 	var wl := {"dry": "Dry race", "wet": "Wet race: wets are fitted", "changing": "Rain expected during the race"}
-	left.add_child(UIStyle.label("Race tyres  ·  " + String(wl.get(weather, "")), 20, UIStyle.FOG, "bold", true))
+	left.add_child(UIStyle.label("Race tyres, " + String(wl.get(weather, "")).to_lower(), 20, UIStyle.FOG, "bold", true))
 	var tyres := HBoxContainer.new()
 	tyres.add_theme_constant_override("separation", 8)
 	left.add_child(tyres)
@@ -1226,6 +1226,7 @@ func show_quali(rows: Array, compound: String, weather: String, on_start: Callab
 		touch.visible = true
 		_set_live_visible(true)
 		on_start.call(chosen[0]), true, 34)
+	UIStyle.make_go(go, 34)
 	go.custom_minimum_size = Vector2(0, 80)
 	left.add_child(go)
 
@@ -1342,7 +1343,7 @@ func _build_clock(root: Control) -> void:
 	v.add_theme_constant_override("separation", -8)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_clock.add_child(v)
-	_clock_lbl = UIStyle.label("", 64, UIStyle.PAPER, "extrabold", true)
+	_clock_lbl = UIStyle.label("", 44, UIStyle.PAPER, "display")
 	_clock_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_clock_lbl.custom_minimum_size = Vector2(190, 0)
 	v.add_child(_clock_lbl)
@@ -1424,7 +1425,7 @@ func _build_pause_menu(root: Control) -> void:
 	left.custom_minimum_size = Vector2(330, 0)
 	left.add_theme_constant_override("separation", 12)
 	cols.add_child(left)
-	left.add_child(UIStyle.label("Paused", 54, UIStyle.PAPER, "extrabold", true))
+	left.add_child(UIStyle.label("Paused", 36, UIStyle.PAPER, "display"))
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 10)
 	left.add_child(gap)
@@ -1440,6 +1441,8 @@ func _build_pause_menu(root: Control) -> void:
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	left.add_child(sp)
 	_menu_buttons["quit"] = _menu_button(left, "Quit to menu", func(): menu_requested.emit())
+	_menu_buttons["quit"].add_theme_color_override("font_color", UIStyle.STOP)
+	_menu_buttons["quit"].add_theme_color_override("font_hover_color", UIStyle.STOP)
 
 	# Right: driving settings, as rows of setting + value.
 	var right := VBoxContainer.new()
@@ -1488,6 +1491,8 @@ func _build_pause_menu(root: Control) -> void:
 
 func _menu_button(parent: Node, text: String, cb: Callable, primary := false) -> Button:
 	var b := UIStyle.button(text, cb, primary, 28)
+	if primary:
+		UIStyle.make_go(b, 30)
 	b.custom_minimum_size = Vector2(0, 68)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	parent.add_child(b)
@@ -1895,7 +1900,7 @@ func _party_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void:
 		col.add_child(UIStyle.label("25-18-15-12-10-8-6-4-2-1 for the top 10", 18, UIStyle.FOG, "medium"))
 	else:
 		var fin: bool = reward["final"]
-		col.add_child(UIStyle.label("Series  ·  race %d of %d" % [int(reward["round"]) + 1, int(reward["rounds"])], 26, UIStyle.FOG, "bold", true))
+		col.add_child(UIStyle.label("Series, race %d of %d" % [int(reward["round"]) + 1, int(reward["rounds"])], 26, UIStyle.FOG, "bold", true))
 		var table: Array = reward["table"]
 		if fin and not table.is_empty():
 			col.add_child(UIStyle.label("%s is champion!" % String(table[0][0]) if not table[0][3] else "You're the champion!", 32, UIStyle.YELLOW, "extrabold", true))
@@ -1939,7 +1944,7 @@ func _checkpoint_column(cols: Control, reward: Dictionary) -> void:
 			col.add_child(UIStyle.label("+%.2f km on your old best" % ((float(reward["distance"]) - float(reward["prev"])) / 1000.0), 22, UIStyle.GREEN, "bold", true))
 	else:
 		col.add_child(UIStyle.label("Your best  %.2f km" % (float(reward["best"]) / 1000.0), 26, UIStyle.PURPLE, "bold", true))
-	col.add_child(UIStyle.label("%d gates  ·  %.2f laps" % [int(reward["gates"]), float(reward["laps"])], 22, UIStyle.FOG, "semibold"))
+	col.add_child(UIStyle.label("%d gates, %.2f laps" % [int(reward["gates"]), float(reward["laps"])], 22, UIStyle.FOG, "semibold"))
 	var rules := UIStyle.label(String(Career.TYPE_RULES["checkpoint"]), 18, UIStyle.FOG, "medium")
 	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(rules)
@@ -2192,19 +2197,19 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 	var cp: bool = reward.has("checkpoint")
 	if cp:
 		left.add_child(UIStyle.label("You reached", 30, UIStyle.FOG, "bold", true))
-		var dl := UIStyle.label("%.2f km" % (float(reward["distance"]) / 1000.0), 72, UIStyle.APEX if reward["new_best"] else UIStyle.PAPER, "extrabold", true)
+		var dl := UIStyle.label("%.2f km" % (float(reward["distance"]) / 1000.0), 50, UIStyle.APEX if reward["new_best"] else UIStyle.PAPER, "display")
 		dl.custom_minimum_size = Vector2(0, 150)
 		dl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		left.add_child(dl)
 	elif tt:
 		left.add_child(UIStyle.label("Best lap", 30, UIStyle.FOG, "bold", true))
-		var bt := UIStyle.label(String(me.get("best", "-")), 72, UIStyle.PAPER, "extrabold", true)
+		var bt := UIStyle.label(String(me.get("best", "-")), 46, UIStyle.PAPER, "display")
 		bt.custom_minimum_size = Vector2(0, 150)
 		bt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		left.add_child(bt)
 	else:
 		left.add_child(UIStyle.label("You finished", 30, UIStyle.FOG, "bold", true))
-		var big := UIStyle.label("P%d" % int(me.get("pos", 0)), 150, UIStyle.APEX if int(me.get("pos", 99)) <= 3 else UIStyle.PAPER, "extrabold", true)
+		var big := UIStyle.label("P%d" % int(me.get("pos", 0)), 104, UIStyle.APEX if int(me.get("pos", 99)) <= 3 else UIStyle.PAPER, "display")
 		left.add_child(big)
 		_res_big = big
 		left.add_child(UIStyle.label("of %d" % rows.size(), 30, UIStyle.FOG, "bold", true))
@@ -2230,6 +2235,7 @@ func show_results(rows: Array, on_restart: Callable, on_menu: Callable, again_te
 			touch.visible = true
 			_set_live_visible(true)
 			on_restart.call(), true, 30)
+		UIStyle.make_go(again, 30)
 		again.custom_minimum_size = Vector2(0, 74)
 		left.add_child(again)
 	else:
@@ -2543,11 +2549,11 @@ func _driver_detail(r: Dictionary) -> void:
 	top.add_child(who)
 	var status := String(r.get("status", ""))
 	var finish := ("P%d" % int(r["pos"])) if status == "" else status
-	var summary := "Started P%d, finished %s  ·  Best lap %s  ·  Top speed %d km/h  ·  %d stop%s  ·  Penalties %s  ·  Laps led %d" % [
+	var summary := "Started P%d, finished %s. Best lap %s. Top speed %d km/h. %d stop%s. Penalties %s. Laps led %d." % [
 		int(r["grid"]), finish, String(r["best"]), int(r["top"]), int(r["stops"]), "" if int(r["stops"]) == 1 else "s",
 		("+%d s" % int(r["pen"])) if float(r["pen"]) > 0.0 else "none", int(r["led"])]
 	if String(r.get("reason", "")) != "":
-		summary += "  ·  Retired: " + String(r["reason"]).to_lower()
+		summary += " Retired: " + String(r["reason"]).to_lower()
 	var sl := UIStyle.label(summary, 18, UIStyle.FOG, "semibold")
 	sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	sl.custom_minimum_size = Vector2(400, 0)

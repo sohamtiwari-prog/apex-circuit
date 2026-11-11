@@ -30,6 +30,7 @@ var _owned_lbl: Label
 
 
 func _ready() -> void:
+	UIStyle.use("garage")
 	save = get_node("/root/Save")
 	DisplayServer.screen_set_keep_on(true)
 	car_ids = Array(CarSpecs.CATALOG)
@@ -46,59 +47,10 @@ func _ready() -> void:
 # ------------------------------------------------------------ 3D stage
 
 func _build_stage() -> void:
-	Look.build(self, "studio")
-	var rim := OmniLight3D.new()
-	rim.position = Vector3(-4, 2.5, -3.5)
-	rim.light_color = Color(0.75, 0.85, 1.0)
-	rim.light_energy = 1.6
-	rim.omni_range = 9.0
-	add_child(rim)
-	var fill := OmniLight3D.new()
-	fill.position = Vector3(3, 3.5, 4)
-	fill.light_color = Color(0.7, 0.8, 1.0)
-	fill.light_energy = 1.6
-	fill.omni_range = 12.0
-	add_child(fill)
-
-	var floor_mesh := CylinderMesh.new()
-	floor_mesh.top_radius = 4.0
-	floor_mesh.bottom_radius = 4.2
-	floor_mesh.height = 0.1
-	floor_mesh.radial_segments = 72
-	var floor_mat := StandardMaterial3D.new()
-	floor_mat.albedo_color = Color(0.1, 0.11, 0.13)
-	floor_mat.metallic = 0.4
-	floor_mat.roughness = 0.45
-	var stage := MeshInstance3D.new()
-	stage.mesh = floor_mesh
-	stage.material_override = floor_mat
-	stage.position.y = -0.05
-	add_child(stage)
-	# A thin orange ring around the turntable.
-	var ring_mesh := TorusMesh.new()
-	ring_mesh.inner_radius = 4.12
-	ring_mesh.outer_radius = 4.2
-	ring_mesh.rings = 72
-	var ring_mat := StandardMaterial3D.new()
-	ring_mat.albedo_color = UIStyle.APEX
-	ring_mat.emission_enabled = true
-	ring_mat.emission = UIStyle.APEX
-	ring_mat.emission_energy_multiplier = 0.25
-	var ring := MeshInstance3D.new()
-	ring.mesh = ring_mesh
-	ring.material_override = ring_mat
-	ring.position.y = 0.0
-	add_child(ring)
-
-	showcase = Node3D.new()
-	add_child(showcase)
-
-	var cam := Camera3D.new()
-	cam.fov = 36.0
-	cam.position = Vector3(5.6, 1.9, 6.4)
-	add_child(cam)
-	cam.look_at(Vector3(0.9, 0.15, -1.6), Vector3.UP)
-	cam.current = true
+	var room := Showroom.new()
+	add_child(room)
+	room.build(Vector3(5.6, 1.9, 6.4), Vector3(0.9, 0.15, -1.6), 36.0)
+	showcase = room.showcase
 
 
 func _show_car(id: String) -> void:
@@ -111,8 +63,6 @@ func _show_car(id: String) -> void:
 	preview.position.y = preview.spawn_height() - 0.05
 
 
-func _process(delta: float) -> void:
-	showcase.rotate_y(delta * 0.3)
 
 
 # ------------------------------------------------------------ UI
@@ -155,19 +105,20 @@ func _build_car_side(cols: Control) -> void:
 	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	left.add_child(sp)
 
-	_car_kind = UIStyle.outlined(UIStyle.label("", 22, UIStyle.FOG, "bold", true), 4)
-	left.add_child(_car_kind)
-	_car_name = UIStyle.outlined(UIStyle.label("", 58, UIStyle.PAPER, "extrabold", true), 6)
-	left.add_child(_car_name)
-
 	var stats := PanelContainer.new()
-	stats.add_theme_stylebox_override("panel", UIStyle.panel(Color(UIStyle.TARMAC, 0.78)))
+	var ssb := UIStyle.panel(Color(UIStyle.TARMAC, 0.78))
+	ssb.set_content_margin_all(14)
+	stats.add_theme_stylebox_override("panel", ssb)
 	stats.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	stats.custom_minimum_size = Vector2(430, 0)
+	stats.custom_minimum_size = Vector2(460, 0)
 	left.add_child(stats)
 	var sv := VBoxContainer.new()
 	sv.add_theme_constant_override("separation", 2)
 	stats.add_child(sv)
+	_car_kind = UIStyle.outlined(UIStyle.label("", 20, UIStyle.FOG, "bold", true), 4)
+	sv.add_child(_car_kind)
+	_car_name = UIStyle.outlined(UIStyle.label("", 30, UIStyle.PAPER, "display"), 6)
+	sv.add_child(_car_name)
 	for stat in ["Power", "Grip", "Top speed"]:
 		_stat_row(sv, stat)
 
@@ -176,9 +127,9 @@ func _build_car_side(cols: Control) -> void:
 	_team_name = UIStyle.outlined(UIStyle.label("", 20, UIStyle.PAPER, "semibold"), 4)
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 8)
-	left.add_child(gap)
-	left.add_child(_team_name)
-	left.add_child(_team_row)
+	sv.add_child(gap)
+	sv.add_child(_team_name)
+	sv.add_child(_team_row)
 	for i in range(CarSpecs.TEAMS.size()):
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(46, 46)
@@ -214,12 +165,12 @@ func _stat_row(parent: Node, stat: String) -> void:
 	name.custom_minimum_size = Vector2(92, 0)
 	h.add_child(name)
 	var track_bg := ColorRect.new()
-	track_bg.color = Color(UIStyle.PAPER, 0.12)
+	track_bg.color = UIStyle.TARMAC_2
 	track_bg.custom_minimum_size = Vector2(200, 8)
 	track_bg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(track_bg)
 	var fill := ColorRect.new()
-	fill.color = UIStyle.APEX
+	fill.color = UIStyle.PAPER
 	fill.size = Vector2(0, 8)
 	track_bg.add_child(fill)
 	var val := UIStyle.label("", 20, UIStyle.PAPER, "bold", true)
@@ -231,7 +182,7 @@ func _stat_row(parent: Node, stat: String) -> void:
 
 func _build_track_side(cols: Control) -> void:
 	var right := PanelContainer.new()
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.88), false, UIStyle.APEX, 8)
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.88), false)
 	sb.set_content_margin_all(18)
 	right.add_theme_stylebox_override("panel", sb)
 	right.custom_minimum_size = Vector2(440, 0)
@@ -341,6 +292,7 @@ func _build_track_side(cols: Control) -> void:
 	_ghost_code.max_length = 8
 	_ghost_code.add_theme_font_override("font", UIStyle.font("bold", true))
 	_ghost_code.add_theme_font_size_override("font_size", 24)
+	UIStyle.field(_ghost_code)
 	_ghost_code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_ghost_code.custom_minimum_size = Vector2(0, 52)
 	_ghost_row.add_child(_ghost_code)
@@ -350,7 +302,7 @@ func _build_track_side(cols: Control) -> void:
 	_ghost_status = UIStyle.label("", 18, UIStyle.FOG, "semibold")
 	_ghost_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(_ghost_status)
-	var go := UIStyle.button("Race", _start, true, 46)
+	var go := UIStyle.go_button("Race", _start, 46)
 	go.custom_minimum_size = Vector2(0, 76)
 	v.add_child(go)
 	_chips["go"] = go
@@ -399,7 +351,7 @@ func _refresh_mode() -> void:
 	for key in _mode_buttons:
 		var b: Button = _mode_buttons[key]
 		var on: bool = key == mode
-		var sb := UIStyle.panel(UIStyle.PAPER if on else Color(UIStyle.TARMAC_2, 0.9))
+		var sb := UIStyle.panel(UIStyle.APEX if on else Color(UIStyle.TARMAC_2, 0.9))
 		for st in ["normal", "hover", "pressed"]:
 			b.add_theme_stylebox_override(st, sb)
 		b.add_theme_color_override("font_color", UIStyle.INK if on else UIStyle.FOG)
@@ -455,7 +407,7 @@ func _select_car(id: String, persist: bool) -> void:
 	var spec: Dictionary = save.car_spec(id)
 	_car_name.text = spec["name"]
 	_owned_lbl.text = "PR %.1f" % Garage.pr(spec)
-	_owned_lbl.add_theme_color_override("font_color", UIStyle.GREEN)
+	_owned_lbl.add_theme_color_override("font_color", UIStyle.PAPER)
 	var parts: PackedStringArray = String(spec["desc"]).split(" · ")
 	_car_kind.text = parts[0] if parts.size() > 0 else ""
 	_car_count.text = "Car %d of %d" % [car_ids.find(id) + 1, car_ids.size()]

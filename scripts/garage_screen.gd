@@ -13,6 +13,7 @@ var _tick := 0.0
 
 
 func _ready() -> void:
+	UIStyle.use("garage")
 	save = get_node("/root/Save")
 	room = Showroom.new()
 	add_child(room)
@@ -53,7 +54,7 @@ func _build_ui() -> void:
 	mid.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	body.add_child(mid)
 	var panel := PanelContainer.new()
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.92), false, UIStyle.APEX, 8)
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.92), false)
 	sb.set_content_margin_all(16)
 	panel.add_theme_stylebox_override("panel", sb)
 	panel.custom_minimum_size = Vector2(500, 0)
@@ -80,8 +81,8 @@ func _refresh() -> void:
 		var spec: Dictionary = save.car_spec(id)
 		var sub := "PR %.1f" % Garage.pr(spec)
 		if String(save.get_setting("garage_car")) == id:
-			sub += "  ·  home car"
-		var b := UIStyle.tile(String(spec["name"]), sub, func(): _select(id), id == car_id, 24)
+			sub += ", home car"
+		var b := UIStyle.tile(String(spec["name"]), sub, func(): _select(id), id == car_id, 30)
 		b.custom_minimum_size = Vector2(0, 66)
 		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		_list.add_child(b)
@@ -98,12 +99,12 @@ func _build_panel() -> void:
 	top.add_child(names)
 	var parts: PackedStringArray = String(spec["desc"]).split(" · ")
 	names.add_child(UIStyle.label(parts[0] if parts.size() > 0 else "", 19, UIStyle.FOG, "bold", true))
-	names.add_child(UIStyle.label(String(spec["name"]), 34, UIStyle.PAPER, "extrabold", true))
+	names.add_child(UIStyle.label(String(spec["name"]), 26, UIStyle.PAPER, "display"))
 	var prbox := VBoxContainer.new()
 	prbox.add_theme_constant_override("separation", -8)
 	top.add_child(prbox)
 	prbox.add_child(UIStyle.label("PR", 18, UIStyle.FOG, "bold", true))
-	prbox.add_child(UIStyle.label("%.1f" % Garage.pr(spec), 44, UIStyle.APEX, "extrabold", true))
+	prbox.add_child(UIStyle.label("%.1f" % Garage.pr(spec), 32, UIStyle.PAPER, "display"))
 
 	# How it performs.
 	var v := 55.6
@@ -150,9 +151,9 @@ func _build_panel() -> void:
 	hb.custom_minimum_size = Vector2(0, 76)
 	hb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(hb)
-	var drive := UIStyle.button("Drive it", func():
+	var drive := UIStyle.go_button("Drive it", func():
 		save.set_setting("car", car_id)
-		get_tree().change_scene_to_file("res://scenes/menu.tscn"), true, 30)
+		get_tree().change_scene_to_file("res://scenes/menu.tscn"), 34)
 	drive.custom_minimum_size = Vector2(0, 76)
 	drive.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(drive)
@@ -166,15 +167,15 @@ func _stat(name: String, value: String, frac: float) -> void:
 	n.custom_minimum_size = Vector2(118, 0)
 	h.add_child(n)
 	var back := ColorRect.new()
-	back.color = Color(UIStyle.PAPER, 0.12)
-	back.custom_minimum_size = Vector2(0, 8)
+	back.color = UIStyle.TARMAC_2
+	back.custom_minimum_size = Vector2(0, 10)
 	back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	back.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(back)
 	var fill := ColorRect.new()
-	fill.color = UIStyle.APEX
+	fill.color = UIStyle.PAPER
 	back.add_child(fill)
-	back.resized.connect(func(): fill.size = Vector2(back.size.x * clampf(frac, 0.04, 1.0), 8))
+	back.resized.connect(func(): fill.size = Vector2(back.size.x * clampf(frac, 0.04, 1.0), 10))
 	var val := UIStyle.label(value, 21, UIStyle.PAPER, "bold", true)
 	val.custom_minimum_size = Vector2(104, 0)
 	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT

@@ -14,6 +14,10 @@ const SKIES := {
 		"sun": Color(1.0, 0.95, 0.86), "sun_energy": 2.1, "sun_rot": Vector3(-56, 20, 0), "fog": Color(0.76, 0.83, 0.92)},
 	"studio": {"top": Color(0.08, 0.09, 0.12), "horizon": Color(0.22, 0.24, 0.3), "cover": 0.0,
 		"sun": Color(1.0, 0.97, 0.92), "sun_energy": 1.2, "sun_rot": Vector3(-40, 30, 0), "fog": Color(0.1, 0.1, 0.12)},
+	# The team garage behind the menus: daylight through the open door,
+	# strip lights overhead.
+	"garage": {"top": Color(0.78, 0.81, 0.85), "horizon": Color(0.9, 0.91, 0.92), "cover": 0.0,
+		"sun": Color(1.0, 0.99, 0.97), "sun_energy": 0.9, "sun_rot": Vector3(-70, 35, 0), "fog": Color(0.9, 0.9, 0.9)},
 }
 
 
@@ -118,13 +122,13 @@ static func resolve_time(time_of_day: String, track_id: String) -> String:
 ## Adds a WorldEnvironment and sun to `parent`; returns the sun.
 static func build(parent: Node, style: String, time_of_day := "day", track_id := "") -> DirectionalLight3D:
 	var cfg: Dictionary = SKIES.get(style, SKIES["park"]).duplicate()
-	var sunset := time_of_day == "sunset" and style != "studio"
+	var sunset := time_of_day == "sunset" and not style in ["studio", "garage"]
 	if sunset:
 		for k in SUNSET:
 			cfg[k] = SUNSET[k]
 		var rot: Vector3 = SKIES.get(style, SKIES["park"])["sun_rot"]
 		cfg["sun_rot"] = Vector3(-9.0, rot.y + 25.0, 0)
-	var night := time_of_day == "night" and style != "studio"
+	var night := time_of_day == "night" and not style in ["studio", "garage"]
 	if night:
 		for k in NIGHT:
 			cfg[k] = NIGHT[k]
@@ -186,7 +190,7 @@ static func build(parent: Node, style: String, time_of_day := "day", track_id :=
 		env.glow_intensity = 0.8
 		env.glow_bloom = 0.08
 		env.glow_hdr_threshold = 0.9
-	env.fog_enabled = style != "studio"
+	env.fog_enabled = not style in ["studio", "garage"]
 	env.fog_light_color = cfg["fog"]
 	env.fog_density = 0.00045
 	env.fog_aerial_perspective = 0.6

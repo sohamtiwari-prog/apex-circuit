@@ -995,7 +995,7 @@ func _brake_boards() -> void:
 		l.size = Vector2(128, 120)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		l.add_theme_font_override("font", UIStyle.font("extrabold"))
+		l.add_theme_font_override("font", UIStyle.world_font("extrabold"))
 		l.add_theme_font_size_override("font_size", 70)
 		l.add_theme_color_override("font_color", Color(0.06, 0.06, 0.07))
 		_board_viewport.add_child(l)
@@ -1098,7 +1098,7 @@ func _tv_towers() -> void:
 		_box("concrete", Transform3D(basis, p + Vector3(0, 8.1, 0)), Vector3(2.8, 0.2, 2.8), Color(0.35, 0.36, 0.4))
 		# The camera and operator's umbrella.
 		_box("metal", Transform3D(basis, p + Vector3(0, 8.6, 0) - out * 0.6), Vector3(0.5, 0.5, 1.0), Color(0.1, 0.1, 0.12))
-		_box("concrete", Transform3D(basis, p + Vector3(0, 10.0, 0)), Vector3(2.0, 0.1, 2.0), UIStyle.APEX)
+		_box("concrete", Transform3D(basis, p + Vector3(0, 10.0, 0)), Vector3(2.0, 0.1, 2.0), Color("ff6b1a"))
 		_reserve(Transform3D(basis, p), Vector3(5.0, 10.0, 5.0))
 		placed += 1
 
@@ -1109,7 +1109,7 @@ func _tv_towers() -> void:
 func _flagpoles() -> void:
 	var n := track.size()
 	var colours := [Color(0.85, 0.1, 0.1), Color(0.1, 0.25, 0.65), Color(0.95, 0.95, 0.95), Color(0.1, 0.55, 0.25),
-		Color(0.95, 0.75, 0.1), UIStyle.APEX]
+		Color(0.95, 0.75, 0.1), Color("ff6b1a")]
 	var side := 1.0
 	if track.style == "city":
 		return

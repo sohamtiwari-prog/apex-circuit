@@ -34,16 +34,16 @@ static func build(parent: Control, ui: CanvasLayer, save: Node) -> void:
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	h.add_child(v)
-	v.add_child(UIStyle.label(Ranks.tier_name(rp), 26, Ranks.tier_color(rp), "extrabold", true))
+	v.add_child(UIStyle.label(Ranks.tier_name(rp), 26, UIStyle.PAPER if UIStyle.light() else Ranks.tier_color(rp), "extrabold", true))
 	var pr := Ranks.progress(rp)
-	v.add_child(UIStyle.label("%d RP  ·  %d to %s" % [rp, pr.y - pr.x, Ranks.next_name(rp)], 17, UIStyle.FOG, "semibold", true))
+	v.add_child(UIStyle.label("%d RP, %d to %s" % [rp, pr.y - pr.x, Ranks.next_name(rp)], 17, UIStyle.FOG, "semibold", true))
 	var back := ColorRect.new()
 	back.color = Color(UIStyle.PAPER, 0.12)
 	back.custom_minimum_size = Vector2(0, 8)
 	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(back)
 	var fill := ColorRect.new()
-	fill.color = Ranks.tier_color(rp)
+	fill.color = UIStyle.PAPER if UIStyle.light() else Ranks.tier_color(rp)
 	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	back.add_child(fill)
 	back.resized.connect(func(): fill.size = Vector2(back.size.x * float(pr.x) / maxf(pr.y, 1), 8))
@@ -60,7 +60,7 @@ static func show_ladder(ui: CanvasLayer, save: Node) -> void:
 		if ev is InputEventMouseButton and ev.pressed:     # (a tap arrives as both a touch and a mouse press: once)
 			shade.queue_free())
 	var panel := PanelContainer.new()
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.97), false, UIStyle.APEX, 8)
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.97), false)
 	sb.set_content_margin_all(22)
 	panel.add_theme_stylebox_override("panel", sb)
 	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -97,9 +97,9 @@ static func show_ladder(ui: CanvasLayer, save: Node) -> void:
 			b.rp = int(t[1])
 			b.modulate.a = 1.0 if k <= mine else 0.35
 			row.add_child(b)
-			var nm := UIStyle.label(String(t[0]), 21, t[2] if k <= mine else UIStyle.FOG, "extrabold" if k == mine else "bold", true)
+			var nm := UIStyle.label(String(t[0]), 21, ((UIStyle.PAPER if UIStyle.light() else t[2]) if k <= mine else UIStyle.FOG), "extrabold" if k == mine else "bold", true)
 			nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(nm)
 			row.add_child(UIStyle.label("%d" % int(t[1]), 19, UIStyle.PAPER if k == mine else UIStyle.FOG, "semibold", true))
 			grid.add_child(row)
-	v.add_child(UIStyle.label("Past Legend: a star for every %d RP.  You: %s, %d RP" % [Ranks.LEGEND_STAR, Ranks.tier_name(rp), rp], 19, UIStyle.APEX, "bold", true))
+	v.add_child(UIStyle.label("Past Legend: a star for every %d RP.  You: %s, %d RP" % [Ranks.LEGEND_STAR, Ranks.tier_name(rp), rp], 19, UIStyle.PAPER, "bold", true))

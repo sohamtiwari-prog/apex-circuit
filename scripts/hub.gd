@@ -12,6 +12,7 @@ static var _url_race_done := false
 
 
 func _ready() -> void:
+	UIStyle.use("garage")
 	save = get_node("/root/Save")
 	save.pending_event = {}
 	# (Browser checks: index.html?race=<track> starts a quick race.)
@@ -65,11 +66,7 @@ func _build_ui() -> void:
 	mark.add_theme_constant_override("separation", 10)
 	mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	left.add_child(mark)
-	var chev := ColorRect.new()
-	chev.color = UIStyle.APEX
-	chev.custom_minimum_size = Vector2(12, 46)
-	mark.add_child(chev)
-	mark.add_child(UIStyle.outlined(UIStyle.label("Apex Circuit", 50, UIStyle.PAPER, "extrabold", true), 5))
+	mark.add_child(UIStyle.label("Apex Circuit", 36, UIStyle.PAPER, "display"))
 	RankCard.build(left, ui, save)
 	var prof := UIStyle.button("Profile & trophies", func(): get_tree().change_scene_to_file("res://scenes/profile.tscn"), false, 22)
 	prof.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
@@ -80,9 +77,18 @@ func _build_ui() -> void:
 	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	left.add_child(sp)
 	var spec: Dictionary = save.car_spec(home_car())
-	left.add_child(UIStyle.outlined(UIStyle.label("Your car", 22, UIStyle.FOG, "bold", true), 4))
-	left.add_child(UIStyle.outlined(UIStyle.label(String(spec["name"]), 46, UIStyle.PAPER, "extrabold", true), 6))
-	left.add_child(UIStyle.outlined(UIStyle.label("PR %.1f   ·   %s" % [Garage.pr(spec), String(spec["desc"]).split(" · ")[0]], 22, UIStyle.PAPER, "semibold", true), 4))
+	var card := PanelContainer.new()
+	var csb := UIStyle.panel(UIStyle.TARMAC, false)
+	csb.set_content_margin_all(16)
+	card.add_theme_stylebox_override("panel", csb)
+	card.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	left.add_child(card)
+	var cv := VBoxContainer.new()
+	cv.add_theme_constant_override("separation", 0)
+	card.add_child(cv)
+	cv.add_child(UIStyle.label("%s, PR %.1f" % [String(spec["desc"]).split(" · ")[0], Garage.pr(spec)], 22, UIStyle.FOG, "bold"))
+	cv.add_child(UIStyle.label(String(spec["name"]), 32, UIStyle.PAPER, "display"))
 
 	# Right: stars and the ways to play.
 	var right := VBoxContainer.new()
@@ -93,12 +99,12 @@ func _build_ui() -> void:
 	right.add_child(head[0])
 	var stars := Career.total_stars(save)
 	var tier := clampi(int(save.get_setting("career_series")), 0, Career.SERIES.size() - 1)
-	_tile(right, "career", "Career", "%s  ·  %d of %d stars" % [Career.SERIES[tier]["name"], stars, Career.SERIES.size() * 18], "res://scenes/career.tscn", true)
+	_tile(right, "career", "Career", "%s, %d of %d stars" % [Career.SERIES[tier]["name"], stars, Career.SERIES.size() * 18], "res://scenes/career.tscn", true)
 	var daily := Daily.event()
 	var dstars: int = save.career_stars(String(daily["id"]))
-	var db := UIStyle.tile("Daily challenge", Daily.describe(daily) + ("  ·  %d/3 stars" % dstars if dstars > 0 else "  ·  up to 3 stars"), func():
+	var db := UIStyle.tile("Daily challenge", Daily.describe(daily) + (" (%d of 3 stars)" % dstars if dstars > 0 else ""), func():
 		save.pending_event = daily
-		get_tree().change_scene_to_file("res://scenes/race.tscn"), false, 30)
+		get_tree().change_scene_to_file("res://scenes/race.tscn"), false, 36)
 	db.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	db.custom_minimum_size = Vector2(0, 76)
 	right.add_child(db)
@@ -110,7 +116,7 @@ func _build_ui() -> void:
 
 
 func _tile(parent: Control, key: String, title: String, sub: String, scene: String, primary := false) -> void:
-	var b := UIStyle.tile(title, sub, func(): get_tree().change_scene_to_file(scene), primary, 40 if primary else 30)
+	var b := UIStyle.tile(title, sub, func(): get_tree().change_scene_to_file(scene), primary, 46 if primary else 36)
 	b.custom_minimum_size = Vector2(0, 76)
 	b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	parent.add_child(b)

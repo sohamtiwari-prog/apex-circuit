@@ -7,31 +7,31 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Apex Circuit">
-<meta name="theme-color" content="#0d0f14">
+<meta name="theme-color" content="#d3d7dc">
 <title>Apex Circuit</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@125,800&family=Barlow+Semi+Condensed:wght@600&display=swap" rel="stylesheet">
 <style>
 html, body, #canvas { margin: 0; padding: 0; border: 0; }
-html, body { width: 100%; height: 100%; background: #0d0f14; }
+html, body { width: 100%; height: 100%; background: #d3d7dc; }
 body {
-	color: #f2f2f2; overflow: hidden; touch-action: none; overscroll-behavior: none;
+	color: #000; overflow: hidden; touch-action: none; overscroll-behavior: none;
 	-webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 	-webkit-tap-highlight-color: transparent;
-	font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+	font-family: "Barlow Semi Condensed", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
 #canvas { display: block; width: 100%; height: 100%; }
 #canvas:focus { outline: none; }
 .overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; box-sizing: border-box; }
-#status { background: radial-gradient(ellipse at 50% 120%, #2a1406 0%, #0d0f14 60%); z-index: 2; }
-.brand { font-weight: 800; letter-spacing: 0.12em; font-size: clamp(28px, 7vw, 56px); font-style: italic; }
-.brand b { color: #ff6a1a; }
-.sub { opacity: 0.6; margin-top: 6px; font-size: 14px; letter-spacing: 0.2em; text-transform: uppercase; }
-#bar { width: min(420px, 70vw); height: 6px; border-radius: 3px; background: #262a33; margin-top: 28px; overflow: hidden; }
-#bar i { display: block; height: 100%; width: 0%; background: #ff6a1a; transition: width 0.2s; }
-#pct { margin-top: 10px; font-size: 13px; opacity: 0.6; }
-#notice { display: none; margin-top: 20px; max-width: 520px; background: #3b1f24; border: 1px solid #9b3943; border-radius: 10px; padding: 14px; font-size: 14px; line-height: 1.4; }
-#tip { display: none; margin-top: 22px; max-width: 440px; font-size: 14px; line-height: 1.45; background: #1b2029; border-radius: 10px; padding: 12px 14px; }
-#tip b { color: #ff6a1a; }
-#rotate { display: none; background: #0d0f14; z-index: 5; }
+#status { background: #d3d7dc; z-index: 2; }
+.brand { font: 800 clamp(26px, 6vw, 48px)/1.1 "Archivo", system-ui, sans-serif; font-stretch: 125%; }
+.sub { color: #5a6169; margin-top: 6px; font-size: 17px; }
+#bar { width: min(420px, 70vw); height: 8px; background: #ffffff; margin-top: 28px; overflow: hidden; }
+#bar i { display: block; height: 100%; width: 0%; background: #000; transition: width 0.2s; }
+#pct { margin-top: 10px; font-size: 15px; color: #5a6169; }
+#notice { display: none; margin-top: 20px; max-width: 520px; background: #fff; border-left: 6px solid #d4261c; padding: 14px; font-size: 16px; line-height: 1.4; text-align: left; }
+#tip { display: none; margin-top: 22px; max-width: 440px; font-size: 16px; line-height: 1.45; background: #fff; padding: 12px 14px; }
+#tip b { background: #ffd200; padding: 0 3px; }
+#rotate { display: none; background: #d3d7dc; z-index: 5; }
 #rotate svg { width: 84px; height: 84px; margin-bottom: 18px; animation: tilt 2s ease-in-out infinite; }
 @keyframes tilt { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
 @media (orientation: portrait) and (max-width: 900px) { #rotate.on { display: flex; } }
@@ -43,8 +43,8 @@ $GODOT_HEAD_INCLUDE
 <noscript>Apex Circuit needs JavaScript.</noscript>
 
 <div id="status" class="overlay">
-	<div class="brand">APEX <b>CIRCUIT</b></div>
-	<div class="sub">Loading the paddock</div>
+	<div class="brand">Apex Circuit</div>
+	<div class="sub">Opening the garage</div>
 	<div id="bar"><i></i></div>
 	<div id="pct"></div>
 	<div id="tip">Play full screen: tap <b>Share</b> then <b>Add to Home Screen</b>, and open Apex Circuit from there.</div>
@@ -52,9 +52,9 @@ $GODOT_HEAD_INCLUDE
 </div>
 
 <div id="rotate" class="overlay on">
-	<svg viewBox="0 0 64 64" fill="none" stroke="#ff6a1a" stroke-width="3"><rect x="20" y="6" width="24" height="52" rx="5"/><circle cx="32" cy="50" r="2" fill="#ff6a1a"/></svg>
-	<div class="brand" style="font-size:22px">TURN YOUR PHONE SIDEWAYS</div>
-	<div class="sub" style="letter-spacing:0.05em;text-transform:none">Apex Circuit plays in landscape</div>
+	<svg viewBox="0 0 64 64" fill="none" stroke="#000" stroke-width="3"><rect x="20" y="6" width="24" height="52" rx="5"/><circle cx="32" cy="50" r="2" fill="#000"/></svg>
+	<div class="brand" style="font-size:22px">Turn your phone sideways</div>
+	<div class="sub">Apex Circuit plays in landscape</div>
 </div>
 
 <script>

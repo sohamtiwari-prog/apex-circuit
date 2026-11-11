@@ -17,6 +17,8 @@ run/main_scene="res://scenes/hub.tscn"
 config/features=PackedStringArray("4.3", "Mobile")
 config/icon="res://icon.svg"
 config/quit_on_go_back=false
+boot_splash/bg_color=Color(0.827, 0.843, 0.863, 1)
+boot_splash/show_image=false
 
 [audio]
 

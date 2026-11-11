@@ -15,6 +15,7 @@ var _car := ""
 
 
 func _ready() -> void:
+	UIStyle.use("garage")
 	save = get_node("/root/Save")
 	save.pending_event = {}
 	room = Showroom.new()
@@ -66,7 +67,7 @@ func _refresh() -> void:
 
 func _panel(min_w: float, expand := false) -> VBoxContainer:
 	var p := PanelContainer.new()
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.92), false, UIStyle.APEX, 8)
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.92), false)
 	sb.set_content_margin_all(16)
 	p.add_theme_stylebox_override("panel", sb)
 	p.custom_minimum_size = Vector2(min_w, 0)
@@ -83,7 +84,7 @@ func _panel(min_w: float, expand := false) -> VBoxContainer:
 
 func _build_setup() -> void:
 	var left := _panel(520)
-	left.add_child(UIStyle.label("Choose a championship", 30, UIStyle.PAPER, "extrabold", true))
+	left.add_child(UIStyle.label("Choose a championship", 22, UIStyle.PAPER, "display"))
 	for c in Championship.CLASSES:
 		var cars: Array = []
 		for car in c["cars"]:
@@ -104,13 +105,13 @@ func _build_setup() -> void:
 	var right := _panel(400)
 	var info := Championship.class_info(_pick_class)
 	var car := _car_in(info)
-	right.add_child(UIStyle.label(String(info["name"]), 28, UIStyle.PAPER, "extrabold", true))
+	right.add_child(UIStyle.label(String(info["name"]), 21, UIStyle.PAPER, "display"))
 	room.show_spec(save.car_spec(car, int(save.get_setting("team"))))
 	var spec: Dictionary = save.car_spec(car)
 	var crow := HBoxContainer.new()
 	crow.add_theme_constant_override("separation", 8)
 	right.add_child(crow)
-	var cl := UIStyle.label("%s  ·  PR %.1f" % [spec["name"], Garage.pr(spec)], 21, UIStyle.FOG, "bold", true)
+	var cl := UIStyle.label("%s, PR %.1f" % [spec["name"], Garage.pr(spec)], 21, UIStyle.FOG, "bold", true)
 	cl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	crow.add_child(cl)
 	var choices: Array = info["cars"]
@@ -150,6 +151,7 @@ func _build_setup() -> void:
 	var go := UIStyle.button("Start the season", func():
 		Championship.start(save, _pick_class, car, "", _rounds, _laps)
 		_refresh(), true, 34)
+	UIStyle.make_go(go, 34)
 	go.custom_minimum_size = Vector2(0, 80)
 	right.add_child(go)
 
@@ -163,7 +165,7 @@ func _build_season(s: Dictionary) -> void:
 	var done := bool(s.get("done", false))
 	# Left: rounds.
 	var left := _panel(380)
-	left.add_child(UIStyle.label(String(s["name"]), 24, UIStyle.APEX, "extrabold", true))
+	left.add_child(UIStyle.label(String(s["name"]), 24, UIStyle.PAPER, "extrabold", true))
 	for k in rounds.size():
 		var h := HBoxContainer.new()
 		h.add_theme_constant_override("separation", 10)
@@ -182,7 +184,7 @@ func _build_season(s: Dictionary) -> void:
 				if int(res[p]) == 0:
 					pos = p + 1
 					break
-			h.add_child(UIStyle.label("P%d" % pos, 20, UIStyle.APEX if pos <= 3 else UIStyle.PAPER, "bold", true))
+			h.add_child(UIStyle.label("P%d" % pos, 20, UIStyle.PAPER, "extrabold" if pos <= 3 else "bold", true))
 		elif k == r and not done:
 			h.add_child(UIStyle.label("Next", 20, UIStyle.GREEN, "bold", true))
 	var sp := Control.new()
@@ -190,23 +192,25 @@ func _build_season(s: Dictionary) -> void:
 	left.add_child(sp)
 	if done:
 		var fin := Championship.standing_of(s, 0)
-		left.add_child(UIStyle.label("Champion!" if fin == 1 else "Final position: P%d" % fin, 32, UIStyle.YELLOW if fin == 1 else UIStyle.PAPER, "extrabold", true))
+		left.add_child(UIStyle.label("Champion!" if fin == 1 else "Final position: P%d" % fin, 24, UIStyle.PAPER, "display"))
 		var nb := UIStyle.button("New season", func():
 			save.data["championship"] = {}
 			save.save()
 			_refresh(), true, 30)
+		UIStyle.make_go(nb, 30)
 		nb.custom_minimum_size = Vector2(0, 76)
 		left.add_child(nb)
 	else:
 		var go := UIStyle.button("Round %d: race weekend" % (r + 1), func():
 			save.pending_event = Championship.round_event(save)
 			get_tree().change_scene_to_file("res://scenes/race.tscn"), true, 28)
+		UIStyle.make_go(go, 28)
 		go.custom_minimum_size = Vector2(0, 80)
 		left.add_child(go)
-		var quit := UIStyle.button("Abandon season", func():
+		var quit := UIStyle.stop_button("Abandon season", func():
 			save.data["championship"] = {}
 			save.save()
-			_refresh(), false, 18)
+			_refresh(), 18)
 		quit.custom_minimum_size = Vector2(0, 46)
 		left.add_child(quit)
 
@@ -217,7 +221,7 @@ func _build_season(s: Dictionary) -> void:
 
 	# Right: standings.
 	var right := _panel(470)
-	right.add_child(UIStyle.label("Drivers' standings" if not done else "Final standings", 26, UIStyle.PAPER, "extrabold", true))
+	right.add_child(UIStyle.label("Drivers' standings" if not done else "Final standings", 20, UIStyle.PAPER, "display"))
 	var order := Championship.standings(s)
 	var me := order.find(0)
 	var shown := 0
@@ -238,13 +242,13 @@ func _build_season(s: Dictionary) -> void:
 		stripe.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		stripe.color = _driver_color(s, i)
 		row.add_child(stripe)
-		var nm := UIStyle.label(String(d["name"]), 21, UIStyle.APEX if i == 0 else UIStyle.PAPER, "bold", true)
+		var nm := UIStyle.label(String(d["name"]), 21, UIStyle.PAPER, "extrabold" if i == 0 else "bold", true)
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(nm)
 		row.add_child(UIStyle.label("%d" % int(s["points"][i]), 22, UIStyle.PAPER, "extrabold", true))
 	if String(s["class"]) == "gp":
 		var teams := Championship.team_standings(s)
-		var tl := "Teams: " + "  ·  ".join(teams.slice(0, 3).map(func(t): return "%s %d" % [String(CarSpecs.team(int(t["team"]))["name"]), int(t["points"])]))
+		var tl := "Teams: " + ", ".join(teams.slice(0, 3).map(func(t): return "%s %d" % [String(CarSpecs.team(int(t["team"]))["name"]), int(t["points"])]))
 		var lt := UIStyle.label(tl, 16, UIStyle.FOG, "semibold")
 		lt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		right.add_child(lt)

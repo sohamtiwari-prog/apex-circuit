@@ -15,6 +15,7 @@ var _car_pick := ""
 
 
 func _ready() -> void:
+	UIStyle.use("garage")
 	save = get_node("/root/Save")
 	save.pending_event = {}
 	room = Showroom.new()
@@ -65,7 +66,7 @@ func _build_ui() -> void:
 	_events.add_theme_constant_override("v_separation", 10)
 	body.add_child(_events)
 	var panel := PanelContainer.new()
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.92), false, UIStyle.APEX, 8)
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.92), false)
 	sb.set_content_margin_all(18)
 	panel.add_theme_stylebox_override("panel", sb)
 	panel.custom_minimum_size = Vector2(420, 0)
@@ -90,7 +91,7 @@ func _refresh() -> void:
 			si = k
 			ei = _first_open_event(k)
 			save.set_setting("career_series", k)
-			_refresh(), k == si, 24)
+			_refresh(), k == si, 30)
 		b.custom_minimum_size = Vector2(0, 74)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_series_box.add_child(b)
@@ -108,10 +109,9 @@ func _event_card(k: int) -> Control:
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var on := k == ei
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.9), false, UIStyle.APEX if on else Color(0, 0, 0, 0), 6)
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.9), false)
 	if on:
-		sb.set_border_width_all(3)
-		sb.border_color = UIStyle.APEX
+		UIStyle.grid_box(sb, UIStyle.PAPER)
 	for st in ["normal", "hover", "pressed", "focus"]:
 		b.add_theme_stylebox_override(st, sb)
 	b.pressed.connect(func():
@@ -129,7 +129,7 @@ func _event_card(k: int) -> Control:
 	var top := HBoxContainer.new()
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(top)
-	var t := UIStyle.label("%d  %s" % [k + 1, Career.TYPE_NAMES[ev["type"]]], 26, UIStyle.APEX if ev["type"] == "season" else UIStyle.PAPER, "extrabold", true)
+	var t := UIStyle.label("%d  %s" % [k + 1, Career.TYPE_NAMES[ev["type"]]], 26, UIStyle.PAPER, "extrabold", true)
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(t)
 	var st := StarRow.new()
@@ -166,20 +166,20 @@ static func _outline(id: String) -> PackedVector3Array:
 
 func _where(ev: Dictionary) -> String:
 	if ev["type"] == "season":
-		return "6 rounds  ·  20 cars"
+		return "6 rounds, 20 cars"
 	var tname := String(Track.catalog_entry(String(ev["track"]))["name"])
 	match String(ev["type"]):
 		"time_trial":
-			return "%s  ·  %d laps" % [tname, int(ev["laps"])]
+			return "%s, %d laps" % [tname, int(ev["laps"])]
 		"duel":
-			return "%s  ·  %d laps, 1 rival" % [tname, int(ev["laps"])]
-	return "%s  ·  %d laps, %d cars" % [tname, int(ev["laps"]), int(ev["opponents"]) + 1]
+			return "%s, %d laps, 1 rival" % [tname, int(ev["laps"])]
+	return "%s, %d laps, %d cars" % [tname, int(ev["laps"]), int(ev["opponents"]) + 1]
 
 
 func _build_detail() -> void:
 	var ev := Career.event(si, ei)
 	_detail.add_child(UIStyle.label(String(Career.SERIES[si]["name"]), 20, UIStyle.FOG, "bold", true))
-	_detail.add_child(UIStyle.label("%d. %s" % [ei + 1, Career.TYPE_NAMES[ev["type"]]], 36, UIStyle.PAPER, "extrabold", true))
+	_detail.add_child(UIStyle.label("%d. %s" % [ei + 1, Career.TYPE_NAMES[ev["type"]]], 28, UIStyle.PAPER, "display"))
 	var rules := UIStyle.label(String(Career.TYPE_RULES[ev["type"]]), 19, UIStyle.PAPER, "medium")
 	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_detail.add_child(rules)
@@ -189,7 +189,7 @@ func _build_detail() -> void:
 	var rv: Dictionary = Career.RIVALS.get(String(Career.SERIES[si]["id"]), {})
 	if not rv.is_empty():
 		var rec: Dictionary = save.data.get("rivals", {}).get(String(Career.SERIES[si]["id"]), {})
-		var line := "Rival: %s  ·  you %d - %d" % [String(rv["name"]), int(rec.get("won", 0)), int(rec.get("lost", 0))]
+		var line := "Rival: %s, you %d - %d" % [String(rv["name"]), int(rec.get("won", 0)), int(rec.get("lost", 0))]
 		_detail.add_child(UIStyle.label(line, 20, UIStyle.RED, "bold", true))
 		var bl := UIStyle.label(String(rv["blurb"]), 17, UIStyle.FOG, "medium")
 		bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -221,7 +221,7 @@ func _build_detail() -> void:
 	var spec: Dictionary = save.car_spec(_car_pick)
 	room.show_spec(spec)
 	var pr := Garage.pr(spec)
-	var car_lbl := UIStyle.label("%s  ·  PR %.1f" % [spec["name"], pr], 22, UIStyle.PAPER, "bold", true)
+	var car_lbl := UIStyle.label("%s, PR %.1f" % [spec["name"], pr], 22, UIStyle.PAPER, "bold", true)
 	car_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(car_lbl)
 	if mine.size() > 1:
@@ -241,7 +241,7 @@ func _build_detail() -> void:
 		var cur := Championship.active(save)
 		var this_season: bool = not cur.is_empty() and not bool(cur.get("done", false)) and String(cur.get("career_event", "")) == String(ev["id"])
 		label = "Carry on with the season" if this_season else "Start the season"
-	var go := UIStyle.button(label, _start, true, 38)
+	var go := UIStyle.go_button(label, _start, 38)
 	go.custom_minimum_size = Vector2(0, 84)
 	_detail.add_child(go)
 	_go_btn = go

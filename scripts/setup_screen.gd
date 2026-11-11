@@ -20,6 +20,7 @@ var _title: Label
 
 
 func _ready() -> void:
+	UIStyle.use("garage")
 	save = get_node("/root/Save")
 	room = Showroom.new()
 	add_child(room)
@@ -98,10 +99,10 @@ func _build_ui() -> void:
 			_select(ids[posmod(ids.find(car_id) + dd, ids.size())]), false, 44)
 		b.custom_minimum_size = Vector2(76, 64)
 		cars.add_child(b)
-	_title = UIStyle.label("", 36, UIStyle.PAPER, "extrabold", true)
+	_title = UIStyle.label("", 26, UIStyle.PAPER, "display")
 	cars.add_child(_title)
 	var panel := PanelContainer.new()
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.93), false, UIStyle.APEX, 8)
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.93), false)
 	sb.set_content_margin_all(16)
 	panel.add_theme_stylebox_override("panel", sb)
 	panel.custom_minimum_size = Vector2(640, 0)
@@ -135,7 +136,7 @@ func _refresh() -> void:
 		h.add_child(minus)
 		var val := int(st[key])
 		var txt := ("%d%%" % val) if key == "bias" else ("%+d" % val if val != 0 else "0")
-		var vl := UIStyle.label(txt, 28, UIStyle.APEX if val != int(base[key]) else UIStyle.PAPER, "extrabold", true)
+		var vl := UIStyle.label(txt, 28, UIStyle.PAPER if val != int(base[key]) else UIStyle.FOG, "extrabold", true)
 		vl.custom_minimum_size = Vector2(76, 0)
 		vl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		h.add_child(vl)
@@ -169,6 +170,7 @@ func _refresh() -> void:
 	var go := UIStyle.button("Drive it", func():
 		save.set_setting("car", car_id)
 		get_tree().change_scene_to_file("res://scenes/menu.tscn"), true, 28)
+	UIStyle.make_go(go, 28)
 	go.custom_minimum_size = Vector2(0, 66)
 	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(go)

@@ -15,13 +15,14 @@ func _run() -> void:
 	var save: Node = root.get_node("Save")
 	save.data = save.default_profile()
 	save.data["rank_points"] = 1290
-	var menu: Node = (load("res://scenes/menu.tscn") as PackedScene).instantiate()
+	var menu: Node = (load("res://scenes/hub.tscn") as PackedScene).instantiate()
 	root.add_child(menu)
 	await _shot(out + "/r1_menu.png")
-	menu._show_ladder()
+	RankCard.show_ladder(menu.ui, save)
 	await _shot(out + "/r2_ladder.png")
 	menu.queue_free()
 	await process_frame
+	UIStyle.use("board")
 	# Results with a promotion (Gold III -> Gold II).
 	var bg := ColorRect.new()
 	bg.color = Color(0.2, 0.24, 0.22)
@@ -33,7 +34,7 @@ func _run() -> void:
 	var rows := []
 	var names := ["Novak", "You", "Okafor", "Lindqvist", "Moreau", "Tanaka"]
 	for i in names.size():
-		rows.append({"pos": i + 1, "name": names[i], "team": i, "gap": "" if i == 0 else "+%.3f" % (i * 1.7), "best": "1:2%d.4%d1" % [i, i],
+		rows.append({"pos": i + 1, "name": names[i], "team": ["Apex Racing", "Kestrel", "Volta", "Northwind", "Aurum", "Halcyon"][i], "gap": "" if i == 0 else "+%.3f" % (i * 1.7), "best": "1:2%d.4%d1" % [i, i],
 			"player": names[i] == "You", "color": Color.ORANGE, "fastest": i == 1})
 	var award: Dictionary = Ranks.race_points(2, 20, "hard", 5, true, false)
 	hud.show_results(rows, func(): pass, func(): pass, "Race again", {"award": award, "before": 1290, "after": 1290 + int(award["total"])})

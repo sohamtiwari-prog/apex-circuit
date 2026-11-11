@@ -34,18 +34,14 @@ var _chat_lbl: Label
 
 
 func _ready() -> void:
+	UIStyle.use("garage")
 	save = get_node("/root/Save")
 	Net = get_node("/root/Net")
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
-	bg.color = UIStyle.INK
+	bg.color = UIStyle.CONCRETE
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
-	var stripe := ColorRect.new()
-	stripe.color = UIStyle.APEX
-	stripe.position = Vector2(0, 0)
-	stripe.size = Vector2(8, 4000)
-	add_child(stripe)
 	_build_connect_view()
 	_build_lobby_view()
 	Net.joined.connect(_on_joined)
@@ -108,16 +104,7 @@ func _field(placeholder: String, text: String, width := 0.0) -> LineEdit:
 	e.text = text
 	e.add_theme_font_override("font", UIStyle.font("semibold"))
 	e.add_theme_font_size_override("font_size", 24)
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC_2, 1.0), false, Color(0, 0, 0, 0), 4)
-	sb.content_margin_left = 14
-	sb.border_color = Color(UIStyle.PAPER, 0.2)
-	sb.set_border_width_all(2)
-	var fsb := sb.duplicate() as StyleBoxFlat
-	fsb.border_color = UIStyle.APEX
-	e.add_theme_stylebox_override("normal", sb)
-	e.add_theme_stylebox_override("focus", fsb)
-	e.add_theme_color_override("font_color", UIStyle.PAPER)
-	e.add_theme_color_override("font_placeholder_color", UIStyle.FOG)
+	UIStyle.field(e)
 	e.custom_minimum_size = Vector2(width, 56)
 	if width == 0.0:
 		e.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -126,7 +113,7 @@ func _field(placeholder: String, text: String, width := 0.0) -> LineEdit:
 
 func _section(parent: Node, title: String, note: String) -> VBoxContainer:
 	var panel := PanelContainer.new()
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.95), false, UIStyle.APEX, 6)
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.95), false)
 	sb.set_content_margin_all(18)
 	panel.add_theme_stylebox_override("panel", sb)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -134,7 +121,7 @@ func _section(parent: Node, title: String, note: String) -> VBoxContainer:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
 	panel.add_child(v)
-	v.add_child(UIStyle.label(title, 30, UIStyle.PAPER, "extrabold", true))
+	v.add_child(UIStyle.label(title, 24, UIStyle.PAPER, "display"))
 	var n := UIStyle.label(note, 19, UIStyle.FOG, "medium")
 	n.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(n)
@@ -160,10 +147,11 @@ func _build_connect_view() -> void:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 14)
 	root.add_child(head)
-	var back := UIStyle.button("‹", func(): _to_menu(), false, 44)
-	back.custom_minimum_size = Vector2(76, 60)
-	head.add_child(back)
-	head.add_child(UIStyle.label("Race with friends", 44, UIStyle.PAPER, "extrabold", true))
+	head.add_child(UIStyle.back_button(func(): _to_menu()))
+	var title := UIStyle.label("Race with friends", 30, UIStyle.PAPER, "display")
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title.size_flags_vertical = Control.SIZE_FILL
+	head.add_child(title)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(sp)
@@ -191,9 +179,9 @@ func _build_connect_view() -> void:
 			box = box.get_parent()
 		if box != null:
 			(box as Control).visible = false
-	var host_lan := UIStyle.button("Host a game here", func():
+	var host_lan := UIStyle.go_button("Host a game here", func():
 		if Net.host_lan(_my_name()):
-			_enter_as_host(), true, 26)
+			_enter_as_host(), 30)
 	host_lan.custom_minimum_size = Vector2(0, 66)
 	lan.add_child(host_lan)
 	lan.add_child(UIStyle.label("Games nearby", 20, UIStyle.FOG, "semibold"))
@@ -222,7 +210,7 @@ func _build_connect_view() -> void:
 
 	# Online.
 	var online := _section(cols, "Online", "Friends anywhere, over mobile data or any Wi-Fi. Create a game and send them its 4-letter code. Uses free public servers: nothing to set up.")
-	var host_online := UIStyle.button("Create an online game", func(): _create_online(), true, 26)
+	var host_online := UIStyle.go_button("Create an online game", func(): _create_online(), 30)
 	host_online.custom_minimum_size = Vector2(0, 66)
 	online.add_child(host_online)
 	var coderow := HBoxContainer.new()
@@ -258,7 +246,7 @@ func _update_my_ip() -> void:
 		_my_ip_lbl.text = "This phone isn't on Wi-Fi or a hotspot yet."
 		_my_ip_lbl.add_theme_color_override("font_color", UIStyle.YELLOW)
 	else:
-		_my_ip_lbl.text = "This phone: %s" % "  ·  ".join(ips)
+		_my_ip_lbl.text = "This phone: %s" % ", ".join(ips)
 		_my_ip_lbl.add_theme_color_override("font_color", UIStyle.FOG)
 
 
@@ -394,7 +382,7 @@ func _build_lobby_view() -> void:
 		chat.add_child(b)
 
 	var right := PanelContainer.new()
-	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.95), false, UIStyle.APEX, 6)
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.95), false)
 	sb.set_content_margin_all(18)
 	right.add_theme_stylebox_override("panel", sb)
 	right.custom_minimum_size = Vector2(430, 0)
@@ -442,13 +430,13 @@ func _build_lobby_view() -> void:
 	_wait_label = UIStyle.label("The host picks the track and starts the race.", 22, UIStyle.FOG, "semibold")
 	_wait_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rv.add_child(_wait_label)
-	_start_btn = UIStyle.button("Start race", func(): _start_race(), true, 40)
+	_start_btn = UIStyle.go_button("Start race", func(): _start_race(), 40)
 	_start_btn.custom_minimum_size = Vector2(0, 86)
 	rv.add_child(_start_btn)
-	var leave := UIStyle.button("Leave", func():
+	var leave := UIStyle.stop_button("Leave", func():
 		Net.leave()
 		_players().clear()
-		_show_connect(), false, 24)
+		_show_connect(), 24)
 	leave.custom_minimum_size = Vector2(0, 56)
 	rv.add_child(leave)
 
@@ -518,7 +506,7 @@ func _refresh_lobby() -> void:
 		badge.custom_minimum_size = Vector2(30, 34)
 		badge.rp = rp
 		h.add_child(badge)
-		var tier := UIStyle.label(Ranks.tier_name(rp), 18, Ranks.tier_color(rp) if int(id) != Net.my_id else UIStyle.INK, "extrabold", true)
+		var tier := UIStyle.label(Ranks.tier_name(rp), 18, (UIStyle.PAPER if UIStyle.light() else Ranks.tier_color(rp)) if int(id) != Net.my_id else UIStyle.INK, "extrabold", true)
 		tier.custom_minimum_size = Vector2(110, 0)
 		h.add_child(tier)
 		var n := UIStyle.label(String(p["name"]) + ("  (host)" if int(id) == 1 else ""), 24, ink, "bold")

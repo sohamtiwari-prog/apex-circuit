@@ -220,15 +220,15 @@ func _update_flags(p) -> void:
 			var lim := int(round(rc.vsc_limit(race.car) * 3.6))
 			match rc.sc_phase:
 				1:
-					_set_flag("sc", ("SAFETY CAR  ·  max %d km/h until it's out" % lim) if rc.limit_on() else "SAFETY CAR  ·  no overtaking, close up")
+					_set_flag("sc", ("SAFETY CAR: max %d km/h until it's out" % lim) if rc.limit_on() else "SAFETY CAR: no overtaking, close up")
 				2:
 					_set_flag("sc", "SAFETY CAR IN THIS LAP")
 				_:
-					_set_flag("sc", "RESTART  ·  racing resumes at the line")
+					_set_flag("sc", "RESTART: racing resumes at the line")
 			return
 		if rc.vsc:
 			var lim := int(round(rc.vsc_limit(race.car) * 3.6))
-			_set_flag("vsc", ("VSC ENDING  ·  max %d km/h" if rc.vsc_ending else "VIRTUAL SAFETY CAR  ·  max %d km/h") % lim)
+			_set_flag("vsc", ("VSC ENDING: max %d km/h" if rc.vsc_ending else "VIRTUAL SAFETY CAR: max %d km/h") % lim)
 			return
 		var here := rc.flag_at(p.idx)
 		double = here == 2

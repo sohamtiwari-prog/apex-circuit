@@ -181,6 +181,7 @@ var engineer: RaceEngineer             # radio, flags, vibration
 
 
 func _ready() -> void:
+	UIStyle.use("board")
 	save = get_node("/root/Save")
 	Net = get_node("/root/Net")
 	car_id = String(save.get_setting("car"))

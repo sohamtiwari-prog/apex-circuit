@@ -209,7 +209,7 @@ func _gp_decals() -> void:
 func _decal(text: String, pos: Vector3, rot: Vector3, px: float, col: Color, size: int) -> Label3D:
 	var l := Label3D.new()
 	l.text = text
-	l.font = UIStyle.font("extrabold", true)
+	l.font = UIStyle.world_font("extrabold", true)
 	l.font_size = size
 	l.pixel_size = px
 	l.modulate = col
@@ -840,7 +840,7 @@ func _road_details(shape: Dictionary, col: Color, dark: Color) -> void:
 func _plate_text(pos: Vector3, rear: bool) -> void:
 	var l := Label3D.new()
 	l.text = "AC " + String(spec["id"]).substr(0, 2).to_upper() + " 26"
-	l.font = UIStyle.font("bold", false)
+	l.font = UIStyle.world_font("bold", false)
 	l.font_size = 36
 	l.pixel_size = 0.0022
 	l.modulate = Color(0.08, 0.08, 0.1)

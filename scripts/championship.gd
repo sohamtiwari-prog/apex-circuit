@@ -40,11 +40,11 @@ static func summary(save: Node) -> String:
 	var s := active(save)
 	if s.is_empty():
 		var n: int = (save.data.get("trophies", []) as Array).size()
-		return "Start a season" + ("  ·  %d trophies" % n if n > 0 else "")
+		return "Start a season" + (", %d trophies" % n if n > 0 else "")
 	if bool(s.get("done", false)):
 		return "Season over: see the final standings"
 	var me := standing_of(s, 0)
-	return "Round %d of %d  ·  you're P%d" % [int(s["round"]) + 1, (s["rounds"] as Array).size(), me]
+	return "Round %d of %d, you're P%d" % [int(s["round"]) + 1, (s["rounds"] as Array).size(), me]
 
 
 ## Starts a new season (replacing any season in progress).

@@ -565,7 +565,18 @@ advertising boards, armco, tyre barriers and catch fencing; a start gantry
 whose lights run the start; pit lane and garages in team colours; grandstands
 with crowds; bridges; marshal posts; TV camera towers; flagpoles; trees (broadleaf, conifer, palm); distant hills; city
 blocks with facades. Skid marks stay on the track and tyres smoke when they
-slide. The UI uses Saira Condensed (SIL Open Font License, `fonts/OFL.txt`).
+slide.
+
+**The look of the screens.** The menus are a team garage in daylight: a
+pale room with the car on a turntable, its grid box painted round it, and
+flat white boards with black type. In the race the HUD is pit boards:
+solid black with white figures. Colours mean one thing each, like flags:
+green starts something (Race, Start, Drive it), yellow is you and what
+you've picked, red leaves; purple and green on lap times keep their timing
+meaning. Type is Archivo Expanded for the few loudest things (screen
+titles, go buttons, your position) and Barlow Semi Condensed for the rest;
+numbers on the cars and signs round the tracks keep Saira Condensed. All
+three are under the SIL Open Font License (`fonts/OFL-*.txt`, `fonts/OFL.txt`).
 The camera button cycles chase, far chase and the car's onboard cameras
 (GP car: cockpit, T-cam, nose; GT: hood, bumper). On a computer: arrows/WASD, Space to brake,
 C for camera, R to reset, Esc to pause.
