@@ -293,7 +293,7 @@ jobs:
 
       - name: The browser version starts (headless Chromium)
         run: |
-          pip install --quiet playwright==1.47.0 && python3 -m playwright install --with-deps chromium > /dev/null
+          pip install --quiet playwright==1.47.0 && { python3 -m playwright install --with-deps chromium > /dev/null || { echo '(system packages unreachable: browser only)'; python3 -m playwright install chromium > /dev/null; }; }
           (cd build/web && python3 -m http.server 8765 > /dev/null 2>&1 &)
           sleep 1
           timeout 1200 python3 .github/web_smoke.py http://127.0.0.1:8765/index.html
