@@ -20,6 +20,10 @@ func _run() -> void:
 	var save: Node = root.get_node("Save")
 	save.data = save.default_profile()
 	save.data["rank_points"] = 640
+	# APEX_LOOK=light|dark picks the menus' look for the shots.
+	save.data["settings"]["look"] = OS.get_environment("APEX_LOOK") if OS.get_environment("APEX_LOOK") != "" else "light"
+	save.data["settings"]["player_name"] = "Soham"
+	save.data["driver"] = {"created": true, "name": "Soham", "number": 26, "helmet": "ffd200", "helmet2": "000000", "id": "d1"}
 	save.data["career"] = {"club_1": 3, "club_2": 2, "club_3": 3, "club_4": 1, "club_5": 2}
 	await _open("res://scenes/hub.tscn")
 	await _shot(out + "/g1_hub.png")
@@ -42,4 +46,14 @@ func _run() -> void:
 	save.data["best_laps"] = {"silvermoor|gp26": 102345, "marina|vanta_gt": 131020, "styria|marauder": 111640}
 	await _open("res://scenes/profile.tscn")
 	await _shot(out + "/g8_profile.png")
+	await _open("res://scenes/driver.tscn")
+	await _shot(out + "/g9_driver.png")
+	# The first visit: no driver yet, so home sends you to make one.
+	save.data["driver"]["created"] = false
+	save.data["driver"]["name"] = ""
+	await _open("res://scenes/hub.tscn")
+	for i in 4:
+		await process_frame
+	await _shot(out + "/g0_create.png")
+	save.data = save.default_profile()
 	quit(0)

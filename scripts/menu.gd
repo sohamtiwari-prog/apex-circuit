@@ -30,7 +30,7 @@ var _owned_lbl: Label
 
 
 func _ready() -> void:
-	UIStyle.use("garage")
+	UIStyle.use_menus()
 	save = get_node("/root/Save")
 	DisplayServer.screen_set_keep_on(true)
 	car_ids = Array(CarSpecs.CATALOG)
@@ -38,6 +38,7 @@ func _ready() -> void:
 		track_ids.append(t["id"])
 	_build_stage()
 	_build_ui()
+	UIStyle.reveal_boards.call_deferred(self)
 	_select_team(int(save.get_setting("team")), false)
 	_select_car(String(save.get_setting("car")), false)
 	_select_track(String(save.get_setting("track")), false)
@@ -302,6 +303,17 @@ func _build_track_side(cols: Control) -> void:
 	_ghost_status = UIStyle.label("", 18, UIStyle.FOG, "semibold")
 	_ghost_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(_ghost_status)
+	# ...and send yours: your best lap on this track in this car, as a code.
+	_share_row = HBoxContainer.new()
+	_share_row.add_theme_constant_override("separation", 8)
+	v.add_child(_share_row)
+	_share_lbl = UIStyle.label("", 21, UIStyle.PAPER, "bold")
+	_share_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_share_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_share_row.add_child(_share_lbl)
+	_share_btn = UIStyle.button("Share my lap", _share_ghost, false, 22)
+	_share_btn.custom_minimum_size = Vector2(0, 52)
+	_share_row.add_child(_share_btn)
 	var go := UIStyle.go_button("Race", _start, 46)
 	go.custom_minimum_size = Vector2(0, 76)
 	v.add_child(go)
@@ -379,7 +391,11 @@ func _refresh_mode() -> void:
 		_ghost_row.visible = mode == "time_trial"
 		_ghost_status.visible = mode == "time_trial"
 		if _ghost_status.text == "":
-			_ghost_status.text = "A friend's code races their best lap as a ghost: their track, their car. Share yours from the results."
+			_ghost_status.text = "A friend's code races their best lap as a ghost, on their track in their car."
+		_share_row.visible = mode == "time_trial"
+		var best: int = save.get_best_lap(save.lap_key(String(save.get_setting("track")), String(save.get_setting("car"))))
+		_share_lbl.text = ("Your best here  %s" % UIStyle.fmt_time(best / 1000.0)) if best >= 0 else "No lap here yet in this car"
+		_share_btn.disabled = best < 0 or GhostShare.saved_lap(save.lap_key(String(save.get_setting("track")), String(save.get_setting("car")))).size() <= 14 * 7
 	if _type_rule != null:
 		_type_rule.visible = mode == "race"
 		_type_rule.text = String(TYPE_HINTS.get(rt, ""))
@@ -480,10 +496,37 @@ func _refresh_info() -> void:
 
 var _ghost_row: HBoxContainer
 var _ghost_code: LineEdit
+var _share_row: HBoxContainer
+var _share_lbl: Label
+var _share_btn: Button
 var _ghost_status: Label
 
 
 ## Fetch a friend's lap by its code, then race it.
+## Your best lap here as a ghost code: copied, and on a phone straight into
+## WhatsApp with a message saying what to do with it.
+func _share_ghost() -> void:
+	var tid := String(save.get_setting("track"))
+	var cid := String(save.get_setting("car"))
+	_share_btn.disabled = true
+	_share_btn.text = "Sending..."
+	var gs := GhostShare.new()
+	add_child(gs)
+	gs.done.connect(func(ok, res):
+		gs.queue_free()
+		_share_btn.disabled = false
+		_share_btn.text = "Share my lap"
+		if not ok:
+			_ghost_status.text = String(res)
+			return
+		var code := String(res)
+		DisplayServer.clipboard_set(code)
+		_ghost_status.text = "Your ghost code is %s (copied). A friend types it here, in Time trial." % code
+		if OS.has_feature("mobile"):
+			OS.shell_open("https://wa.me/?text=" + GhostShare.invite_text(save, String(Track.catalog_entry(tid)["name"]), save.get_best_lap(save.lap_key(tid, cid)), code).uri_encode()))
+	gs.share_best(save, tid, cid, 20.0)
+
+
 func _fetch_ghost() -> void:
 	var code := GhostShare.clean_code(_ghost_code.text)
 	if code.length() < 6:

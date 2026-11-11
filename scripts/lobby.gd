@@ -34,12 +34,12 @@ var _chat_lbl: Label
 
 
 func _ready() -> void:
-	UIStyle.use("garage")
+	UIStyle.use_menus()
 	save = get_node("/root/Save")
 	Net = get_node("/root/Net")
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
-	bg.color = UIStyle.CONCRETE
+	bg.color = UIStyle.ROOM
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 	_build_connect_view()

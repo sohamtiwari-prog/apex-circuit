@@ -15,7 +15,7 @@ var _car := ""
 
 
 func _ready() -> void:
-	UIStyle.use("garage")
+	UIStyle.use_menus()
 	save = get_node("/root/Save")
 	save.pending_event = {}
 	room = Showroom.new()
@@ -23,6 +23,7 @@ func _ready() -> void:
 	room.build(Vector3(5.0, 1.8, 6.2), Vector3(-1.2, 0.0, 1.8), 40.0)
 	room.spin = 0.12
 	_build_ui()
+	UIStyle.reveal_boards.call_deferred(self)
 	_refresh()
 
 

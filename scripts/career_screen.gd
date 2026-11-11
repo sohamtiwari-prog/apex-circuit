@@ -15,7 +15,7 @@ var _car_pick := ""
 
 
 func _ready() -> void:
-	UIStyle.use("garage")
+	UIStyle.use_menus()
 	save = get_node("/root/Save")
 	save.pending_event = {}
 	room = Showroom.new()
@@ -25,6 +25,7 @@ func _ready() -> void:
 	si = clampi(int(save.get_setting("career_series")), 0, Career.SERIES.size() - 1)
 	ei = _first_open_event(si)
 	_build_ui()
+	UIStyle.reveal_boards.call_deferred(self)
 	_refresh()
 
 

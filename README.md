@@ -153,9 +153,14 @@ friends see it too (it goes with your car in the lobby).
 
 ## Ghost challenges
 
-After a time trial, **Share lap** on the results sends your best lap on that
-track in that car to the free relay servers under a 6-character code (copied,
-and on a phone WhatsApp opens with a message). A friend types the code in
+**Send yours:** Quick race → **Time trial**, pick the track and car, and
+under the code box it shows your best lap there: **Share my lap** sends it
+to the free relay servers under a 6-character code (copied, and on a phone
+WhatsApp opens with a message saying what to do with it). Mid-session it's
+also in the pause menu (**Share my best lap**). You need one clean lap on
+that track in that car first.
+
+**Race theirs:** a friend types the code in
 Quick race → Time trial → **Race their lap**: their track and car load, your
 lap drives as a ghost in your paint, and each lap they're told how far off
 (or ahead of) you they were. No need to be online at the same time.
@@ -567,9 +572,15 @@ with crowds; bridges; marshal posts; TV camera towers; flagpoles; trees (broadle
 blocks with facades. Skid marks stay on the track and tyres smoke when they
 slide.
 
-**The look of the screens.** The menus are a team garage in daylight: a
-pale room with the car on a turntable, its grid box painted round it, and
-flat white boards with black type. In the race the HUD is pit boards:
+**The look of the screens.** The menus are a team garage: the car on a
+turntable with its grid box painted round it, wheels stood against the
+cabinets, a red tool chest and the timing screen on the wall. **Light**
+is the garage by day, white boards and black type; **Dark** is the garage
+at night, black boards and white type; **Match phone** follows the
+phone's dark mode (Your driver → Look, or the moon/sun on the home
+screen). Home has your driver card (helmet, number, rank), the next
+event in your career with **Race** straight into it, and a drawn icon
+for each way to play. In the race the HUD is pit boards:
 solid black with white figures. Colours mean one thing each, like flags:
 green starts something (Race, Start, Drive it), yellow is you and what
 you've picked, red leaves; purple and green on lap times keep their timing
@@ -581,7 +592,25 @@ The camera button cycles chase, far chase and the car's onboard cameras
 (GP car: cockpit, T-cam, nose; GT: hood, bumper). On a computer: arrows/WASD, Space to brake,
 C for camera, R to reset, Esc to pause.
 
-## Progress is never lost
+## Your driver and your progress
+
+The first time the game opens you **create your driver**: a name (what
+friends see on the grid), a race number and two helmet colours. The helmet
+is your picture on the home screen. Tap your card on the home screen to
+change any of it.
+
+**Several drivers on one phone** (Your driver → Drivers on this phone →
+Add a driver): each has their own rank, career, records, paint, setups and
+ghost laps; **Drive** switches seats without losing anyone's progress.
+
+**Moving to another phone or the browser:** Your driver → **Copy my backup
+code** puts all your progress on the clipboard as one line of text (paste
+it into a chat to yourself or a note). On the other phone, paste it into
+**Restore** (on Create your driver, or on Your driver). It comes in as a
+driver of its own, so nothing on that phone is overwritten; best-lap ghosts
+stay behind. On Android the save is also in the phone's Google backup.
+
+### Progress is never lost
 
 The profile (`user://save/profile.json`) is written atomically: a temp file is
 written, verified, the previous save is copied to a backup, then the temp
@@ -637,7 +666,10 @@ scripts/
   daily.gd           the daily challenge
   profile_screen.gd  driver profile and trophy cabinet
   tyres.gd           compounds, wear and wet grip
-  showroom.gd        the turntable behind the menus
+  showroom.gd        the team garage behind the menus (day and night): turntable, wheels, timing screen
+  driver_screen.gd   your driver: name, number, helmet; the look; drivers on this phone; backup code
+  helmet_badge.gd    your helmet drawn as your picture
+  ui_icon.gd         the drawn icons on the menus
   hud.gd             timing tower, lap timing, pause menu, classification
   touch_controls.gd  multi-touch pedals and steering buttons
   save_manager.gd    crash-safe profile saving (autoload "Save")
@@ -670,6 +702,7 @@ tests/
   race_types_test.gd checkpoint run (the clock, the gates, the best), eliminator, duel, from the back
   party_test.gd      party modes with friends: team split, eliminator settings, series points, rematch grid
   paint_test.gd      your own paint: on your car, off again, sent to friends
+  driver_test.gd     drivers: create, switch seats, backup code and restore, the look setting
   setup_test.gd      car setup: each setting does what it says; a clean lap at the extremes
   ghost_test.gd      ghost challenges: a lap packed small and back, sent under a code and fetched
   rival_test.gd      career rivals (on the grid, quicker, the duel, head to head) and star rewards

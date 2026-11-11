@@ -318,6 +318,8 @@ func _ready() -> void:
 	replay.setup(self)
 	replay.finished.connect(_on_replay_closed)
 	hud.replay_requested.connect(func(): watch_replay(true))
+	hud.share_requested.connect(share_from_pause)
+	hud.share_available = mode == "time_trial" and ev_type == "" and net == null
 	hud.spectate_step.connect(spectate_step)
 	hud.spectate_close.connect(func(): spectate(false))
 	hud.replay_available = net == null
@@ -2160,7 +2162,7 @@ func gap_text(a: Entrant, b: Entrant) -> String:
 # ------------------------------------------------------------ ghost car
 
 func _ghost_path() -> String:
-	return "user://ghosts/%s.bin" % lap_key.replace("|", "__")
+	return GhostShare.ghost_path(lap_key)
 
 
 func _load_ghost() -> void:
@@ -2223,20 +2225,27 @@ func _add_share_button() -> void:
 
 ## Time trial: send your best lap here to a friend as a code.
 func share_lap(on_done: Callable) -> void:
-	var g := best_ghost()
-	var best: int = save.get_best_lap(lap_key)
-	if g.size() <= 14 * 7 or best < 0:
-		on_done.call(false, "Set a clean lap first")
-		return
-	var name := String(save.get_setting("player_name"))
-	var info := {"v": 1, "track": track_id, "car": car_id, "team": int(save.get_setting("team")),
-		"paint": save.my_paint(car_id), "name": name if name != "" else "A friend", "lap_ms": best}
 	var gs := GhostShare.new()
 	add_child(gs)
 	gs.done.connect(func(ok, res):
 		on_done.call(ok, res)
 		gs.queue_free())
-	gs.upload(GhostShare.pack(g, GHOST_HZ, info))
+	gs.share_best(save, track_id, car_id, GHOST_HZ, best_ghost())
+
+
+## The pause menu's "Share my best lap" (a time trial never ends on its own,
+## so this is where you share from mid-session).
+func share_from_pause() -> void:
+	hud.show_banner("Sending your best lap...", UIStyle.PURPLE, 3.0)
+	share_lap(func(ok: bool, res: Variant):
+		if not ok:
+			hud.show_banner(String(res), UIStyle.YELLOW, 4.0)
+			return
+		var code := String(res)
+		DisplayServer.clipboard_set(code)
+		hud.show_banner("Ghost code %s copied: a friend types it in Quick race, Time trial" % code, UIStyle.PURPLE, 8.0)
+		if OS.has_feature("mobile"):
+			OS.shell_open("https://wa.me/?text=" + GhostShare.invite_text(save, track.track_name, save.get_best_lap(lap_key), code).uri_encode()))
 
 
 func ghost_ready() -> bool:

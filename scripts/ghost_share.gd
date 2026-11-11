@@ -74,6 +74,47 @@ static func unpack(bytes: PackedByteArray, hz: float) -> Dictionary:
 	return info
 
 
+## Where a best lap's ghost is kept (race.gd writes it after a best lap).
+static func ghost_path(lap_key: String) -> String:
+	return "user://ghosts/%s.bin" % lap_key.replace("|", "__")
+
+
+## Your saved best lap on a track in a car (race.gd's samples), or empty.
+static func saved_lap(lap_key: String) -> PackedFloat32Array:
+	var p := ghost_path(lap_key)
+	if FileAccess.file_exists(p):
+		var f := FileAccess.open(p, FileAccess.READ)
+		var v: Variant = f.get_var()
+		if v is PackedFloat32Array:
+			return v
+	return PackedFloat32Array()
+
+
+## What goes with a shared lap: where, in what, by whom, how fast.
+static func info_for(save: Node, track_id: String, car_id: String, lap_ms: int) -> Dictionary:
+	var name := String(save.get_setting("player_name"))
+	return {"v": 1, "track": track_id, "car": car_id, "team": int(save.get_setting("team")),
+		"paint": save.my_paint(car_id), "name": name if name != "" else "A friend", "lap_ms": lap_ms}
+
+
+## Share your best lap on a track in a car from anywhere (the Quick race
+## screen, the pause menu): done(true, code) or done(false, why).
+func share_best(save: Node, track_id: String, car_id: String, hz: float, samples := PackedFloat32Array()) -> void:
+	var key: String = save.lap_key(track_id, car_id)
+	var g := samples if samples.size() > 14 * 7 else saved_lap(key)
+	var best: int = save.get_best_lap(key)
+	if g.size() <= 14 * 7 or best < 0:
+		done.emit.call_deferred(false, "Drive a clean lap here first")
+		return
+	upload(pack(g, hz, info_for(save, track_id, car_id, best)))
+
+
+## The message a friend gets.
+static func invite_text(save: Node, track_name: String, lap_ms: int, code: String) -> String:
+	return "Beat my %s lap at %s in Apex Circuit! Open Quick race, pick Time trial and type ghost code %s" % [
+		UIStyle.fmt_time(float(lap_ms) / 1000.0), track_name, code]
+
+
 static func new_code() -> String:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()

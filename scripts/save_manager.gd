@@ -12,7 +12,12 @@ const SAVE_DIR := "user://save"
 const SAVE_PATH := SAVE_DIR + "/profile.json"
 const BACKUP_PATH := SAVE_DIR + "/profile.bak.json"
 const TMP_PATH := SAVE_DIR + "/profile.tmp.json"
-const SCHEMA_VERSION := 6
+const SCHEMA_VERSION := 7
+## Other drivers on this phone wait here (<id>.json, and <id>_ghosts/ for
+## their best-lap ghosts) while someone else drives.
+const DRIVERS_DIR := SAVE_DIR + "/drivers"
+const GHOSTS_DIR := "user://ghosts"
+const BACKUP_PREFIX := "APEX1:"
 
 signal saved
 
@@ -100,6 +105,7 @@ const _DEFAULTS := {
 		"race_control": true,       # flags, penalties, VSC, retirements (scripts/race_control.gd)
 		"pit_mode": "manual",       # manual: you drive the pit lane; auto: the car drives itself
 		"ideal_ghost": false,       # the ideal-lap ghost car (races and time trial)
+		"look": "auto",             # menus: "light", "dark" or "auto" (match the phone)
 	},
 	"best_laps": {},                  # "track|car" -> milliseconds
 	"best_sectors": {},               # "track|car" -> [ms, ms, ms], best of each sector
@@ -121,6 +127,8 @@ const _DEFAULTS := {
 	"paint": {},                     # car id -> your own paint (CarSpecs.apply_paint)
 	"setup": {},                     # car id -> your setup (CarSpecs.apply_setup)
 	"rivals": {},                    # series id -> {"won": n, "lost": n} against its rival
+	# Who's driving: made on the first visit (scripts/driver_screen.gd).
+	"driver": {"id": "", "created": false, "name": "", "number": 26, "helmet": "ffd200", "helmet2": "000000"},
 }
 
 
@@ -262,6 +270,16 @@ func _migrate(profile: Dictionary) -> void:
 		if dir != null:
 			for f in dir.get_files():
 				dir.remove(f)
+	# v7: drivers. A save with progress in it already belongs to someone.
+	var d: Dictionary = profile["driver"]
+	if String(d.get("id", "")) == "":
+		d["id"] = new_driver_id()
+	if not bool(d.get("created", false)):
+		var used: bool = int(profile.get("ranked_races", 0)) > 0 or not (profile["career"] as Dictionary).is_empty() \
+			or not (profile["best_laps"] as Dictionary).is_empty() or String(st.get("player_name", "")) != ""
+		if used:
+			d["created"] = true
+			d["name"] = String(st.get("player_name", "")) if String(st.get("player_name", "")) != "" else "Driver"
 	profile["schema"] = SCHEMA_VERSION
 
 
@@ -393,6 +411,182 @@ func assist_level(key: String) -> float:
 		"moderate":
 			return 0.5
 	return 0.0
+
+
+# ---------------------------------------------------------------- drivers
+
+static func new_driver_id() -> String:
+	var chars := "abcdefghjkmnpqrstuvwxyz23456789"
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var id := ""
+	for i in 8:
+		id += chars[rng.randi_range(0, chars.length() - 1)]
+	return id
+
+
+func driver() -> Dictionary:
+	return data["driver"]
+
+
+## Name, number and helmet (and the multiplayer name goes with the name).
+func set_driver(name: String, number: int, helmet: String, helmet2: String) -> void:
+	var d := driver()
+	d["name"] = name.strip_edges().substr(0, 16)
+	d["number"] = clampi(number, 1, 99)
+	d["helmet"] = helmet.trim_prefix("#")
+	d["helmet2"] = helmet2.trim_prefix("#")
+	d["created"] = true
+	data["settings"]["player_name"] = d["name"]
+	save()
+
+
+## Everyone who drives on this phone: you first, then the others by name.
+## Each: id, name, number, helmet, helmet2, rp, active.
+func drivers() -> Array:
+	var me := driver()
+	var out: Array = [{"id": me["id"], "name": me["name"], "number": me["number"], "helmet": me["helmet"],
+		"helmet2": me["helmet2"], "rp": int(data.get("rank_points", 0)), "active": true}]
+	var dir := DirAccess.open(DRIVERS_DIR)
+	if dir == null:
+		return out
+	var rest: Array = []
+	for f in dir.get_files():
+		if not f.ends_with(".json"):
+			continue
+		var p: Variant = _read(DRIVERS_DIR + "/" + f)
+		if p == null or not (p as Dictionary).has("driver"):
+			continue
+		var d: Dictionary = p["driver"]
+		rest.append({"id": String(d.get("id", f.get_basename())), "name": String(d.get("name", "Driver")),
+			"number": int(d.get("number", 26)), "helmet": String(d.get("helmet", "ffd200")),
+			"helmet2": String(d.get("helmet2", "000000")), "rp": int(p.get("rank_points", 0)), "active": false})
+	rest.sort_custom(func(a, b): return String(a["name"]).naturalnocasecmp_to(String(b["name"])) < 0)
+	return out + rest
+
+
+## Puts the current driver aside (their save and their ghost laps).
+## (A seat nobody has sat in yet, a driver never created, is just cleared.)
+func _park() -> void:
+	if not bool(driver().get("created", false)):
+		if DirAccess.dir_exists_absolute(GHOSTS_DIR):
+			_remove_dir(GHOSTS_DIR)
+		return
+	save()
+	DirAccess.make_dir_recursive_absolute(DRIVERS_DIR)
+	var id := String(driver()["id"])
+	DirAccess.copy_absolute(SAVE_PATH, DRIVERS_DIR + "/%s.json" % id)
+	var gd := DRIVERS_DIR + "/%s_ghosts" % id
+	if DirAccess.dir_exists_absolute(gd):
+		_remove_dir(gd)
+	if DirAccess.dir_exists_absolute(GHOSTS_DIR):
+		DirAccess.rename_absolute(GHOSTS_DIR, gd)
+
+
+## A clean seat: a new driver to create (driver_screen.gd asks who).
+func new_driver() -> void:
+	_park()
+	data = default_profile()
+	data["driver"]["id"] = new_driver_id()
+	save()
+
+
+func switch_driver(id: String) -> bool:
+	if id == String(driver()["id"]):
+		return true
+	var path := DRIVERS_DIR + "/%s.json" % id
+	var p: Variant = _read(path)
+	if p == null:
+		return false
+	_park()
+	var profile := default_profile()
+	_merge(profile, p)
+	_migrate(profile)
+	data = profile
+	DirAccess.remove_absolute(path)
+	var gd := DRIVERS_DIR + "/%s_ghosts" % id
+	if DirAccess.dir_exists_absolute(gd):
+		DirAccess.rename_absolute(gd, GHOSTS_DIR)
+	save()
+	return true
+
+
+## Removes a driver waiting on this phone (never the one driving).
+func delete_driver(id: String) -> void:
+	if id == String(driver()["id"]):
+		return
+	DirAccess.remove_absolute(DRIVERS_DIR + "/%s.json" % id)
+	var gd := DRIVERS_DIR + "/%s_ghosts" % id
+	if DirAccess.dir_exists_absolute(gd):
+		_remove_dir(gd)
+
+
+func _remove_dir(path: String) -> void:
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return
+	for f in dir.get_files():
+		dir.remove(f)
+	DirAccess.remove_absolute(path)
+
+
+## All your progress as one line of text: paste it into a chat to
+## yourself, a note, an email. Restore it on any phone or browser.
+## (Best-lap ghosts stay behind: they're big, and you set them again.)
+func backup_code() -> String:
+	save()
+	var raw := JSON.stringify(data).to_utf8_buffer()
+	var packed := raw.compress(FileAccess.COMPRESSION_DEFLATE)
+	return BACKUP_PREFIX + str(raw.size()) + ":" + Marshalls.raw_to_base64(packed)
+
+
+## Reads a backup code. {} if it isn't one (or is damaged).
+static func read_backup(code: String) -> Dictionary:
+	var c := code.strip_edges().replace("\n", "").replace(" ", "")
+	if not c.begins_with(BACKUP_PREFIX):
+		return {}
+	var rest := c.substr(BACKUP_PREFIX.length())
+	var size := int(rest.get_slice(":", 0))
+	if size <= 0 or size > 4 * 1024 * 1024:
+		return {}
+	var packed := Marshalls.base64_to_raw(rest.get_slice(":", 1))
+	if packed.is_empty():
+		return {}
+	var raw := packed.decompress(size, FileAccess.COMPRESSION_DEFLATE)
+	if raw.size() != size:
+		return {}
+	var parsed: Variant = JSON.parse_string(raw.get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY or not (parsed as Dictionary).has("settings"):
+		return {}
+	return parsed
+
+
+## Restores a backup as a driver on this phone and puts them in the seat:
+## the driver who was driving waits in the list, nothing is overwritten.
+## (The same driver restored again replaces their earlier copy.) Returns
+## "" or what's wrong.
+func restore_backup(code: String) -> String:
+	var p := read_backup(code)
+	if p.is_empty():
+		return "That isn't a whole backup code. Copy all of it, from APEX1: to the end."
+	var id := String((p.get("driver", {}) as Dictionary).get("id", ""))
+	if id == String(driver()["id"]):
+		# Yourself, restored over yourself.
+		var profile := default_profile()
+		_merge(profile, p)
+		_migrate(profile)
+		data = profile
+		save()
+		return ""
+	_park()
+	delete_driver(id)
+	var profile := default_profile()
+	_merge(profile, p)
+	_migrate(profile)
+	profile["driver"]["created"] = true
+	data = profile
+	save()
+	return ""
 
 
 ## Overlays saved values onto defaults so new fields added in later

@@ -7,7 +7,7 @@ var ui: CanvasLayer
 
 
 func _ready() -> void:
-	UIStyle.use("garage")
+	UIStyle.use_menus()
 	save = get_node("/root/Save")
 	var room := Showroom.new()
 	add_child(room)
@@ -16,6 +16,7 @@ func _ready() -> void:
 	var home := String(save.get_setting("garage_car"))
 	room.show_spec(save.car_spec(home if CarSpecs.CATALOG.has(home) else Garage.STARTER))
 	_build_ui()
+	UIStyle.reveal_boards.call_deferred(self)
 
 
 func _build_ui() -> void:

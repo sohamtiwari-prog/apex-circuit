@@ -141,6 +141,9 @@ jobs:
       - name: Your own paint (on your car, off again, sent to friends)
         run: bash .github/run_test.sh res://tests/paint_test.gd
 
+      - name: Drivers and keeping progress (create, switch, backup code, look)
+        run: bash .github/run_test.sh res://tests/driver_test.gd
+
       - name: Car setup (each setting does what it says; drivable at the extremes)
         run: bash .github/run_test.sh res://tests/setup_test.gd
 

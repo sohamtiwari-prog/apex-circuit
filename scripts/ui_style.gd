@@ -15,7 +15,10 @@ extends RefCounted
 ## screen titles, go buttons, your position. Barlow Semi Condensed for
 ## everything else, with tabular figures so timing digits don't jump.
 ##
-## Each scene calls UIStyle.use("garage") or UIStyle.use("board") first.
+## The menus come in light (the garage by day) and dark (the garage at
+## night, black boards): the "look" setting, light / dark / match the
+## phone. Menu scenes call UIStyle.use_menus() first, the race
+## UIStyle.use("board").
 
 # Role colours (set by use()): names kept from the first style so every
 # screen's code still reads the same way.
@@ -40,6 +43,7 @@ const BLACK := Color("000000")
 const SIGNAL := Color("ffd200")
 ## The garage floor's tone, for screens with no 3D room behind them.
 const CONCRETE := Color("d3d7dc")
+static var ROOM := CONCRETE
 
 const SLANT := 0.0                 # (kept for old callers: nothing leans now)
 
@@ -53,7 +57,12 @@ const THEMES := {
 	"board": {"TARMAC": "000000", "TARMAC_2": "1b1e23", "LINE": "3a3f46", "PAPER": "ffffff",
 		"FOG": "9ba3ad", "APEX": "ffd200", "INK": "000000", "GO": "00b852", "GO_INK": "ffffff",
 		"STOP": "e0281e", "PURPLE": "b45cff", "GREEN": "2fd36f", "YELLOW": "ff9f1a", "RED": "ff4438"},
+	# The garage at night: black boards, white type, the same signal colours.
+	"garage_dark": {"TARMAC": "000000", "TARMAC_2": "202429", "LINE": "363b42", "PAPER": "ffffff",
+		"FOG": "a3abb5", "APEX": "ffd200", "INK": "000000", "GO": "00b852", "GO_INK": "ffffff",
+		"STOP": "ff4a3d", "PURPLE": "b45cff", "GREEN": "2fd36f", "YELLOW": "ff9f1a", "RED": "ff4438"},
 }
+const ROOMS := {"garage": "d3d7dc", "garage_dark": "15171a", "board": "000000"}
 
 
 static func use(name: String) -> void:
@@ -63,6 +72,28 @@ static func use(name: String) -> void:
 	PAPER = Color(t["PAPER"]); FOG = Color(t["FOG"]); APEX = Color(t["APEX"]); INK = Color(t["INK"])
 	GO = Color(t["GO"]); GO_INK = Color(t["GO_INK"]); STOP = Color(t["STOP"])
 	PURPLE = Color(t["PURPLE"]); GREEN = Color(t["GREEN"]); YELLOW = Color(t["YELLOW"]); RED = Color(t["RED"])
+	ROOM = Color(ROOMS[name])
+
+
+## The menus' look from the "look" setting: "light", "dark" or "auto"
+## (whatever the phone is set to).
+static func use_menus() -> void:
+	use("garage_dark" if menus_dark() else "garage")
+
+
+static func menus_dark() -> bool:
+	var look := "auto"
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree != null and tree.root.has_node("Save"):
+		look = String(tree.root.get_node("Save").get_setting("look"))
+	if look == "auto":
+		return DisplayServer.is_dark_mode_supported() and DisplayServer.is_dark_mode()
+	return look == "dark"
+
+
+## Menus (light or dark), not the race.
+static func menus() -> bool:
+	return theme != "board"
 
 
 static func light() -> bool:
@@ -129,6 +160,49 @@ static func outlined(l: Label, px_size := 6) -> Label:
 	return l
 
 
+## A board that stands off the room: a short hard shadow under it, as a
+## sign stands off a wall. Only for the top-level boards on a screen.
+static func lift(sb: StyleBoxFlat) -> StyleBoxFlat:
+	sb.shadow_color = Color(0, 0, 0, 0.22 if light() else 0.6)
+	sb.shadow_size = 1
+	sb.shadow_offset = Vector2(0, 6)
+	return sb
+
+
+## The one moment of motion on a menu screen: its boards come up into
+## place one after another as it opens. (Phones set to reduce motion get
+## them at once.)
+static func reveal(nodes: Array) -> void:
+	var k := 0
+	for n in nodes:
+		var c := n as Control
+		if c == null or not is_instance_valid(c):
+			continue
+		c.modulate.a = 0.0
+		var tw := c.create_tween()
+		tw.tween_interval(0.05 + 0.045 * k)
+		tw.tween_property(c, "modulate:a", 1.0, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		k += 1
+
+
+## reveal() for every lifted board under `root`, in order, once the
+## screen is laid out.
+static func reveal_boards(root: Node) -> void:
+	var found: Array = []
+	for n in root.find_children("*", "PanelContainer", true, false):
+		var sb := (n as Control).get_theme_stylebox("panel") as StyleBoxFlat
+		if sb != null and sb.shadow_size > 0 and (n as Control).is_visible_in_tree():
+			found.append(n)
+	reveal(found)
+
+
+## Buttons sink a little under your thumb.
+static func _press_feedback(b: Button) -> void:
+	b.resized.connect(func(): b.pivot_offset = b.size * 0.5)
+	b.button_down.connect(func(): b.scale = Vector2(0.97, 0.97))
+	b.button_up.connect(func(): b.scale = Vector2.ONE)
+
+
 ## A flat board. `edge` draws a coloured bar down the leading side (a team
 ## colour, a timing colour). Corners are barely rounded: cut sheet, not card.
 static func panel(bg := Color(TARMAC, 0.9), _slant := true, edge := Color(0, 0, 0, 0), radius := 2) -> StyleBoxFlat:
@@ -136,6 +210,8 @@ static func panel(bg := Color(TARMAC, 0.9), _slant := true, edge := Color(0, 0, 
 	sb.bg_color = bg
 	if light():
 		sb.bg_color.a = maxf(bg.a, 0.96)     # (white boards are solid: milky glass reads as a mistake)
+	if menus() and bg.a > 0.5 and Color(bg, 1.0).is_equal_approx(Color(TARMAC, 1.0)):
+		lift(sb)                              # (a board on the room, not a well inside one)
 	sb.set_corner_radius_all(mini(radius, 3))
 	if edge.a > 0.0:
 		sb.border_color = edge
@@ -188,6 +264,7 @@ static func button(text: String, cb: Callable, primary := false, size := 26) -> 
 	b.focus_mode = Control.FOCUS_NONE
 	b.add_theme_font_override("font", font("bold"))
 	b.add_theme_font_size_override("font_size", px(size, "bold"))
+	_press_feedback(b)
 	if primary:
 		_button_styles(b, APEX, INK, APEX.darkened(0.12), INK)
 	else:

@@ -14,6 +14,7 @@ signal settings_changed
 signal menu_requested
 signal chat_requested(index: int)
 signal replay_requested
+signal share_requested
 signal box_requested
 signal box_choice(compound: String)     # "" = stay out
 signal spectate_step(dir: int)
@@ -24,6 +25,12 @@ var replay_available := true:          # pause menu "Watch replay" (single playe
 		replay_available = v
 		if _menu_buttons.has("replay"):
 			_menu_buttons["replay"].visible = v
+
+var share_available := false:         # pause menu "Share my best lap" (free time trial)
+	set(v):
+		share_available = v
+		if _menu_buttons.has("share"):
+			_menu_buttons["share"].visible = v
 
 var touch: TouchControls
 var gauge: RevGauge
@@ -1437,6 +1444,10 @@ func _build_pause_menu(root: Control) -> void:
 		set_paused(false)
 		reset_requested.emit())
 	_menu_buttons["replay"] = _menu_button(left, "Watch replay", func(): replay_requested.emit())
+	_menu_buttons["share"] = _menu_button(left, "Share my best lap", func():
+		set_paused(false)
+		share_requested.emit())
+	_menu_buttons["share"].visible = share_available
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	left.add_child(sp)

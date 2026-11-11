@@ -13,7 +13,7 @@ var _tick := 0.0
 
 
 func _ready() -> void:
-	UIStyle.use("garage")
+	UIStyle.use_menus()
 	save = get_node("/root/Save")
 	room = Showroom.new()
 	add_child(room)
@@ -22,6 +22,7 @@ func _ready() -> void:
 	if not CarSpecs.CATALOG.has(car_id):
 		car_id = Garage.STARTER
 	_build_ui()
+	UIStyle.reveal_boards.call_deferred(self)
 	_select(car_id)
 
 

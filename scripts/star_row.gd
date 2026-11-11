@@ -13,6 +13,9 @@ var hollow := Color(1, 1, 1, 0.22)
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hollow = Color(UIStyle.PAPER, 0.25)
+	if UIStyle.light():
+		gold = Color("f0b400")
 
 
 func _draw() -> void:
