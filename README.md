@@ -151,6 +151,13 @@ The car on the turntable changes as you tap; **Team colours** / **Factory
 paint** switches back. Your paint is used wherever you drive that car, and
 friends see it too (it goes with your car in the lobby).
 
+## Time trials: a run-up to the line
+
+A time trial starts a few hundred metres before the start line (8.5 % of a
+lap, 220-600 m), so you cross it at racing speed: the clock stays at zero
+on the run-up and starts at the line. Every timed lap, the first included,
+is a flying lap. Races still start on the grid from a standstill.
+
 ## Ghost challenges
 
 **Send yours:** Quick race → **Time trial**, pick the track and car, and
@@ -163,7 +170,9 @@ that track in that car first.
 **Race theirs:** a friend types the code in
 Quick race → Time trial → **Race their lap**: their track and car load, your
 lap drives as a ghost in your paint, and each lap they're told how far off
-(or ahead of) you they were. No need to be online at the same time.
+(or ahead of) you they were. The ghost waits on the line, sets off as you
+cross it, and keeps lapping: if it finishes its lap before you, it goes round
+again rather than disappearing. No need to be online at the same time.
 (The lap is the car's path ten times a second, about 10 KB;
 .github/workflows/ghost-probe.yml checks the real servers keep it.)
 
@@ -703,6 +712,7 @@ tests/
   party_test.gd      party modes with friends: team split, eliminator settings, series points, rematch grid
   paint_test.gd      your own paint: on your car, off again, sent to friends
   driver_test.gd     drivers: create, switch seats, backup code and restore, the look setting
+  flying_start_test.gd  time trial run-up (the clock starts at the line), a friend's ghost that keeps lapping
   setup_test.gd      car setup: each setting does what it says; a clean lap at the extremes
   ghost_test.gd      ghost challenges: a lap packed small and back, sent under a code and fetched
   rival_test.gd      career rivals (on the grid, quicker, the duel, head to head) and star rewards

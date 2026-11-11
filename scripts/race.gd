@@ -153,6 +153,11 @@ var replay: Replay
 ## checkpoint (quick race and daily: beat the clock from gate to gate).
 var event: Dictionary = {}
 var ev_type := ""
+## Time trials start with a run-up: the car sits a few hundred metres
+## before the line and the clock starts as you cross it at speed, so every
+## timed lap is a flying lap (and lap 1 counts as much as lap 5).
+var flying_start := false
+var out_lap := false               # the run-up to the line, before the clock starts
 var tt_targets: Array = []
 var _elim_lap := 0
 ## With friends: the host's party mode (race, eliminator, teams, series3/5).
@@ -224,6 +229,7 @@ func _ready() -> void:
 		var sk := float(event.get("skill", 0.92))
 		_difficulty = "easy" if sk < 0.89 else ("medium" if sk < 0.93 else "hard")
 	lap_key = save.lap_key(track_id, car_id)
+	flying_start = mode == "time_trial" and net_info.is_empty() and ev_type in ["", "time_trial"]
 	DisplayServer.screen_set_keep_on(true)
 	_tod = Look.resolve_time(_tod, track_id)
 
@@ -502,6 +508,16 @@ func _apply_assists() -> void:
 
 # ------------------------------------------------------------ session
 
+## The run-up for a time trial: in the middle of the road, far enough
+## before the line (8.5 % of a lap, 220-600 m) to be at racing speed when
+## you cross it.
+func _flying_pose() -> Transform3D:
+	var n := track.size()
+	var back := clampf(track.total_length * 0.085, 220.0, 600.0)
+	var idx := (n - int(back / Track.SPACING)) % n
+	return track.pose_at(idx, entrants[0].car.spawn_height(), track.line_offset[idx])
+
+
 ## Grid slot k: two columns, staggered, 8 m between rows, behind the line.
 func _grid_pose(k: int) -> Transform3D:
 	var n := track.size()
@@ -561,7 +577,7 @@ func _restart() -> void:
 			slot = e.slot
 		elif weekend != null and not weekend.grid_order.is_empty():
 			slot = weekend.grid_order.find(e)
-		_place(e, _grid_pose(slot))
+		_place(e, _flying_pose() if flying_start and e.is_player else _grid_pose(slot))
 		e.car.controls_enabled = false
 		e.lap = 0
 		e.next_checkpoint = 1
@@ -611,6 +627,7 @@ func _restart() -> void:
 	_my_session_minis.resize(MINIS)
 	_my_session_minis.fill(INF)
 	_ghost_rec = PackedFloat32Array()
+	out_lap = flying_start
 	if ghost_car != null:
 		ghost_car.visible = false
 	hud.reset_sectors()
@@ -1159,6 +1176,10 @@ func _update_lights(delta: float) -> void:
 				drv.lane_offset = track.lateral(e.car.global_position, e.idx) - track.line_offset[i]
 		hud.show_center("GO!")
 		get_tree().create_timer(0.8).timeout.connect(func(): hud.show_center(""))
+		if out_lap:
+			get_tree().create_timer(1.0).timeout.connect(func():
+				if out_lap:
+					hud.show_banner("Run-up: the clock starts at the line", UIStyle.PAPER, 4.0))
 
 
 func _update_entrant(e: Entrant, delta: float) -> void:
@@ -1186,9 +1207,17 @@ func _update_entrant(e: Entrant, delta: float) -> void:
 		if e.sector == k and e.prev_idx < line and e.idx >= line and e.idx - e.prev_idx < n / 4:
 			_complete_sector(e, k)
 	_update_minis(e)
+	# The run-up of a time trial: the clock waits at zero for the line.
+	if out_lap and e.is_player:
+		e.lap_start = race_time
+		e.sector_start = race_time
+		e.mini_start = race_time
 	# Crossing the line forwards.
 	if e.prev_idx > n * 0.9 and e.idx < n * 0.1:
-		if e.next_checkpoint >= 4 and not e.finished:
+		if out_lap and e.is_player:
+			out_lap = false              # (the clock starts now: the first timed lap)
+			_ghost_rec = PackedFloat32Array()
+		elif e.next_checkpoint >= 4 and not e.finished:
 			_complete_lap(e)
 		e.next_checkpoint = 1
 	e.progress = e.lap * track.total_length + track.cum[e.idx]
@@ -2382,11 +2411,12 @@ func _update_ghost() -> void:
 		return
 	if ghost_car == null:
 		_make_ghost_car()
+	# The ghost keeps lapping: past the end of its lap it goes round again
+	# (until you cross the line and it starts the lap beside you).
 	var count := _ghost_play.size() / 7
+	if t >= count - 1:
+		t = fmod(t, float(count - 1))
 	var i := int(t)
-	if i + 1 >= count:
-		ghost_car.visible = false
-		return
 	var f := t - i
 	var a := i * 7
 	var b := a + 7

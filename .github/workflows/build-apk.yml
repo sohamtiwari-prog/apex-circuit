@@ -144,6 +144,9 @@ jobs:
       - name: Drivers and keeping progress (create, switch, backup code, look)
         run: bash .github/run_test.sh res://tests/driver_test.gd
 
+      - name: Time trial run-up and a friend's ghost that keeps lapping
+        run: bash .github/run_test.sh res://tests/flying_start_test.gd
+
       - name: Car setup (each setting does what it says; drivable at the extremes)
         run: bash .github/run_test.sh res://tests/setup_test.gd
 
