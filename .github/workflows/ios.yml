@@ -1,0 +1,96 @@
+name: Build iPhone app (.ipa)
+
+# An unsigned iPhone app for sideloading (AltStore / Sideloadly sign it
+# with the installer's own free Apple ID). Built on GitHub's Macs after
+# each release, and attached to that release.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach the .ipa to (e.g. v0.1.76); empty: just build"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.3"
+  GODOT_RELEASE: "stable"
+
+jobs:
+  ios:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Cache Godot + export templates
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot
+            ~/Library/Application Support/Godot/export_templates
+          key: godot-mac-${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}-v1
+
+      - name: Download Godot and export templates
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          V="${GODOT_VERSION}-${GODOT_RELEASE}"
+          BASE="https://github.com/godotengine/godot/releases/download/${V}"
+          mkdir -p ~/godot
+          curl -sSL -o /tmp/godot.zip "${BASE}/Godot_v${V}_macos.universal.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+          curl -sSL -o /tmp/templates.tpz "${BASE}/Godot_v${V}_export_templates.tpz"
+          unzip -q /tmp/templates.tpz -d /tmp/tpl
+          T="$HOME/Library/Application Support/Godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}"
+          mkdir -p "$T"
+          mv /tmp/tpl/templates/* "$T/"
+          ls "$T"
+
+      - name: Import the project
+        run: |
+          G=~/godot/Godot.app/Contents/MacOS/Godot
+          timeout 900 $G --headless --import > import.log 2>&1 || true
+          tail -5 import.log
+
+      - name: Export the Xcode project
+        run: |
+          G=~/godot/Godot.app/Contents/MacOS/Godot
+          VER="${{ inputs.tag }}"
+          VER="${VER#v}"
+          [ -z "$VER" ] && VER="0.1.${{ github.run_number }}"
+          sed -i '' "s/^application\/short_version=.*/application\/short_version=\"$VER\"/" export_presets.cfg
+          sed -i '' "s/^application\/version=.*/application\/version=\"${VER##*.}\"/" export_presets.cfg
+          mkdir -p build/ios
+          $G --headless --export-release "iOS" build/ios/ApexCircuit.ipa > export_ios.log 2>&1 || true
+          grep -v -e '^$' export_ios.log | tail -40
+          ls -la build/ios
+          test -d build/ios/ApexCircuit.xcodeproj
+
+      - name: Build the app (unsigned)
+        run: |
+          cd build/ios
+          xcodebuild -project ApexCircuit.xcodeproj -scheme ApexCircuit -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -archivePath ApexCircuit.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" \
+            archive > xcodebuild.log 2>&1 || { grep -E "error:|fatal" xcodebuild.log | head -40; tail -60 xcodebuild.log; exit 1; }
+          tail -5 xcodebuild.log
+          APP=$(ls -d ApexCircuit.xcarchive/Products/Applications/*.app | head -1)
+          rm -rf Payload && mkdir Payload && cp -R "$APP" Payload/
+          zip -qry ApexCircuit.ipa Payload
+          ls -la ApexCircuit.ipa
+          du -sh Payload/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ApexCircuit-ipa
+          path: build/ios/ApexCircuit.ipa
+
+      - name: Attach to the release
+        if: inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp build/ios/ApexCircuit.ipa "ApexCircuit-${{ inputs.tag }}.ipa"
+          gh release upload "${{ inputs.tag }}" "ApexCircuit-${{ inputs.tag }}.ipa" --clobber
