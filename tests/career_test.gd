@@ -46,8 +46,8 @@ func _run() -> void:
 
 	# --- Garage
 	_check(not save.data.has("credits") and not save.data.has("owned_cars") and not save.has_method("buy_car"), "new profile: no money, no buying")
-	var spec: Dictionary = save.car_spec("stuttgart9")
-	_check(spec == load("res://scripts/car_specs.gd").get_spec("stuttgart9") and not save.data.has("upgrades"), "every car races as it comes (no upgrades)")
+	var spec: Dictionary = save.car_spec("gp26")
+	_check(spec == load("res://scripts/car_specs.gd").get_spec("gp26") and not save.data.has("upgrades"), "every car races as it comes (no upgrades)")
 
 	var all_open := true
 	for si in car_mod.SERIES.size():
@@ -72,21 +72,24 @@ func _run() -> void:
 
 	# --- Career: a race
 	var ev: Dictionary = car_mod.event(0, 0)
-	ev["car"] = "marauder"
+	ev["car"] = "gp26"
+	ev["opponents"] = 7                     # (a short field keeps the test quick)
 	ev["return_to"] = "res://scenes/career.tscn"
 	save.pending_event = ev
 	var race := await _race()
 	var rw: Dictionary = race.last_reward
-	print("    club race: P%d of %d, %d stars" % [race.player.position, race.entrants.size(), int(rw.get("stars", -1))])
+	print("    career race: P%d of %d, %d stars" % [race.player.position, race.entrants.size(), int(rw.get("stars", -1))])
 	_check(race.entrants.size() == 8 and race._results_shown, "career race: 8 cars, finished")
-	_check(int(rw.get("stars", -1)) == car_mod.stars_for_position("race", race.player.position) and save.career_stars("club_1") == int(rw["stars"]), "stars by finishing place, saved")
+	_check(int(rw.get("stars", -1)) == car_mod.stars_for_position("race", race.player.position) and save.career_stars("gp_1") == int(rw["stars"]), "stars by finishing place, saved")
 	_check(not rw.has("credits") and not save.data.has("credits"), "no money paid out")
 	race.queue_free()
 	await process_frame
 
 	# --- Career: eliminator
 	ev = car_mod.event(0, 4)
-	ev["car"] = "marauder"
+	ev["car"] = "gp26"
+	ev["opponents"] = 5
+	ev["laps"] = 5
 	save.pending_event = ev
 	race = await _race()
 	var out := 0
@@ -108,7 +111,7 @@ func _run() -> void:
 
 	# --- Career: time trial
 	ev = car_mod.event(0, 1)
-	ev["car"] = "marauder"
+	ev["car"] = "gp26"
 	save.pending_event = ev
 	race = await _race()
 	rw = race.last_reward
@@ -143,7 +146,7 @@ func _run() -> void:
 	await process_frame
 
 	# --- Championship
-	champ.start(save, "muscle", "marauder", "", 2, 1)
+	champ.start(save, "gp", "gp26", "", 2, 1)
 	var s: Dictionary = champ.active(save)
 	_check(s["rounds"].size() == 2 and s["drivers"].size() == 20, "season: 2 rounds, 20 drivers")
 	for r in 2:

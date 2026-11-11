@@ -108,6 +108,7 @@ func _build_ui() -> void:
 		var dd: int = d
 		var b := UIStyle.button("‹" if d < 0 else "›", func(): _step_car(dd), false, 44)
 		b.custom_minimum_size = Vector2(76, 64)
+		b.visible = CarSpecs.CATALOG.size() > 1
 		cars.add_child(b)
 	_title = UIStyle.label("", 26, UIStyle.PAPER, "display")
 	cars.add_child(_title)

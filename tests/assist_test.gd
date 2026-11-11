@@ -73,7 +73,7 @@ func _lap(track_id: String, car_id: String, level: String) -> Array:
 func _run() -> void:
 	# Let the Save autoload finish loading from disk before we override it.
 	await process_frame
-	var specs: Array = [["silvermoor", "gp26"], ["riviera", "gp26"], ["brianza", "marauder"]]
+	var specs: Array = [["silvermoor", "gp26"], ["riviera", "gp26"], ["brianza", "gp26"]]
 	if OS.get_cmdline_user_args().size() > 0:
 		specs = []
 		for a in OS.get_cmdline_user_args():

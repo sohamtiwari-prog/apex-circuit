@@ -10,7 +10,7 @@ func _run() -> void:
 	cs.shape = WorldBoundaryShape3D.new()
 	ground.add_child(cs)
 	root.add_child(ground)
-	var ids: Array = Array(OS.get_cmdline_user_args()) if OS.get_cmdline_user_args().size() > 0 else ["gp26", "vanta_gt", "marauder"]
+	var ids: Array = Array(OS.get_cmdline_user_args()) if OS.get_cmdline_user_args().size() > 0 else ["gp26"]
 	var specs = load("res://scripts/car_specs.gd")
 	for id in ids:
 		print(id)

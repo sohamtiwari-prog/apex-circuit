@@ -45,5 +45,5 @@ func _run() -> void:
 		{"power": 900000.0},
 	]
 	for t in trials:
-		print("%-60s %s" % [str(t), await _one("marauder", t, 68.0, 0.3)])
+		print("%-60s %s" % [str(t), await _one("gp26", t, 68.0, 0.3)])
 	quit()

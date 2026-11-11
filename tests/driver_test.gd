@@ -59,6 +59,18 @@ func _run() -> void:
 	save._migrate(prof)
 	_check(bool(prof["driver"]["created"]) and String(prof["driver"]["name"]) == "Kabir", "an old save with progress: its driver is made from it (no questions)")
 
+	# v8, Grand Prix only: an older save's road cars and its season in a
+	# class that's gone.
+	var v7: Dictionary = save.default_profile()
+	v7["schema"] = 7
+	v7["settings"]["car"] = "marauder"
+	v7["settings"]["garage_car"] = "veloce"
+	v7["settings"]["career_series"] = 4
+	v7["championship"] = {"class": "muscle", "rounds": ["styria"], "round": 0}
+	save._migrate(v7)
+	_check(String(v7["settings"]["car"]) == "gp26" and String(v7["settings"]["garage_car"]) == "gp26", "an older save's road car is the GP car now")
+	_check((v7["championship"] as Dictionary).is_empty() and int(v7["settings"]["career_series"]) == 0, "...its season in a class that's gone is over; the career is the Grand Prix series")
+
 	# Create a driver.
 	save.set_driver("  Soham ", 7, "#e01a1a", "000000")
 	var d: Dictionary = save.driver()
@@ -129,7 +141,7 @@ func _run() -> void:
 	root.add_child(gs)
 	var got := []
 	gs.done.connect(func(ok, res): got.append([ok, res]))
-	gs.share_best(save, "silvermoor", "vanta_gt", 20.0)
+	gs.share_best(save, "styria", "gp26", 20.0)
 	await process_frame
 	await process_frame
 	_check(got.size() == 1 and not bool(got[0][0]) and String(got[0][1]).contains("lap"), "no lap there yet: says so, sends nothing")

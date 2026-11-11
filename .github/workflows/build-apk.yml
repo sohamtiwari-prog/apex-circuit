@@ -107,9 +107,6 @@ jobs:
       - name: Safety Car, and nobody overtakes under the VSC or Safety Car
         run: |
           bash .github/run_test.sh res://tests/safety_car_test.gd
-          # (A field of road cars: the Safety Car has to be catchable by them too.)
-          timeout 1200 ~/godot/godot --headless --fixed-fps 120 --script res://tests/safety_car_test.gd -- marauder 2>&1 | grep -E "PASS|FAIL|SCRIPT ERROR|CHECK"
-          test ${PIPESTATUS[0]} -eq 0
 
       - name: Driving your own pit stop (limiter, box, crew, speeding)
         run: bash .github/run_test.sh res://tests/manual_pit_test.gd

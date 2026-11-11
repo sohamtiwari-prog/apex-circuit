@@ -4,7 +4,7 @@ func _initialize() -> void:
 	_run()
 func _run() -> void:
 	for tid in OS.get_cmdline_user_args():
-		for cid in ["marauder", "gp26"]:
+		for cid in ["gp26"]:
 			for skill in [1.0, 0.9]:
 				var world := Node3D.new()
 				root.add_child(world)

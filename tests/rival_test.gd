@@ -31,9 +31,10 @@ func _run() -> void:
 	Engine.max_physics_steps_per_frame = 48
 	var save: Node = root.get_node("Save")
 	save.data = save.default_profile()
-	# A club race (1 lap, to be quick).
+	# A Grand Prix race (1 lap, a short field, to be quick).
 	var ev := Career.event(0, 0)
 	ev["laps"] = 1
+	ev["opponents"] = 7
 	var race := _race(ev)
 	await physics_frame
 	var rival = null
@@ -43,7 +44,7 @@ func _run() -> void:
 			rival = e
 		elif e.ai != null:
 			best_other = maxf(best_other, e.ai.skill)
-	_check(rival != null and rival.name == "Marco Vella", "club race: Marco Vella is on the grid")
+	_check(rival != null and rival.name == "Kai Lindgren", "Grand Prix race: Kai Lindgren is on the grid")
 	_check(rival != null and rival.ai.skill > best_other, "and quicker than the rest (%.3f vs %.3f)" % [rival.ai.skill if rival != null else 0.0, best_other])
 	race.autopilot = load("res://scripts/ai_driver.gd").new()
 	race.autopilot.skill = 0.99
@@ -53,7 +54,7 @@ func _run() -> void:
 		t += 1
 	var rw: Dictionary = race.last_reward
 	_check(rw.has("rival") and not (rw["rival"] as Dictionary).is_empty(), "the results say how you did against him")
-	var rec: Dictionary = save.data["rivals"].get("club", {})
+	var rec: Dictionary = save.data["rivals"].get("gp", {})
 	_check(int(rec.get("won", 0)) + int(rec.get("lost", 0)) == 1, "the head-to-head is kept (%s)" % str(rec))
 	race.queue_free()
 	await process_frame
@@ -73,10 +74,12 @@ func _run() -> void:
 	await process_frame
 	# Rewards with stars.
 	save.data["career"] = {}
-	_check(Career.rewards_unlocked(save).is_empty() and int(Career.next_reward(save)[0]) == 10, "no stars: nothing yet, the first reward at 10")
-	for i in 4:
-		save.data["career"]["club_%d" % (i + 1)] = 3
-	_check(Career.rewards_unlocked(save) == ["colours"], "12 stars: the metallic colours (%s)" % str(Career.rewards_unlocked(save)))
+	_check(Career.rewards_unlocked(save).is_empty() and int(Career.next_reward(save)[0]) == 3, "no stars: nothing yet, the first reward at 3")
+	save.data["career"]["gp_1"] = 3
+	_check(Career.rewards_unlocked(save) == ["colours"], "3 stars: the metallic colours (%s)" % str(Career.rewards_unlocked(save)))
+	for i in 5:
+		save.data["career"]["gp_%d" % (i + 1)] = 3
+	_check(Career.rewards_unlocked(save) == ["colours", "carbon", "gold", "chequer"], "15 stars: everything (%s)" % str(Career.rewards_unlocked(save)))
 	var s := CarSpecs.apply_paint(CarSpecs.get_spec("gp26"), {"on": true, "base": "#e01a1a", "pattern": "carbon"})
 	_check((s["livery"]["base"] as Color).get_luminance() < 0.1 and (s["livery"]["stripe"] as Color).is_equal_approx(Color.html("#e01a1a")), "carbon pattern: carbon body, your colour as the trim")
 	# (Leave a clean profile behind: the next test in the same run reads it.)

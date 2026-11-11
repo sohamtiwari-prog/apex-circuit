@@ -99,6 +99,7 @@ func _build_ui() -> void:
 			var ids: Array = Array(CarSpecs.CATALOG)
 			_select(ids[posmod(ids.find(car_id) + dd, ids.size())]), false, 44)
 		b.custom_minimum_size = Vector2(76, 64)
+		b.visible = CarSpecs.CATALOG.size() > 1
 		cars.add_child(b)
 	_title = UIStyle.label("", 26, UIStyle.PAPER, "display")
 	cars.add_child(_title)

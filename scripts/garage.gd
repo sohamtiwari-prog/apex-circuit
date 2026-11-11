@@ -1,14 +1,14 @@
 class_name Garage
 extends RefCounted
-## Performance ratings. Every car is open to drive from the start and races
-## exactly as it comes (no upgrades, no money): what decides a race is the
-## driving. The Performance Rating (PR) sums up what each car can do.
+## Performance ratings. Cars race exactly as they come (no upgrades, no
+## money): what decides a race is the driving. The Performance Rating (PR)
+## sums up what a car can do.
 
 ## The car on the home screen until you pick another.
-const STARTER := "marauder"
+const STARTER := "gp26"
 
 
-## Performance Rating, roughly 43 (Marauder) to 90 (GP car).
+## Performance Rating (the GP car: about 90).
 static func pr(spec: Dictionary) -> float:
 	var pw := float(spec["power"]) / float(spec["mass"])
 	var v := 55.6

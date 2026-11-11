@@ -370,6 +370,8 @@ func _build_lobby_view() -> void:
 	var next := UIStyle.button("›", func(): _step_car(1), false, 40)
 	next.custom_minimum_size = Vector2(70, 56)
 	mine.add_child(next)
+	prev.visible = CarSpecs.CATALOG.size() > 1
+	next.visible = prev.visible
 	# Quick chat: tap a phrase, everyone sees it.
 	var chat := HBoxContainer.new()
 	chat.add_theme_constant_override("separation", 6)

@@ -53,7 +53,7 @@ func _cross(race: Node, car_id: String, assists: bool, outward: bool) -> void:
 	_check(min_v > 22.0, "%s: grass slows the car, but gently" % label)
 func _run() -> void:
 	await process_frame
-	for car_id in ["gp26", "vanta_gt"]:
+	for car_id in CarSpecs.CATALOG:
 		var save: Node = root.get_node("Save")
 		save.data = save.default_profile()
 		var st: Dictionary = save.data["settings"]

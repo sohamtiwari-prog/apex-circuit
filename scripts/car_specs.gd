@@ -3,8 +3,14 @@ extends RefCounted
 ## Every car in the game is a spec: physics, gearing, sound, cameras and
 ## body design. Units are SI (kg, W, N, m). Car forward is +Z.
 ## Names are fictional; designs are modelled on real car types.
+##
+## For now the game is Grand Prix only: one car you can drive, the GP car,
+## in ten teams' liveries. (The junior single-seaters, F2, F3, F4 and
+## karts, come in a later update as series of their own.) The safety car
+## (scripts/safety_car.gd) is the one other car, a road car.
 
-const CATALOG := ["gp26", "vanta_gt", "stuttgart9", "marauder", "toro_furia", "veloce"]
+const CATALOG := ["gp26"]
+const SAFETY_CAR := "vanta_gt"
 
 ## Grand Prix teams (fictional) and their liveries: base, accent, stripe, helmet.
 const TEAMS := [
@@ -20,31 +26,18 @@ const TEAMS := [
 	{"id": "azur", "name": "Azur Racing", "base": Color(0.92, 0.94, 0.98), "accent": Color(0.1, 0.25, 0.75), "stripe": Color(0.9, 0.1, 0.25), "helmet": Color(0.15, 0.3, 0.85)},
 ]
 
-## Paint colours for road-car opponents.
-const ROAD_PAINTS := [Color(0.85, 0.05, 0.05), Color(0.92, 0.92, 0.93), Color(0.05, 0.05, 0.06),
-	Color(1.0, 0.75, 0.0), Color(0.1, 0.3, 0.85), Color(0.0, 0.45, 0.3), Color(0.55, 0.57, 0.6),
-	Color(1.0, 0.45, 0.05), Color(0.45, 0.1, 0.55), Color(0.55, 0.85, 0.1)]
-
-
 static func team(index: int) -> Dictionary:
 	return TEAMS[posmod(index, TEAMS.size())]
 
 
-## Returns a full spec. `team_index` picks the livery for GP cars and the
-## paint for road cars (-1 keeps a road car's own colour).
+## Returns a full spec. `team_index` picks the GP car's team livery. Any
+## id that isn't a car here (an older save's road car, a friend on an older
+## version) is the GP car.
 static func get_spec(id: String, team_index := 0) -> Dictionary:
 	var s: Dictionary
 	match id:
-		"vanta_gt":
+		SAFETY_CAR:
 			s = vanta_gt()
-		"stuttgart9":
-			s = stuttgart9()
-		"marauder":
-			s = marauder()
-		"toro_furia":
-			s = toro_furia()
-		"veloce":
-			s = veloce()
 		_:
 			s = gp26()
 	if s["body"] == "gp":
@@ -52,8 +45,6 @@ static func get_spec(id: String, team_index := 0) -> Dictionary:
 		s["livery"] = t
 		s["team_name"] = t["name"]
 		s["color"] = t["base"]
-	elif team_index > 0:
-		s["color"] = ROAD_PAINTS[posmod(team_index, ROAD_PAINTS.size())]
 	_derive(s)
 	return s
 
@@ -275,11 +266,12 @@ static func gp26() -> Dictionary:
 	}
 
 
-# ------------------------------------------------------------ road cars
-# Body "shape": "body" and "cabin" are loft stations [z, y, half_width,
-# half_height, superellipse_n]; the cabin is glass with a painted roof.
+# ------------------------------------------------------------ the safety car
+# A road car. Body "shape": "body" and "cabin" are loft stations [z, y,
+# half_width, half_height, superellipse_n]; the cabin is glass with a
+# painted roof.
 
-## Mid-engined supercar.
+## The safety car: a mid-engined supercar (not one you drive).
 static func vanta_gt() -> Dictionary:
 	return _road_defaults({
 		"id": "vanta_gt", "name": "Apex Vanta GT",
@@ -307,110 +299,3 @@ static func vanta_gt() -> Dictionary:
 
 
 ## Rear-engined sports car with the classic round-headlight silhouette.
-static func stuttgart9() -> Dictionary:
-	return _road_defaults({
-		"id": "stuttgart9", "name": "Stuttgart 9 Turbo",
-		"desc": "Rear-engined icon · 650 hp · 1640 kg · 330 km/h",
-		"color": Color(0.85, 0.86, 0.88),
-		"mass": 1640.0, "com": Vector3(0, -0.22, -0.12), "power": 478000.0, "max_drive_force": 12500.0,
-		"drag": 0.64, "downforce": 0.9,
-		"brake_base": 12.5, "brake_max": 13.5,
-		"wheel_front_z": 1.25, "wheel_rear_z": -1.2, "track_front": 0.8, "track_rear": 0.82,
-		"grip_front": 1.95, "grip_rear": 2.3,       # wide rear tyres tame the rear-engined balance
-		"collision": [[Vector3(1.85, 0.6, 4.5), Vector3(0, -0.04, 0)], [Vector3(1.2, 0.4, 1.8), Vector3(0, 0.42, -0.2)]],
-		"redline": 7200.0, "idle_rpm": 850.0, "peak_rpm": 6500.0, "top_kmh": 330.0, "first_kmh": 85.0, "gear_count": 8,
-		"cylinders": 6, "engine_base_hz": 180.0, "engine_tone": "flat6",
-		"shape": {
-			"body": [[2.25, -0.18, 0.62, 0.12, 2.4], [1.95, -0.1, 0.84, 0.2, 2.6], [1.55, -0.04, 0.92, 0.27, 2.8],
-				[1.0, -0.06, 0.9, 0.25, 3.0], [0.4, -0.08, 0.88, 0.24, 3.2], [-0.3, -0.04, 0.93, 0.28, 3.0],
-				[-1.0, 0.0, 0.96, 0.3, 2.8], [-1.6, -0.02, 0.92, 0.28, 2.6], [-2.1, -0.08, 0.8, 0.22, 2.4], [-2.3, -0.12, 0.6, 0.13, 2.4]],
-			"cabin": [[0.95, 0.2, 0.52, 0.02, 2.2], [0.6, 0.34, 0.6, 0.17, 2.2], [0.0, 0.42, 0.6, 0.22, 2.2],
-				[-0.6, 0.33, 0.58, 0.15, 2.2], [-1.3, 0.2, 0.52, 0.06, 2.2], [-1.8, 0.14, 0.45, 0.02, 2.2]],
-			"round_lights": [Vector3(0.6, 0.13, 1.83)], "tail_bar": true,
-			"wing": {"z": -2.05, "y": 0.25, "span": 0.7, "chord": 0.28, "aoa": 6.0},
-		},
-	})
-
-
-## Front-engined American muscle car.
-static func marauder() -> Dictionary:
-	return _road_defaults({
-		"id": "marauder", "name": "Marauder V8",
-		"desc": "Muscle car · 480 hp · 1750 kg · 285 km/h",
-		"color": Color(0.1, 0.32, 0.85),
-		"mass": 1750.0, "com": Vector3(0, -0.15, 0.25), "power": 358000.0, "max_drive_force": 12000.0,
-		"drag": 0.72, "downforce": 0.35,
-		"brake_base": 11.0, "brake_max": 12.0,
-		"wheel_front_z": 1.55, "wheel_rear_z": -1.3, "track_front": 0.82, "track_rear": 0.83,
-		"grip_front": 1.7, "grip_rear": 1.8,
-		"collision": [[Vector3(1.9, 0.65, 4.8), Vector3(0, -0.02, 0)], [Vector3(1.3, 0.42, 1.9), Vector3(0, 0.46, -0.45)]],
-		"redline": 7500.0, "idle_rpm": 750.0, "peak_rpm": 6500.0, "top_kmh": 285.0, "first_kmh": 80.0, "gear_count": 6,
-		"cylinders": 8, "engine_base_hz": 160.0, "engine_tone": "v8",
-		"shape": {
-			"body": [[2.4, -0.07, 0.78, 0.19, 4.0], [2.1, -0.04, 0.9, 0.26, 4.0], [1.3, -0.02, 0.94, 0.28, 4.0],
-				[0.4, -0.04, 0.93, 0.27, 4.0], [-0.6, -0.02, 0.95, 0.29, 4.0], [-1.5, 0.0, 0.94, 0.3, 4.0],
-				[-2.15, -0.02, 0.9, 0.27, 4.0], [-2.4, -0.04, 0.82, 0.24, 4.0]],
-			"cabin": [[0.55, 0.27, 0.6, 0.02, 2.8], [0.25, 0.42, 0.66, 0.17, 2.8], [-0.35, 0.5, 0.66, 0.22, 2.8],
-				[-0.95, 0.44, 0.62, 0.17, 2.8], [-1.55, 0.3, 0.55, 0.05, 2.8], [-1.85, 0.27, 0.5, 0.02, 2.8]],
-			"headlights": [Vector3(0.62, 0.06, 2.38)], "light_size": Vector3(0.24, 0.08, 0.06),
-			"tail_bar": false, "tails": [Vector3(0.62, 0.06, -2.42)],
-			"stripes": true,
-		},
-	})
-
-
-## Low, angular Italian V12 hypercar.
-static func toro_furia() -> Dictionary:
-	return _road_defaults({
-		"id": "toro_furia", "name": "Toro Furia",
-		"desc": "V12 wedge hypercar · 770 hp · 1550 kg · 350 km/h",
-		"color": Color(0.55, 0.85, 0.1),
-		"mass": 1550.0, "power": 566000.0, "max_drive_force": 11500.0,
-		"drag": 0.6, "downforce": 1.6,
-		"brake_base": 13.0, "brake_max": 14.0,
-		"wheel_front_z": 1.4, "wheel_rear_z": -1.33, "track_front": 0.85, "track_rear": 0.87,
-		"radius_rear": 0.36, "tyre_width_rear": 0.35,
-		"grip_front": 2.05, "grip_rear": 2.2,
-		"collision": [[Vector3(2.0, 0.5, 4.8), Vector3(0, -0.08, 0)], [Vector3(1.2, 0.3, 2.0), Vector3(0, 0.28, -0.3)]],
-		"redline": 9500.0, "idle_rpm": 1000.0, "peak_rpm": 8500.0, "top_kmh": 350.0, "first_kmh": 100.0,
-		"cylinders": 12, "engine_base_hz": 260.0, "engine_tone": "v12",
-		"shape": {
-			"body": [[2.4, -0.24, 0.8, 0.06, 4.0], [2.05, -0.18, 0.95, 0.12, 4.0], [1.5, -0.11, 1.0, 0.2, 4.0],
-				[0.8, -0.11, 1.0, 0.22, 4.0], [0.0, -0.09, 1.0, 0.24, 4.0], [-0.8, -0.05, 1.02, 0.28, 4.0],
-				[-1.6, -0.01, 1.0, 0.28, 4.0], [-2.2, -0.03, 0.95, 0.24, 4.0], [-2.42, -0.05, 0.85, 0.2, 4.0]],
-			"cabin": [[1.25, 0.08, 0.55, 0.02, 3.2], [0.75, 0.2, 0.62, 0.12, 3.2], [0.0, 0.28, 0.6, 0.15, 3.2],
-				[-0.6, 0.24, 0.56, 0.12, 3.2], [-1.3, 0.16, 0.5, 0.06, 3.2], [-1.8, 0.14, 0.45, 0.02, 3.2]],
-			"headlights": [Vector3(0.72, -0.12, 2.0)], "light_size": Vector3(0.26, 0.04, 0.16),
-			"tail_bar": false, "tails": [Vector3(0.7, 0.05, -2.42)],
-			"wing": {"z": -2.05, "y": 0.42, "span": 0.85, "chord": 0.34, "aoa": 14.0},
-			"intakes": true,
-		},
-	})
-
-
-## Quad-turbo W16 hypercar built for 400+ km/h.
-static func veloce() -> Dictionary:
-	return _road_defaults({
-		"id": "veloce", "name": "Veloce Hyper",
-		"desc": "W16 hypercar · 1500 hp · 1995 kg · 410 km/h",
-		"color": Color(0.1, 0.25, 0.65),
-		"accent": Color(0.06, 0.07, 0.1),
-		"mass": 1995.0, "power": 1100000.0, "max_drive_force": 15500.0,
-		"drag": 0.74, "downforce": 1.4,
-		"brake_base": 13.0, "brake_max": 14.0,
-		"wheel_front_z": 1.4, "wheel_rear_z": -1.32, "track_front": 0.86, "track_rear": 0.86,
-		"radius_rear": 0.36, "tyre_width_rear": 0.36,
-		"grip_front": 2.0, "grip_rear": 2.2,
-		"collision": [[Vector3(2.04, 0.62, 4.5), Vector3(0, -0.04, 0)], [Vector3(1.24, 0.4, 1.9), Vector3(0, 0.42, -0.25)]],
-		"redline": 6800.0, "idle_rpm": 800.0, "peak_rpm": 6000.0, "top_kmh": 410.0, "first_kmh": 110.0,
-		"cylinders": 16, "engine_base_hz": 220.0, "engine_tone": "w16",
-		"shape": {
-			"body": [[2.25, -0.14, 0.72, 0.15, 2.4], [1.92, -0.06, 0.92, 0.24, 2.8], [1.3, -0.02, 1.0, 0.28, 3.0],
-				[0.5, -0.06, 0.96, 0.26, 3.0], [-0.3, -0.02, 1.0, 0.3, 3.0], [-1.1, 0.02, 1.02, 0.32, 3.0],
-				[-1.8, 0.0, 0.98, 0.3, 3.0], [-2.25, -0.04, 0.88, 0.25, 2.8]],
-			"cabin": [[1.0, 0.24, 0.55, 0.02, 2.3], [0.6, 0.38, 0.62, 0.17, 2.3], [0.0, 0.45, 0.62, 0.21, 2.3],
-				[-0.6, 0.38, 0.6, 0.17, 2.3], [-1.2, 0.26, 0.52, 0.07, 2.3], [-1.6, 0.24, 0.45, 0.02, 2.3]],
-			"headlights": [Vector3(0.6, 0.02, 1.98)], "light_size": Vector3(0.22, 0.05, 0.08),
-			"tail_bar": true, "two_tone": true, "grille": true,
-		},
-	})

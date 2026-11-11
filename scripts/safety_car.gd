@@ -254,7 +254,7 @@ func _hide() -> void:
 
 
 func _make_car() -> void:
-	var spec := CarSpecs.get_spec("vanta_gt", 0)
+	var spec := CarSpecs.get_spec(CarSpecs.SAFETY_CAR, 0)
 	spec["color"] = Color(0.9, 0.9, 0.92)
 	spec["name"] = "Safety Car"
 	car = RaceCar.new()

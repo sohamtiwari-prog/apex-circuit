@@ -3,7 +3,7 @@ extends SceneTree
 ## a time trial driven by the AI at full pace on the racing line, the
 ## fastest of its first flying laps. Run when tracks or cars change.
 ##   godot --headless --fixed-fps 120 --script res://tests/make_ideal_laps.gd -- <track|all> [car|all]
-const CARS := ["gp26", "vanta_gt", "stuttgart9", "marauder", "toro_furia", "veloce"]
+const CARS := ["gp26"]
 
 
 func _initialize() -> void:

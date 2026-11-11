@@ -76,5 +76,5 @@ func _measure(car_id: String, speeds: Array) -> void:
 
 func _run() -> void:
 	await _measure("gp26", [12.0, 18.0, 25.0, 35.0, 50.0, 65.0])
-	await _measure("vanta_gt", [10.0, 15.0, 22.0, 30.0, 40.0])
+	
 	quit(0)

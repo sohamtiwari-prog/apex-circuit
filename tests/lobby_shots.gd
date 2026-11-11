@@ -20,7 +20,7 @@ func _run() -> void:
 	net.host_lan("Soham")
 	lobby._enter_as_host()
 	lobby._players()[2] = {"name": "Aarav", "car": "gp26", "team": 3}
-	lobby._players()[3] = {"name": "Kabir", "car": "vanta_gt", "team": 0}
+	lobby._players()[3] = {"name": "Kabir", "car": "gp26", "team": 4}
 	lobby._refresh_lobby()
 	await _shot(out + "/lobby2_host.png")
 	net.leave()
@@ -32,7 +32,7 @@ func _run() -> void:
 	lobby._enter_as_host()
 	lobby._players()[1]["rp"] = 1290
 	lobby._players()[2] = {"name": "Cousin", "car": "gp26", "team": 3, "ping": 96, "rp": 6420}
-	lobby._players()[3] = {"name": "Kabir", "car": "vanta_gt", "team": 0, "ping": 212, "rp": 380}
+	lobby._players()[3] = {"name": "Kabir", "car": "gp26", "team": 4, "ping": 212, "rp": 380}
 	lobby._refresh_lobby()
 	lobby._on_chat(2, "Let's go!")
 	lobby._on_chat(1, "GG")

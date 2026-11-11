@@ -1,8 +1,8 @@
 class_name Career
 extends RefCounted
-## Career: five series from club racing to Grand Prix. Each series has six
-## events of different kinds; each event awards up to 3 stars. Every series
-## is open from the start; each is raced in its own class of car.
+## Career: the Grand Prix series, six events of different kinds, each worth
+## up to 3 stars. (The junior single-seater series, karts, F4, F3, F2, join
+## it in a later update, each in its own class of car.)
 ##
 ## Event types:
 ##   race        a race; 3 stars for a win, 2 for second, 1 for third
@@ -16,46 +16,6 @@ extends RefCounted
 ## Each series: id, name, allowed cars, events.
 ## Event: [type, track, laps, opponents, AI skill]
 const SERIES := [
-	{"id": "club", "name": "Club Muscle Cup", "cars": ["marauder"],
-		"blurb": "Big V8s, short races. Learn the tracks.",
-		"events": [
-			["race", "kestrel_park", 3, 7, 0.86],
-			["time_trial", "styria", 3, 0, 0.0],
-			["duel", "entrelagos", 2, 1, 0.9],
-			["overtake", "silvermoor", 2, 7, 0.86],
-			["eliminator", "kestrel_park", 5, 5, 0.87],
-			["race", "brianza", 2, 11, 0.89],
-		]},
-	{"id": "sports", "name": "Sports Car Trophy", "cars": ["stuttgart9"],
-		"blurb": "Rear-engined and twitchy. Smooth wins.",
-		"events": [
-			["race", "pannonia", 3, 9, 0.89],
-			["duel", "riviera", 2, 1, 0.91],
-			["time_trial", "entrelagos", 3, 0, 0.0],
-			["eliminator", "styria", 5, 5, 0.9],
-			["overtake", "desert", 2, 9, 0.9],
-			["race", "ardennes", 2, 11, 0.91],
-		]},
-	{"id": "super", "name": "Supercar Series", "cars": ["vanta_gt", "toro_furia"],
-		"blurb": "Mid-engined missiles on the great circuits.",
-		"events": [
-			["race", "silvermoor", 2, 11, 0.91],
-			["time_trial", "brianza", 3, 0, 0.0],
-			["overtake", "styria", 3, 11, 0.91],
-			["duel", "ardennes", 2, 1, 0.93],
-			["eliminator", "ile_royale", 6, 6, 0.92],
-			["race", "gulf", 3, 15, 0.93],
-		]},
-	{"id": "hyper", "name": "Hypercar Challenge", "cars": ["veloce", "toro_furia"],
-		"blurb": "Over 400 km/h. Brake early.",
-		"events": [
-			["race", "brianza", 2, 11, 0.92],
-			["duel", "silvermoor", 2, 1, 0.94],
-			["time_trial", "ardennes", 2, 0, 0.0],
-			["overtake", "entrelagos", 3, 11, 0.93],
-			["eliminator", "desert", 6, 6, 0.93],
-			["race", "marina", 3, 15, 0.94],
-		]},
 	{"id": "gp", "name": "Grand Prix", "cars": ["gp26"],
 		"blurb": "The top of the sport: 1000 hp and 20-car grids.",
 		"events": [
@@ -72,20 +32,16 @@ const SERIES := [
 ## of the field, in every race of it (the duel is against them), with a
 ## head-to-head record kept (save "rivals").
 const RIVALS := {
-	"club": {"name": "Marco Vella", "skill": 0.025, "blurb": "Local hero. Brakes late, never lifts."},
-	"sports": {"name": "Ingrid Saar", "skill": 0.025, "blurb": "Smooth and patient; waits for your mistake."},
-	"super": {"name": "Theo Okoye", "skill": 0.025, "blurb": "Factory driver. Hates being passed."},
-	"hyper": {"name": "Sofia Navarro", "skill": 0.025, "blurb": "Fearless at 400 km/h."},
 	"gp": {"name": "Kai Lindgren", "skill": 0.02, "blurb": "Reigning champion. The one to beat."},
 }
 
 ## Rewards for career stars (total): paint colours and patterns for the
 ## paint shop.
 const REWARDS := [
-	[10, "colours", "Metallic colours: gunmetal, copper, mint and pearl"],
-	[25, "carbon", "Carbon pattern: bare carbon with your colours as trim"],
-	[45, "gold", "Champion's gold paint"],
-	[70, "chequer", "Chequered flag pattern"],
+	[3, "colours", "Metallic colours: gunmetal, copper, mint and pearl"],
+	[6, "carbon", "Carbon pattern: bare carbon with your colours as trim"],
+	[10, "gold", "Champion's gold paint"],
+	[15, "chequer", "Chequered flag pattern"],
 ]
 const REWARD_COLOURS := {"colours": ["#3b4048", "#b0623a", "#8de0c4", "#f4efe6"], "gold": ["#d4af37"]}
 

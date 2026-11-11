@@ -12,7 +12,7 @@ const SAVE_DIR := "user://save"
 const SAVE_PATH := SAVE_DIR + "/profile.json"
 const BACKUP_PATH := SAVE_DIR + "/profile.bak.json"
 const TMP_PATH := SAVE_DIR + "/profile.tmp.json"
-const SCHEMA_VERSION := 7
+const SCHEMA_VERSION := 8
 ## Other drivers on this phone wait here (<id>.json, and <id>_ghosts/ for
 ## their best-lap ghosts) while someone else drives.
 const DRIVERS_DIR := SAVE_DIR + "/drivers"
@@ -92,7 +92,7 @@ const _DEFAULTS := {
 		"laps": 3,
 		"opponents": 19,
 		"difficulty": "medium",     # easy, medium, hard
-		"garage_car": "marauder",   # the car on the home screen
+		"garage_car": "gp26",       # the car on the home screen
 		"paint_car": "",            # the car in the paint shop
 		"career_series": 0,
 		"career_car": {},           # series id -> the car you last raced in it
@@ -281,6 +281,15 @@ func _migrate(profile: Dictionary) -> void:
 		if used:
 			d["created"] = true
 			d["name"] = String(st.get("player_name", "")) if String(st.get("player_name", "")) != "" else "Driver"
+	# v8: Grand Prix only. Cars that have gone are the GP car; a season in
+	# a class that has gone is over (its trophies stay in the cabinet).
+	for key in ["car", "garage_car", "paint_car"]:
+		if String(st.get(key, "")) != "" and not CarSpecs.CATALOG.has(String(st.get(key, ""))):
+			st[key] = CarSpecs.CATALOG[0]
+	var cs: Dictionary = profile.get("championship", {})
+	if cs.has("class") and Championship.class_info(String(cs["class"]))["id"] != String(cs["class"]):
+		profile["championship"] = {}
+	st["career_series"] = clampi(int(st.get("career_series", 0)), 0, Career.SERIES.size() - 1) if int(profile.get("schema", 1)) >= 8 else 0
 	profile["schema"] = SCHEMA_VERSION
 
 

@@ -152,6 +152,8 @@ func _build_car_side(cols: Control) -> void:
 	var next := UIStyle.button("›", func(): _step_car(1), false, 64)
 	next.custom_minimum_size = Vector2(84, 66)
 	nav.add_child(next)
+	prev.visible = CarSpecs.CATALOG.size() > 1      # (one car for now: nothing to step through)
+	next.visible = prev.visible
 	_car_count = UIStyle.outlined(UIStyle.label("", 22, UIStyle.PAPER, "semibold"), 4)
 	_car_count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_car_count.size_flags_vertical = Control.SIZE_FILL
@@ -426,7 +428,7 @@ func _select_car(id: String, persist: bool) -> void:
 	_owned_lbl.add_theme_color_override("font_color", UIStyle.PAPER)
 	var parts: PackedStringArray = String(spec["desc"]).split(" · ")
 	_car_kind.text = parts[0] if parts.size() > 0 else ""
-	_car_count.text = "Car %d of %d" % [car_ids.find(id) + 1, car_ids.size()]
+	_car_count.text = ("Car %d of %d" % [car_ids.find(id) + 1, car_ids.size()]) if car_ids.size() > 1 else ""
 	# Performance: power-to-weight, cornering grip at 200 km/h, top speed.
 	var pw: float = float(spec["power"]) / float(spec["mass"])            # W/kg
 	var v := 55.6

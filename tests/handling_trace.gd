@@ -9,7 +9,7 @@ func _run() -> void:
 	ground.add_child(cs)
 	root.add_child(ground)
 	var args := OS.get_cmdline_user_args()
-	var id: String = args[0] if args.size() > 0 else "marauder"
+	var id: String = args[0] if args.size() > 0 else "gp26"
 	var v: float = float(args[1]) if args.size() > 1 else 45.0
 	var s: float = float(args[2]) if args.size() > 2 else 0.7
 	var specs = load("res://scripts/car_specs.gd")

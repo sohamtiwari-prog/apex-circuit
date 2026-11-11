@@ -32,10 +32,9 @@ func _run() -> void:
 	p["on"] = false
 	save.set_paint("gp26", p)
 	_check(not (save.car_spec("gp26", 3)["livery"]["base"] as Color).is_equal_approx(Color.html("#121c4a")), "switched off: team colours again")
-	save.set_paint("vanta_gt", {"on": true, "base": "#14b8b0", "accent": "#14181f", "pattern": "stripes"})
-	var r: Dictionary = save.car_spec("vanta_gt")
-	_check((r["color"] as Color).is_equal_approx(Color.html("#14b8b0")) and bool(r["shape"]["stripes"]), "road car: your colour and stripes")
-	_check(not bool(CarSpecs.get_spec("vanta_gt")["shape"].get("stripes", false)) or true, "(the factory car's shape is untouched)")
+	save.set_paint("gp26", {"on": true, "base": "#14b8b0", "accent": "#14181f", "stripe": "#f2f2f2", "helmet": "#ffd919", "pattern": "split", "number": 44})
+	var r: Dictionary = save.car_spec("gp26", 2)
+	_check((r["livery"]["base"] as Color).is_equal_approx(Color.html("#14b8b0")) and String(r["pattern"]) == "split" and int(r["number"]) == 44, "GP car: another paint, pattern and number")
 	# Built into a car without errors.
 	var car := RaceCar.new()
 	car.setup(r)
@@ -44,7 +43,7 @@ func _run() -> void:
 	_check(car.body != null, "a car builds in your paint")
 	car.queue_free()
 	# To friends: the start message carries each player's paint.
-	var info: Dictionary = load("res://scripts/lobby.gd").make_start({"track": "styria", "laps": 3, "grid": 6}, {1: {"name": "Ann", "car": "vanta_gt", "team": 0, "paint": save.my_paint("vanta_gt")}})
+	var info: Dictionary = load("res://scripts/lobby.gd").make_start({"track": "styria", "laps": 3, "grid": 6}, {1: {"name": "Ann", "car": "gp26", "team": 0, "paint": save.my_paint("gp26")}})
 	var mine := {}
 	for g in info["grid"]:
 		if g["kind"] == "player":

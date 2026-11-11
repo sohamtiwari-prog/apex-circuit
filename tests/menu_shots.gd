@@ -15,7 +15,7 @@ func _run() -> void:
 	var menu: Node = (load("res://scenes/menu.tscn") as PackedScene).instantiate()
 	root.add_child(menu)
 	await _shot(out + "/m1.png")
-	menu._select_car("vanta_gt", true)
+	menu._select_car("gp26", true)
 	menu._select_track("riviera", true)
 	save.set_setting("mode", "time_trial")
 	menu._refresh_mode()

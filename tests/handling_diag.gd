@@ -67,7 +67,7 @@ func _run() -> void:
 	cs.shape = WorldBoundaryShape3D.new()
 	ground.add_child(cs)
 	root.add_child(ground)
-	var ids: Array = ["gp26", "vanta_gt", "marauder"]
+	var ids: Array = ["gp26"]
 	if OS.get_cmdline_user_args().size() > 0:
 		ids = Array(OS.get_cmdline_user_args())
 	for id in ids:

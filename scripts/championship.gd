@@ -12,14 +12,6 @@ const POINTS := [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
 const CLASSES := [
 	{"id": "gp", "name": "Grand Prix World Championship", "cars": ["gp26"],
 		"rounds": ["lakeside", "jiading", "isebay", "desert", "red_sea", "riviera", "ile_royale", "styria", "silvermoor", "ardennes", "pannonia", "duinen", "brianza", "caspian", "marina", "lone_star", "entrelagos", "gulf"]},
-	{"id": "hyper", "name": "Hypercar Masters", "cars": ["veloce", "toro_furia"],
-		"rounds": ["brianza", "ardennes", "silvermoor", "marina", "entrelagos", "gulf"]},
-	{"id": "super", "name": "Supercar Championship", "cars": ["vanta_gt", "toro_furia"],
-		"rounds": ["silvermoor", "ile_royale", "styria", "pannonia", "desert", "gulf"]},
-	{"id": "sports", "name": "Sports Car Cup", "cars": ["stuttgart9"],
-		"rounds": ["styria", "kestrel_park", "entrelagos", "riviera", "silvermoor", "desert"]},
-	{"id": "muscle", "name": "Muscle Car Series", "cars": ["marauder"],
-		"rounds": ["kestrel_park", "styria", "entrelagos", "brianza", "silvermoor", "desert"]},
 ]
 
 
@@ -53,7 +45,7 @@ static func start(save: Node, class_id: String, car_id: String, career_event := 
 	var tracks: Array = (info["rounds"] as Array).slice(0, rounds)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(Time.get_unix_time_from_system())
-	var base: float = {"gp": 0.95, "hyper": 0.93, "super": 0.92, "sports": 0.9, "muscle": 0.88}.get(class_id, 0.92)
+	var base: float = {"gp": 0.95}.get(class_id, 0.95)
 	var drivers: Array = [{"name": "You", "team": int(save.get_setting("team")), "skill": 0.0, "car": car_id}]
 	var names: Array = (load("res://scripts/race.gd").DRIVER_NAMES as Array).duplicate()
 	names.shuffle()

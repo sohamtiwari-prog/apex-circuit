@@ -10,11 +10,11 @@ Grand Prix tracks follow real circuit layouts under fictional names.
 | Car | Modelled on | | |
 |---|---|---|---|
 | **Apex GP-26** | current F1 car, 10 team liveries | 1000 hp · 800 kg | 0-100 2.4 s · 342 km/h |
-| **Apex Vanta GT** | mid-engined supercar | 720 hp · 1420 kg | 0-100 3.9 s · 339 km/h |
-| **Stuttgart 9 Turbo** | rear-engined sports icon | 650 hp · 1640 kg | 0-100 3.8 s · 325 km/h |
-| **Marauder V8** | American muscle car | 480 hp · 1750 kg | 0-100 4.9 s · 281 km/h |
-| **Toro Furia** | Italian V12 wedge hypercar | 770 hp · 1550 kg | 0-100 3.9 s · 345 km/h |
-| **Veloce Hyper** | W16 hypercar | 1500 hp · 1995 kg | 0-100 3.6 s · 387+ km/h |
+
+For now the game is **Grand Prix only**: the GP car in ten teams' liveries
+(the road cars of earlier versions are gone). The junior single-seaters,
+karts, F4, F3 and F2, are planned as series of their own in a later
+update. The one other car is the Safety Car, a mid-engined road car.
 
 Cars are modelled procedurally (scripts/mesh_kit.gd: lofted bodywork,
 airfoil wings, lathed tyres). Names and teams are fictional.
@@ -147,16 +147,14 @@ other's ranks in the lobby.
 
 ## Career rivals and rewards
 
-Every career series has a **rival**: Marco Vella (Club Muscle Cup), Ingrid
-Saar (Sports Car Trophy), Theo Okoye (Supercar Series), Sofia Navarro
-(Hypercar Challenge) and Kai Lindgren (Grand Prix). They're on the grid of
-every race in their series, a little quicker than the rest and tagged RIVAL
+The career series has a **rival**: Kai Lindgren, the reigning Grand Prix
+champion. He's on the grid of every race in the series, a little quicker than the rest and tagged RIVAL
 over their car; the series' duel is against them. The results say whether
 you beat them, and the career screen keeps your head-to-head record.
 
-Career stars unlock things for the paint shop: metallic colours at 10 stars,
-the **Carbon** pattern at 25, champion's gold at 45 and the **Chequered**
-pattern at 70 (the next one is shown on the career screen).
+Career stars unlock things for the paint shop: metallic colours at 3 stars,
+the **Carbon** pattern at 6, champion's gold at 10 and the **Chequered**
+pattern at 15 (the next one is shown on the career screen).
 
 ## Paint shop
 
@@ -308,24 +306,21 @@ now for what's coming at your current speed.
 
 - **Home screen:** Career, Championship, Quick race, Friends and Garage,
   with your car, rank and career stars.
-- **Career:** five series (Club Muscle Cup, Sports Car Trophy, Supercar
-  Series, Hypercar Challenge, Grand Prix), six events each: races, duels
-  against one rival, overtake challenges (start last), eliminators (last
-  car out every lap) and time trials (gold / silver / bronze). Up to 3
-  stars per event; every series is open from the start. The Grand Prix series
-  ends with a full World Championship season.
-- **Garage:** every car is open from the start: no money, no buying, no
-  upgrades. Every car races exactly as it comes, so it's down to the
-  driving. The garage shows how each car performs (power, weight, top
-  speed, grip, braking and its Performance Rating), where it races, and
-  lets you pick the car on your home screen or take it for a drive.
+- **Career:** the Grand Prix series, six events: a race, a time trial
+  (gold / silver / bronze), a duel against one rival, an overtake challenge
+  (start last), an eliminator (last car out every lap), and a full World
+  Championship season to finish. Up to 3 stars per event.
+- **Garage:** the GP car and its ten teams: pick the team you race for (its
+  livery), see how the car performs (power, weight, top speed, grip,
+  braking and its Performance Rating), and go to the paint shop or the car
+  setup. No money, no buying, no upgrades: it's down to the driving.
 - **Daily challenge:** a new event every day (picked from the date, the
-  same for everyone) in a car loaned for the day, with a twist: a night
+  same for everyone), with a twist: a night
   race, rain, a charge from the back, a duel or a hot lap. Up to 3 stars.
 - **Profile & trophies:** your rank, totals (races, wins, podiums, laps,
   distance, stars), your best lap at every track and the trophy
   cabinet from championships.
-- **Championship:** pick a class and a car for it, 3 to 10 rounds, 2 to 5
+- **Championship:** the Grand Prix World Championship, 3 to 10 rounds, 2 to 5
   laps; the same 20 drivers all season, points 25-18-15-12-10-8-6-4-2-1
   (+1 fastest lap), driver and team standings and a trophy.
 - **Race weekends:** qualifying (one flying lap from a rolling out-lap,

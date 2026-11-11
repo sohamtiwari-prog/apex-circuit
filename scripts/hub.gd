@@ -153,12 +153,12 @@ func _build_ui() -> void:
 		get_tree().change_scene_to_file("res://scenes/race.tscn"),
 		("%d of 3 stars" % dstars) if dstars > 0 else ("New in %d h" % hours_left if hours_left > 1 else "New within the hour"))
 	_tile(grid, "championship", "podium", "Championship", Championship.summary(save), func(): get_tree().change_scene_to_file("res://scenes/championship.tscn"))
-	_tile(grid, "career", "trophy", "Career", "Every series and event", func(): get_tree().change_scene_to_file("res://scenes/career.tscn"),
+	_tile(grid, "career", "trophy", "Career", "The Grand Prix series", func(): get_tree().change_scene_to_file("res://scenes/career.tscn"),
 		"%d of %d stars" % [Career.total_stars(save), Career.SERIES.size() * 18])
-	_tile(grid, "quick", "flag", "Quick race", "Any car, any track, any rules", func(): get_tree().change_scene_to_file("res://scenes/menu.tscn"))
+	_tile(grid, "quick", "flag", "Quick race", "Any track, any rules", func(): get_tree().change_scene_to_file("res://scenes/menu.tscn"))
 	_tile(grid, "friends", "friends", "Friends", "Race on the same Wi-Fi or online", func(): get_tree().change_scene_to_file("res://scenes/lobby.tscn"))
-	_tile(grid, "garage", "spanner", "Garage", "Paint, setup and every car", func(): get_tree().change_scene_to_file("res://scenes/garage.tscn"),
-		"%d cars" % CarSpecs.CATALOG.size())
+	_tile(grid, "garage", "spanner", "Garage", "Your team, paint and setup", func(): get_tree().change_scene_to_file("res://scenes/garage.tscn"),
+		("%d cars" % CarSpecs.CATALOG.size()) if CarSpecs.CATALOG.size() > 1 else ("%d teams" % CarSpecs.TEAMS.size()))
 	for k in ["daily", "championship", "career", "quick", "friends", "garage"]:
 		boards.append(_tiles[k])
 	UIStyle.reveal(boards)

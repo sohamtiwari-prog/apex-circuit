@@ -36,7 +36,7 @@ func _run() -> void:
 	shop.set_value("accent", "#14181f")
 	shop.set_value("stripe", "#ffd919")
 	await _shot(out + "/paint4_split.png")
-	shop._select("vanta_gt")
+	shop._select("gp26")
 	shop.set_value("base", "#14b8b0")
 	shop.set_value("pattern", "stripes")
 	await _shot(out + "/paint5_road.png")

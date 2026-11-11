@@ -149,12 +149,12 @@ func _run() -> void:
 	await _steer_test("GP-26")
 	await _ai_lap("GP-26 @ Silvermoor", 125.0)
 
-	await _setup("kestrel_park", "vanta_gt")
+	await _setup("kestrel_park", "gp26")
 	await _drag_test("Vanta GT", 260.0, 4.5, 1.0)
 	await _steer_test("Vanta GT")
 	await _ai_lap("Vanta GT @ Kestrel Park", 80.0)
 
-	await _setup("silvermoor", "vanta_gt")
+	await _setup("silvermoor", "gp26")
 	await _ai_lap("Vanta GT @ Silvermoor", 170.0)
 
 	print("")

@@ -67,7 +67,7 @@ func _build_ui() -> void:
 
 func _select(id: String) -> void:
 	car_id = id
-	room.show_spec(save.car_spec(id))
+	room.show_spec(save.car_spec(id, int(save.get_setting("team")) if id == "gp26" else 0))
 	_refresh()
 
 
@@ -76,6 +76,10 @@ func _refresh() -> void:
 		c.queue_free()
 	for c in _panel.get_children():
 		c.queue_free()
+	if CarSpecs.CATALOG.size() == 1:
+		_team_list()
+		_build_panel()
+		return
 	var ids: Array = Array(CarSpecs.CATALOG).duplicate()
 	ids.sort_custom(func(x, y): return Garage.pr(CarSpecs.get_spec(x)) < Garage.pr(CarSpecs.get_spec(y)))
 	for id in ids:
@@ -88,6 +92,37 @@ func _refresh() -> void:
 		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		_list.add_child(b)
 	_build_panel()
+
+
+## One car (Grand Prix only, for now): the list is the ten teams instead,
+## each in its livery colour; tap one to race in its colours.
+func _team_list() -> void:
+	_list.add_child(UIStyle.label("Teams", 20, UIStyle.PAPER, "display"))
+	var grid := GridContainer.new()
+	grid.columns = 1
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_list.add_child(grid)
+	var cur := int(save.get_setting("team"))
+	for i in CarSpecs.TEAMS.size():
+		var t: Dictionary = CarSpecs.TEAMS[i]
+		var k: int = i
+		var b := UIStyle.button(String(t["name"]), func():
+			save.set_setting("team", k)
+			_select(car_id), k == cur, 21)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		b.custom_minimum_size = Vector2(300, 44)
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		for st in ["normal", "hover", "pressed"]:
+			var sb := b.get_theme_stylebox(st).duplicate() as StyleBoxFlat
+			sb.border_color = t["base"]
+			sb.border_width_left = 8
+			sb.content_margin_left = 16
+			b.add_theme_stylebox_override(st, sb)
+		grid.add_child(b)
 
 
 func _build_panel() -> void:
@@ -151,6 +186,7 @@ func _build_panel() -> void:
 	hb.disabled = home
 	hb.custom_minimum_size = Vector2(0, 76)
 	hb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hb.visible = CarSpecs.CATALOG.size() > 1
 	row.add_child(hb)
 	var drive := UIStyle.go_button("Drive it", func():
 		save.set_setting("car", car_id)

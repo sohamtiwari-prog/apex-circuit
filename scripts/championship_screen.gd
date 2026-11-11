@@ -84,9 +84,11 @@ func _panel(min_w: float, expand := false) -> VBoxContainer:
 # ------------------------------------------------------------ new season
 
 func _build_setup() -> void:
-	var left := _panel(520)
-	left.add_child(UIStyle.label("Choose a championship", 22, UIStyle.PAPER, "display"))
-	for c in Championship.CLASSES:
+	# (One championship for now, Grand Prix: nothing to choose between.)
+	var left: VBoxContainer = _panel(520) if Championship.CLASSES.size() > 1 else null
+	if left != null:
+		left.add_child(UIStyle.label("Choose a championship", 22, UIStyle.PAPER, "display"))
+	for c in (Championship.CLASSES if left != null else []):
 		var cars: Array = []
 		for car in c["cars"]:
 			cars.append(CarSpecs.display_name(String(car)))
