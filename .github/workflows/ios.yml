@@ -92,5 +92,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp build/ios/ApexCircuit.ipa "ApexCircuit-${{ inputs.tag }}.ipa"
-          gh release upload "${{ inputs.tag }}" "ApexCircuit-${{ inputs.tag }}.ipa" --clobber
+          # (One name for every release, so the download page links to the latest.)
+          cp build/ios/ApexCircuit.ipa ApexCircuit-iPhone.ipa
+          gh release upload "${{ inputs.tag }}" ApexCircuit-iPhone.ipa --clobber

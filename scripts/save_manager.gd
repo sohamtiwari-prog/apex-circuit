@@ -106,6 +106,7 @@ const _DEFAULTS := {
 		"pit_mode": "manual",       # manual: you drive the pit lane; auto: the car drives itself
 		"ideal_ghost": false,       # the ideal-lap ghost car (races and time trial)
 		"look": "auto",             # menus: "light", "dark" or "auto" (match the phone)
+		"web_tuned": false,         # (iPhone browser: battery saver set once, on the first visit)
 	},
 	"best_laps": {},                  # "track|car" -> milliseconds
 	"best_sectors": {},               # "track|car" -> [ms, ms, ms], best of each sector

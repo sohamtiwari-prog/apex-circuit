@@ -84,8 +84,24 @@ works too. Online races work between the browser and the Android app on the
 same version; Wi-Fi games need the app (a browser can't use the local
 network). Progress is kept in that browser. (In the browser the cars'
 numbers and sponsor lettering are left off: with a grid of cars' worth of
-3D text, WebGL stopped drawing the 3D world.) (An App Store / TestFlight build
-would need Apple's paid developer programme and a Mac.)
+3D text, WebGL stopped drawing the 3D world.)
+
+In a browser on an iPhone the game draws at 1.5 pixels per point (an
+iPhone's screen has 3, nine times the pixels to fill) and starts on
+Battery saver graphics; sound plays with the silent switch on. Typing (your
+name, a ghost code, a backup code) opens a text bar across the top of the
+page, above the keyboard, since a phone only raises its keyboard for a real
+text box (web/shell.html, scripts/web_bridge.gd).
+
+**The iPhone app (.ipa).** After each release, `.github/workflows/ios.yml`
+builds the iPhone app on GitHub's Macs (Godot's Xcode project, built with
+`xcodebuild`, unsigned) and attaches `ApexCircuit-iPhone.ipa` to the
+release. It isn't on the App Store: install it from a computer with
+Sideloadly (sideloadly.io) or AltStore, which sign it with your own Apple ID.
+Then on the iPhone trust your Apple ID (Settings → General → VPN & Device
+Management) and, on iOS 16+, turn on Developer Mode. With a free Apple ID it
+has to be re-signed every 7 days (progress stays). A TestFlight or App Store
+build would need Apple's paid developer programme ($99 a year).
 
 ## Game modes
 

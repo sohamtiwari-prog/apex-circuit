@@ -32,6 +32,11 @@ func _ready() -> void:
 			get_tree().change_scene_to_file.call_deferred("res://scenes/race.tscn")
 			return
 	DisplayServer.screen_set_keep_on(true)
+	# An iPhone browser draws a lot less than the app: lighter graphics to
+	# begin with (Pause -> Graphics puts them back up).
+	if WebBridge.is_ios() and not bool(save.get_setting("web_tuned")):
+		save.set_setting("web_tuned", true)
+		save.set_setting("graphics", "saver")
 	if not bool(save.driver().get("created", false)):
 		get_tree().change_scene_to_file.call_deferred("res://scenes/driver.tscn")
 		return
@@ -70,6 +75,18 @@ func _build_ui() -> void:
 	left.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cols.add_child(left)
 	boards.append(_driver_card(left))
+	if WebBridge.is_ios() and not WebBridge.is_standalone():
+		var tip := PanelContainer.new()
+		var tsb := UIStyle.panel(UIStyle.BLACK, false)
+		tsb.set_content_margin_all(12)
+		tip.add_theme_stylebox_override("panel", tsb)
+		tip.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		tip.custom_minimum_size = Vector2(500, 0)
+		tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var tl := UIStyle.label("Full screen: tap Share, then Add to Home Screen, and play from the icon.", 19, UIStyle.SIGNAL, "bold")
+		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		tip.add_child(tl)
+		left.add_child(tip)
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE

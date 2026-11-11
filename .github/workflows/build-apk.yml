@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 env:
   GODOT_VERSION: "4.3"
@@ -308,8 +309,17 @@ jobs:
             **Install:** download `ApexCircuit-v0.1.${{ github.run_number }}.apk` below on your Android phone and open it.
             If the download is slow or fails, use the mirror: https://sohamtiwari-prog.github.io/apex-circuit/
             Updates install over the previous version and keep your progress.
+
+            **iPhone:** play in Safari from the mirror (Add to Home Screen for full screen), or sideload `ApexCircuit-iPhone.ipa` (added below a few minutes after this release; see the mirror page for how).
           files: build/ApexCircuit-v0.1.${{ github.run_number }}.apk
           make_latest: true
+
+      - name: Start the iPhone build for this release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/actions/workflows/ios.yml/dispatches" \
+            -f ref=main -f "inputs[tag]=v0.1.${{ github.run_number }}" && echo "iPhone build started"
 
       # Second download route: GitHub Pages (different servers from release
       # assets, which some networks struggle to reach). Only the newest build.

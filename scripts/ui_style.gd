@@ -376,6 +376,14 @@ static func field(e: LineEdit) -> LineEdit:
 	e.add_theme_color_override("font_placeholder_color", Color(FOG, 0.8))
 	e.add_theme_color_override("caret_color", PAPER)
 	e.add_theme_color_override("selection_color", Color(APEX, 0.5))
+	if WebBridge.is_web():
+		# (In a browser the page's own text box does the typing: the field
+		# itself only shows it. Editable, the engine's own hidden typing
+		# box would take the focus straight back.)
+		e.virtual_keyboard_enabled = false
+		e.editable = false
+		e.add_theme_color_override("font_uneditable_color", PAPER)
+		e.focus_entered.connect(func(): WebBridge.edit_text(e))
 	return e
 
 

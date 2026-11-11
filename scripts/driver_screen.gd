@@ -255,7 +255,11 @@ func _restore_row(v: Control) -> void:
 	_restore.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UIStyle.field(_restore)
 	row.add_child(_restore)
-	var paste := UIStyle.button("Paste", func(): _restore.text = DisplayServer.clipboard_get(), false, 20)
+	var paste := UIStyle.button("Paste", func():
+		if WebBridge.is_web():
+			_restore.grab_focus()          # (the page's text box: hold in it, then Paste)
+		else:
+			_restore.text = DisplayServer.clipboard_get(), false, 20)
 	paste.custom_minimum_size = Vector2(0, 54)
 	row.add_child(paste)
 	var go := UIStyle.button("Restore", _do_restore, true, 20)

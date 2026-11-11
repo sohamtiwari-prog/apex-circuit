@@ -1,5 +1,6 @@
-"""The browser version loads and starts: the engine boots, the hub draws,
-and nothing in the game's scripts errors. Software rendering, so no
+"""The browser version loads and starts: the engine boots, the first
+screen draws, typing works through the page's text bar, and nothing in
+the game's scripts errors. Software rendering, so no
 judgement on speed here.
     python3 .github/web_smoke.py http://127.0.0.1:8765/index.html [screenshot.png]
 """
@@ -42,6 +43,27 @@ async def main() -> int:
         # grid). A world that isn't drawn (sky and HUD only) is a small,
         # mostly flat picture; the grid with 20 cars is several times bigger.
         # Three kinds of venue: open parkland, the densest forest, a city.
+        # Typing in a browser (the first screen is Create your driver): tap
+        # the name box, the page's text bar opens, what's typed goes back
+        # to the game.
+        try:
+            await pg.evaluate("""() => { window.__typed = []; const o = window.__apexText.open;
+                window.__apexText.open = function (t, ph, m, cb) { return o.call(this, t, ph, m, function (v, d) { window.__typed.push([v, d]); return cb(v, d); }); }; }""")
+            await pg.touchscreen.tap(1280 * 0.30, 600 * 0.215)
+            await pg.wait_for_function("document.getElementById('textbar').classList.contains('on')", timeout=20000)
+            await pg.tap("#textin")
+            await pg.keyboard.type("Racer")
+            await pg.click("#textdone")
+            await pg.wait_for_timeout(1500)
+            typed = await pg.evaluate("window.__typed")
+            if typed and typed[-1] == ["Racer", True]:
+                print("PASS  typing: the name box opens the page's text bar and the name reaches the game")
+            else:
+                print("FAIL  typing: the game got %s" % typed)
+                ok = False
+        except Exception as e:  # noqa: BLE001
+            print("FAIL  typing: the text bar didn't open (%s)" % e)
+            ok = False
         for tid in ["silvermoor", "ardennes", "marina"]:
             await pg.goto(URL + "?race=" + tid)
             try:

@@ -20,6 +20,8 @@
   h1 { margin:0; font:800 30px/1.1 "Archivo", system-ui, sans-serif; font-stretch:125%; }
   .meta { color:var(--steel); margin:6px 0 0; }
   section { background:var(--board); margin-top:20px; padding:18px; border-radius:2px; }
+  h3 { margin:18px 0 10px; font:700 18px/1.2 "Barlow Semi Condensed", system-ui, sans-serif; }
+  section > p { margin:0 0 12px; }
   h2 { margin:0 0 12px; font:800 18px/1.2 "Archivo", system-ui, sans-serif; font-stretch:125%; }
   a.btn { display:block; text-align:center; background:var(--go); color:#fff; font:800 19px/1.2 "Archivo", system-ui, sans-serif;
           font-stretch:125%; text-decoration:none; padding:18px; border-radius:2px; }
@@ -43,15 +45,32 @@
   </div>
 
   <section>
-  <h2>iPhone, iPad and computers</h2>
+  <h2>iPhone and iPad</h2>
   <p class="pick" id="pick-ios">You're on an iPhone or iPad: this one's for you.</p>
+  <p>Two ways in. Start with the browser: nothing to install.</p>
+  <h3>1. Play in Safari</h3>
   <a class="btn" href="play/">Play in the browser</a>
   <ol>
     <li>Open this page in <b>Safari</b> and tap <b>Play in the browser</b>. The first load is about 45 MB; after that it starts quickly.</li>
-    <li>For full screen: tap <b>Share</b>, then <b>Add to Home Screen</b>, and play from the Apex Circuit icon.</li>
-    <li>Tilt steering: allow <b>motion</b> when asked (on your first tap). Or pick drag or button steering in the settings.</li>
-    <li>Race friends with <b>Friends → Online</b>: it works with Android players on the same version. (Wi-Fi games need the Android app.)</li>
+    <li>For full screen: tap <b>Share</b> (the square with the arrow), then <b>Add to Home Screen</b>, and play from the Apex Circuit icon from then on.</li>
+    <li>Typing your name or a code: tap the box and a text bar opens at the top, above the keyboard. Tap <b>Done</b> when you're finished.</li>
+    <li>Tilt steering: allow <b>motion</b> when asked (on your first tap). Graphics start on Battery saver; Pause → Graphics for High.</li>
   </ol>
+  <h3>2. Install the iPhone app</h3>
+  <a class="alt" href="https://github.com/sohamtiwari-prog/apex-circuit/releases/latest/download/ApexCircuit-iPhone.ipa">Download the iPhone app (.ipa)</a>
+  <ol>
+    <li>It isn't on the App Store, so it goes on through a computer (Windows or Mac) with <b>Sideloadly</b> (sideloadly.io), free, using your own Apple ID.</li>
+    <li>Download the .ipa above on the computer, plug in the iPhone, drop the .ipa into Sideloadly, type your Apple ID and press <b>Start</b>.</li>
+    <li>On the iPhone: <b>Settings → General → VPN &amp; Device Management</b>, tap your Apple ID, <b>Trust</b>. On iOS 16 or later also turn on <b>Settings → Privacy &amp; Security → Developer Mode</b> (the phone restarts).</li>
+    <li>With a free Apple ID the app stops opening after <b>7 days</b>: run Sideloadly again (or turn on its automatic refresh) and your progress stays.</li>
+  </ol>
+  <small>The app draws with the phone's own graphics (Metal), like the Android app, where the browser is limited to WebGL. To carry your progress over, copy your backup code in the browser (Your driver) and restore it in the app. Online races with friends work in both; Wi-Fi races need the Android app.</small>
+  </section>
+
+  <section>
+  <h2>Computers</h2>
+  <a class="btn" href="play/">Play in the browser</a>
+  <small>Arrows or WASD to drive, Space to brake, C for the camera, R to reset, Esc to pause.</small>
   </section>
 
   <section>

@@ -35,6 +35,17 @@ body {
 #rotate svg { width: 84px; height: 84px; margin-bottom: 18px; animation: tilt 2s ease-in-out infinite; }
 @keyframes tilt { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
 @media (orientation: portrait) and (max-width: 900px) { #rotate.on { display: flex; } }
+/* Typing: a real text box in a bar across the top, above the keyboard. */
+#textbar { display: none; position: fixed; left: 0; right: 0; top: 0; z-index: 10; background: #fff;
+	padding: 10px max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left));
+	box-shadow: 0 4px 0 rgba(0,0,0,0.25); gap: 10px; align-items: center; }
+#textbar.on { display: flex; }
+#textbar input { flex: 1; min-width: 0; font: 600 20px "Barlow Semi Condensed", -apple-system, sans-serif;
+	padding: 10px 12px; border: 0; border-bottom: 4px solid #ffd200; background: #e4e7ea; color: #000;
+	border-radius: 2px; -webkit-user-select: text; user-select: text; }
+#textbar input:focus { outline: none; }
+#textbar button { font: 800 18px "Archivo", -apple-system, sans-serif; font-stretch: 125%; border: 0;
+	background: #00a04a; color: #fff; padding: 12px 18px; border-radius: 2px; }
 </style>
 $GODOT_HEAD_INCLUDE
 </head>
@@ -50,6 +61,8 @@ $GODOT_HEAD_INCLUDE
 	<div id="tip">Play full screen: tap <b>Share</b> then <b>Add to Home Screen</b>, and open Apex Circuit from there.</div>
 	<div id="notice"></div>
 </div>
+
+<div id="textbar"><input id="textin" type="text" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="done"><button id="textdone" type="button">Done</button></div>
 
 <div id="rotate" class="overlay on">
 	<svg viewBox="0 0 64 64" fill="none" stroke="#000" stroke-width="3"><rect x="20" y="6" width="24" height="52" rx="5"/><circle cx="32" cy="50" r="2" fill="#000"/></svg>
@@ -94,6 +107,64 @@ $GODOT_HEAD_INCLUDE
 	document.addEventListener('dblclick', (e) => e.preventDefault());
 	document.addEventListener('contextmenu', (e) => e.preventDefault());
 	const standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: fullscreen)').matches || window.matchMedia('(display-mode: standalone)').matches;
+	window.__apexStandalone = standalone;
+	// Sound with the ring/silent switch on silent too (Safari 17+): it's a game.
+	try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+	// Draw at no more than 1.5 pixels per point on an iPhone (2 elsewhere): a
+	// 3x screen is 9x the pixels of 1x, far more than WebGL on a phone can
+	// fill at racing frame rates, for sharpness you can't see at speed.
+	const dpr = window.devicePixelRatio || 1;
+	const cap = iOS ? 1.5 : 2;
+	if (dpr > cap) {
+		try { Object.defineProperty(window, 'devicePixelRatio', { get: () => cap, configurable: true }); } catch (e) {}
+	}
+	// Typing (scripts/web_bridge.gd edit_text): the game opens this bar with
+	// the field's text; every change goes back to the game, Done closes it.
+	const bar = document.getElementById('textbar');
+	const box = document.getElementById('textin');
+	let cb = null;
+	function send(done) { if (cb) cb(box.value, done); }
+	function close() { send(true); bar.classList.remove('on'); box.blur(); cb = null; const c = document.getElementById('canvas'); if (c) c.focus(); }
+	box.addEventListener('input', () => send(false));
+	box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); close(); } });
+	// The game listens for keys on the whole page (and stops their default,
+	// which is typing): keys meant for the box go no further than the box.
+	for (const t of ['keydown', 'keyup', 'keypress']) {
+		window.addEventListener(t, (e) => { if (e.target === box) e.stopImmediatePropagation(); }, true);
+	}
+	// Likewise taps on the bar: the game would take them (and the focus).
+	for (const t of ['touchstart', 'touchend', 'touchmove', 'mousedown', 'mouseup', 'pointerdown', 'pointerup']) {
+		window.addEventListener(t, (e) => { if (bar.contains(e.target)) e.stopImmediatePropagation(); }, true);
+	}
+	document.getElementById('textdone').addEventListener('click', close);
+	// The engine's own hidden typing box hands the focus back to the game
+	// when it loses it, which would take it straight off ours: not while
+	// the bar is open.
+	function tameIme() {
+		const host = document.getElementById('canvas').parentElement;
+		for (const el of host.children) {
+			if (el.tagName === 'DIV' && typeof el.onblur === 'function' && !el.__apexTamed) {
+				const orig = el.onblur;
+				el.onblur = function (e) {
+					if (bar.classList.contains('on')) { this.style.display = 'none'; return; }
+					return orig.call(this, e);
+				};
+				el.__apexTamed = true;
+			}
+		}
+	}
+	window.__apexText = {
+		open: function (text, placeholder, maxLen, callback) {
+			tameIme();
+			cb = callback;
+			box.value = text || '';
+			box.placeholder = placeholder || 'Type here';
+			if (maxLen > 0) box.maxLength = maxLen; else box.removeAttribute('maxLength');
+			bar.classList.add('on');
+			box.focus();
+			try { box.setSelectionRange(box.value.length, box.value.length); } catch (e) {}
+		},
+	};
 	if (iOS && !standalone) document.getElementById('tip').style.display = 'block';
 	// "Turn sideways" only on phones and tablets.
 	if (!('ontouchstart' in window) && navigator.maxTouchPoints === 0) document.getElementById('rotate').classList.remove('on');
