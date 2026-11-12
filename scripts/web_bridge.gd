@@ -4,6 +4,41 @@ class_name WebBridge
 
 static var _win: JavaScriptObject
 
+## The download site: invite links point here (it sends iPhone and computer
+## players straight into the browser game, Android players to the app).
+const SITE := "https://sohamtiwari-prog.github.io/apex-circuit/"
+
+## From the page address (a friend's invite link): a game code to join, a
+## ghost code to race. Read once when the game opens; used once.
+static var pending_join := ""
+static var pending_ghost := ""
+static var _read_link := false
+
+
+static func read_link() -> void:
+	if _read_link or not is_web():
+		return
+	_read_link = true
+	var q := String(JavaScriptBridge.eval("location.search", true))
+	for part in q.trim_prefix("?").split("&"):
+		var kv := part.split("=")
+		if kv.size() != 2:
+			continue
+		var v := kv[1].uri_decode().strip_edges().to_upper()
+		if kv[0] == "join" and v.length() == 4:
+			pending_join = v
+		elif kv[0] == "ghost" and v.length() >= 6:
+			pending_ghost = v
+
+
+## Links for invites.
+static func join_link(code: String) -> String:
+	return SITE + "?join=" + code
+
+
+static func ghost_link(code: String) -> String:
+	return SITE + "?ghost=" + code
+
 
 static func is_web() -> bool:
 	return OS.has_feature("web")
@@ -61,7 +96,8 @@ static func edit_text(e: LineEdit) -> void:
 		return
 	_text_field = e
 	_text_cb = JavaScriptBridge.create_callback(_on_text)
-	w.__apexText.open(e.text, e.placeholder_text, e.max_length, _text_cb)
+	# (In the menus' own colours: dark boards in Dark, white in Light.)
+	w.__apexText.open(e.text, e.placeholder_text, e.max_length, _text_cb, UIStyle.theme == "garage_dark")
 	# (Let go of the field: while a field has the focus the engine keeps
 	# pulling the page's focus to its own hidden typing box.)
 	e.release_focus.call_deferred()

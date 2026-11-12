@@ -23,11 +23,14 @@ boot_splash/show_image=false
 [audio]
 
 general/default_playback_type.web=0
+general/ios/session_category=3
+general/ios/mix_with_others=true
 
 [autoload]
 
 Save="*res://scripts/save_manager.gd"
 Net="*res://scripts/net.gd"
+SafeArea="*res://scripts/safe_area.gd"
 
 [display]
 

@@ -93,31 +93,56 @@ every build is signed with the same key (`android_signing/`).
 Every build is also a browser version, at
 <https://sohamtiwari-prog.github.io/apex-circuit/play/> (a "Play in the
 browser" button on the download page). In Safari, **Share → Add to Home
-Screen** puts it on the home screen, full screen like an app. Tilt steering
-uses the phone's motion sensor (iOS asks to allow motion on your first tap);
-with no sensor (a laptop) it switches to drag steering, and the keyboard
-works too. Online races work between the browser and the Android app on the
-same version; Wi-Fi games need the app (a browser can't use the local
-network). Progress is kept in that browser. (In the browser the cars'
-numbers and sponsor lettering are left off: with a grid of cars' worth of
-3D text, WebGL stopped drawing the 3D world.)
+Screen** puts it on the home screen, full screen like an app, edge to edge
+under the notch (and Safari keeps its progress: a site you don't visit for
+a while can have its data cleared, a Home Screen app doesn't). The home
+screen shows how, once, until you tap Got it. Tilt steering uses the
+phone's motion sensor (iOS asks to allow motion on your first tap); with no
+sensor (a laptop) it switches to drag steering, and the keyboard works too.
+Online races work between the browser and the Android app on the same
+version; Wi-Fi games need an app (a browser can't use the local network).
+Progress is kept in that browser.
 
 In a browser on an iPhone the game draws at 1.5 pixels per point (an
 iPhone's screen has 3, nine times the pixels to fill) and starts on
 Battery saver graphics; sound plays with the silent switch on. Typing (your
 name, a ghost code, a backup code) opens a text bar across the top of the
-page, above the keyboard, since a phone only raises its keyboard for a real
-text box (web/shell.html, scripts/web_bridge.gd).
+page, above the keyboard, in the menus' light or dark look, since a phone
+only raises its keyboard for a real text box (web/shell.html,
+scripts/web_bridge.gd). The cars' numbers and sponsor lettering are flat
+text meshes there, shared by every car (a grid's worth of Label3Ds stopped
+WebGL drawing at all).
+
+**Invites open the game.** A Friends invite or a shared ghost lap sends a
+link (`…/apex-circuit/?join=CODE`, `?ghost=CODE`). On an iPhone or a
+computer it plays in the browser straight away, nothing to install, and
+joins the game or loads the lap as soon as it opens (after making a driver,
+the first time); Android players get the code to type in the app.
+
+**Notch, Dynamic Island, rounded corners, home bar.** scripts/safe_area.gd
+moves every screen's buttons and text (and the race HUD and its pedals) in
+by the iPhone's safe area, in the app and in the browser, while the 3D world
+and backgrounds still fill the screen. Android keeps its layout exactly as
+it was. (Tests: `APEX_SAFE=108,0,108,38 APEX_SAFE_FRAME=1` renders any
+screen as an iPhone 15 Pro would show it, Dynamic Island and corners drawn
+on.)
 
 **The iPhone app (.ipa).** After each release, `.github/workflows/ios.yml`
 builds the iPhone app on GitHub's Macs (Godot's Xcode project, built with
 `xcodebuild`, unsigned) and attaches `ApexCircuit-iPhone.ipa` to the
-release. It isn't on the App Store: install it from a computer with
-Sideloadly (sideloadly.io) or AltStore, which sign it with your own Apple ID.
-Then on the iPhone trust your Apple ID (Settings → General → VPN & Device
-Management) and, on iOS 16+, turn on Developer Mode. With a free Apple ID it
-has to be re-signed every 7 days (progress stays). A TestFlight or App Store
-build would need Apple's paid developer programme ($99 a year).
+release. It plays exactly like the Android app (full graphics, Wi-Fi games
+by typing the host's address; sound with the silent switch on, alongside
+your music). It isn't on the App Store, so it's signed with your own Apple
+ID by **SideStore** or AltStore. The iPhone build also publishes a source
+for them, <https://sohamtiwari-prog.github.io/apex-circuit/apps.json>
+(.github/make_source.py): **Add to SideStore** on the download page adds it,
+installs the app in a tap and shows every new version as an update.
+SideStore needs a computer once to set up; after that it renews the 7-day
+free signing and installs updates on the phone. Sideloadly (sideloadly.io)
+also works, from a computer every 7 days. On the iPhone trust your Apple ID
+(Settings → General → VPN & Device Management) and, on iOS 16+, turn on
+Developer Mode. A TestFlight or App Store build would need Apple's paid
+developer programme ($99 a year).
 
 ## Game modes
 

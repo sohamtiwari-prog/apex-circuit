@@ -346,7 +346,14 @@ func _drivers_board(parent: Control) -> Control:
 
 func _backup_board(parent: Control) -> Control:
 	var v := _board(parent, "Keep your progress", true)
-	var t := UIStyle.label("Saved on this phone as you play, and Android keeps a copy with your Google account. To move to another phone or the browser, copy your code here and paste it there.", 18, UIStyle.FOG, "medium")
+	var where := "Saved on this phone as you play, and Android keeps a copy with your Google account."
+	if OS.has_feature("ios"):
+		where = "Saved on this phone as you play."
+	elif WebBridge.is_ios() and not WebBridge.is_standalone():
+		where = "Saved in Safari as you play. Safari can clear a site's data if you don't visit for a while: play from the Home Screen icon (Share, Add to Home Screen) and it keeps it."
+	elif WebBridge.is_web():
+		where = "Saved in this browser as you play."
+	var t := UIStyle.label(where + " To move to another phone or the browser, copy your code here and paste it there.", 18, UIStyle.FOG, "medium")
 	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(t)
 	var copy := UIStyle.button("Copy my backup code", func():

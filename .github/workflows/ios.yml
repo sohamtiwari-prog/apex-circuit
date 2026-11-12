@@ -95,3 +95,27 @@ jobs:
           # (One name for every release, so the download page links to the latest.)
           cp build/ios/ApexCircuit.ipa ApexCircuit-iPhone.ipa
           gh release upload "${{ inputs.tag }}" ApexCircuit-iPhone.ipa --clobber
+
+      # The AltStore / SideStore source (apps.json on the download site):
+      # add it once there and every new version shows up as an update.
+      - name: Publish the SideStore / AltStore source
+        if: inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          VER="${TAG#v}"
+          SIZE=$(stat -f%z ApexCircuit-iPhone.ipa)
+          PLIST=$(ls -d build/ios/Payload/*.app | head -1)/Info.plist
+          NOTES=$(git log -1 --format=%s)
+          python3 .github/make_source.py --version "$VER" --build "${VER##*.}" --size "$SIZE" \
+            --plist "$PLIST" --notes "$NOTES" > apps.json
+          cat apps.json
+          git fetch --depth 1 origin gh-pages
+          git worktree add ../pages FETCH_HEAD
+          cp apps.json ../pages/apps.json
+          cd ../pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apps.json
+          git commit -m "iPhone app source for ${TAG}" && git push origin HEAD:gh-pages || echo "(source unchanged)"

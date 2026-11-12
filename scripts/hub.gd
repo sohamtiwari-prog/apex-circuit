@@ -37,8 +37,17 @@ func _ready() -> void:
 	if WebBridge.is_ios() and not bool(save.get_setting("web_tuned")):
 		save.set_setting("web_tuned", true)
 		save.set_setting("graphics", "saver")
+	WebBridge.read_link()
 	if not bool(save.driver().get("created", false)):
 		get_tree().change_scene_to_file.call_deferred("res://scenes/driver.tscn")
+		return
+	# Opened from a friend's invite link: straight to their game or lap.
+	if WebBridge.pending_join != "":
+		get_tree().change_scene_to_file.call_deferred("res://scenes/lobby.tscn")
+		return
+	if WebBridge.pending_ghost != "":
+		save.set_setting("mode", "time_trial")
+		get_tree().change_scene_to_file.call_deferred("res://scenes/menu.tscn")
 		return
 	room = Showroom.new()
 	add_child(room)
@@ -75,17 +84,27 @@ func _build_ui() -> void:
 	left.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cols.add_child(left)
 	boards.append(_driver_card(left))
-	if WebBridge.is_ios() and not WebBridge.is_standalone():
+	# In Safari (not yet from the Home Screen icon): how to get the app-like
+	# full screen, until it's dismissed.
+	if WebBridge.is_ios() and not WebBridge.is_standalone() and not bool(save.get_setting("home_tip_seen")):
 		var tip := PanelContainer.new()
 		var tsb := UIStyle.panel(UIStyle.BLACK, false)
 		tsb.set_content_margin_all(12)
 		tip.add_theme_stylebox_override("panel", tsb)
 		tip.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		tip.custom_minimum_size = Vector2(500, 0)
-		tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var tl := UIStyle.label("Full screen: tap Share, then Add to Home Screen, and play from the icon.", 19, UIStyle.SIGNAL, "bold")
+		tip.custom_minimum_size = Vector2(540, 0)
+		var trow := HBoxContainer.new()
+		trow.add_theme_constant_override("separation", 12)
+		tip.add_child(trow)
+		var tl := UIStyle.label("Play full screen like an app: tap Share, then Add to Home Screen, and open Apex Circuit from its icon.", 19, UIStyle.SIGNAL, "bold")
 		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		tip.add_child(tl)
+		tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		trow.add_child(tl)
+		var ok := UIStyle.button("Got it", func():
+			save.set_setting("home_tip_seen", true)
+			tip.queue_free(), false, 18)
+		ok.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		trow.add_child(ok)
 		left.add_child(tip)
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL

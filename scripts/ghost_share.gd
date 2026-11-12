@@ -111,8 +111,8 @@ func share_best(save: Node, track_id: String, car_id: String, hz: float, samples
 
 ## The message a friend gets.
 static func invite_text(save: Node, track_name: String, lap_ms: int, code: String) -> String:
-	return "Beat my %s lap at %s in Apex Circuit! Open Quick race, pick Time trial and type ghost code %s" % [
-		UIStyle.fmt_time(float(lap_ms) / 1000.0), track_name, code]
+	return "Beat my %s lap at %s in Apex Circuit! Tap to race it: %s\nIn the app: Quick race, Time trial, ghost code %s" % [
+		UIStyle.fmt_time(float(lap_ms) / 1000.0), track_name, WebBridge.ghost_link(code), code]
 
 
 static func new_code() -> String:

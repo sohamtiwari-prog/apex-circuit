@@ -221,7 +221,41 @@ func _gp_decals() -> void:
 	_decal(second, Vector3(0, 0.255, 1.7), Vector3(-PI / 2 + 0.28, 0, 0), 0.0014, ink, 40)
 
 
-func _decal(text: String, pos: Vector3, rot: Vector3, px: float, col: Color, size: int) -> Label3D:
+## Lettering in the browser: flat text meshes, one per word and size shared
+## by every car, one material per colour (a grid's worth of Label3Ds stopped
+## WebGL drawing the 3D world at all).
+static var _word_meshes := {}
+static var _ink_mats := {}
+
+
+func _decal(text: String, pos: Vector3, rot: Vector3, px: float, col: Color, size: int) -> Node3D:
+	if OS.has_feature("web") or OS.get_environment("APEX_TEXT_MESH") != "":
+		var key := "%s|%d|%.4f" % [text, size, px]
+		if not _word_meshes.has(key):
+			var tm := TextMesh.new()
+			tm.text = text
+			tm.font = UIStyle.world_font("extrabold", true)
+			tm.font_size = size
+			tm.pixel_size = px
+			tm.depth = 0.0
+			tm.curve_step = 1.5
+			_word_meshes[key] = tm
+		var ck := col.to_html()
+		if not _ink_mats.has(ck):
+			var m := StandardMaterial3D.new()
+			m.albedo_color = col
+			m.roughness = 0.4
+			m.cull_mode = BaseMaterial3D.CULL_BACK
+			_ink_mats[ck] = m
+		var mi := MeshInstance3D.new()
+		mi.mesh = _word_meshes[key]
+		mi.material_override = _ink_mats[ck]
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.position = pos
+		mi.rotation = rot
+		mi.visibility_range_end = 32.0
+		(get_node("Shell") if has_node("Shell") else self).add_child(mi)
+		return mi
 	var l := Label3D.new()
 	l.text = text
 	l.font = UIStyle.world_font("extrabold", true)
@@ -234,10 +268,6 @@ func _decal(text: String, pos: Vector3, rot: Vector3, px: float, col: Color, siz
 	l.double_sided = false
 	l.visibility_range_end = 32.0
 	(get_node("Shell") if has_node("Shell") else self).add_child(l)
-	# (Not in the browser: with a grid of cars' worth of these 3D labels,
-	# WebGL stopped drawing the whole 3D world. The livery stays; the
-	# lettering goes.)
-	l.visible = not OS.has_feature("web")
 	return l
 
 

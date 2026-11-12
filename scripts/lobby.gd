@@ -57,6 +57,10 @@ func _ready() -> void:
 	pt.autostart = true
 	pt.timeout.connect(_share_pings)
 	add_child(pt)
+	if WebBridge.pending_join != "" and _code_edit != null:
+		_code_edit.text = WebBridge.pending_join
+		WebBridge.pending_join = ""
+		_join_code.call_deferred(_code_edit.text)
 	if not Net.has_meta("players"):
 		Net.set_meta("players", {})
 		Net.set_meta("settings", _default_settings())
@@ -764,7 +768,7 @@ func _share_pings() -> void:
 
 
 func _invite_whatsapp() -> void:
-	var text := "Race me in Apex Circuit! Open Friends, type code %s under Online and tap Join.\nNo game yet? Get it here: https://github.com/sohamtiwari-prog/apex-circuit/releases/latest" % Net.room_code
+	var text := "Race me in Apex Circuit! Tap to join (iPhone and computer: plays in the browser, nothing to install):\n%s\nIn the app: Friends, type code %s under Online and tap Join." % [WebBridge.join_link(Net.room_code), Net.room_code]
 	OS.shell_open("https://wa.me/?text=" + text.uri_encode())
 
 

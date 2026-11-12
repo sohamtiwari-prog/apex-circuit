@@ -329,6 +329,10 @@ jobs:
           SIZE=$(python3 -c "import os;print('%.1f' % (os.path.getsize('site/ApexCircuit.apk')/1e6))")
           sed -e "s/__VERSION__/${V}/g" -e "s/__SIZE__/${SIZE}/g" -e "s/__DATE__/$(date -u +'%d %b %Y')/g" .github/pages/index.html > site/index.html
           cp -r build/web site/play
+          cp web/icon_512.png site/icon.png
+          # The iPhone app's SideStore / AltStore source is written by the
+          # iPhone build (a few minutes later): keep the current one meanwhile.
+          git fetch --depth 1 origin gh-pages && git show FETCH_HEAD:apps.json > site/apps.json || rm -f site/apps.json
           touch site/.nojekyll
 
       - name: Publish download page

@@ -93,6 +93,29 @@ func _run() -> void:
 	_check(race.hud.is_paused() and race.hud.pause_panel.visible, "leaving the app pauses the race")
 	race.hud.set_paused(false)
 
+	# An iPhone's safe area: the controls move in from the notch and corners,
+	# and still answer where they're drawn, and to a thumb out past them.
+	var sa: Node = root.get_node("SafeArea")
+	t.release_all()
+	sa.simulate(Vector4(108, 0, 108, 38))
+	await process_frame
+	await process_frame
+	var hud_root: Control = t.get_parent()
+	_check(is_equal_approx(hud_root.offset_left, 96.0) and is_equal_approx(hud_root.offset_right, -96.0) and is_equal_approx(hud_root.offset_bottom, -26.0), "iPhone insets: the race HUD sits in from the edges (%.0f, %.0f, %.0f)" % [hud_root.offset_left, hud_root.offset_right, hud_root.offset_bottom])
+	var vp: Vector2 = root.get_visible_rect().size
+	var off: Vector2 = t.get_global_rect().position
+	var g2: Rect2 = t._regions["gas"]
+	_touch(t, 5, off + g2.get_center(), true)
+	_check(t.gas > 0.5, "the gas pedal answers where it's drawn")
+	_touch(t, 5, off + g2.get_center(), false)
+	_touch(t, 6, Vector2(vp.x - 6.0, off.y + g2.get_center().y), true)
+	_check(t.gas > 0.5, "...and to a thumb right at the screen edge, past the pedal")
+	_touch(t, 6, Vector2(vp.x - 6.0, off.y + g2.get_center().y), false)
+	_check(t.gas < 0.5, "...and lets go")
+	sa.simulate(Vector4(-1, -1, -1, -1))
+	await process_frame
+	_check(is_equal_approx(hud_root.offset_left, 0.0), "no insets (Android): the HUD is where it always was")
+
 	# Assist levels and migration of old on/off saves.
 	_check(is_equal_approx(save.assist_level("steer_assist"), 0.0), "assist off = 0")
 	st["brake_assist"] = "moderate"

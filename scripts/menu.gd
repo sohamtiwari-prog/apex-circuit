@@ -42,6 +42,10 @@ func _ready() -> void:
 	_select_car(String(save.get_setting("car")), false)
 	_select_track(String(save.get_setting("track")), false)
 	_refresh_mode()
+	if WebBridge.pending_ghost != "" and _ghost_code != null:
+		_ghost_code.text = WebBridge.pending_ghost
+		WebBridge.pending_ghost = ""
+		_fetch_ghost.call_deferred()
 
 
 # ------------------------------------------------------------ 3D stage

@@ -26,6 +26,7 @@
   a.btn { display:block; text-align:center; background:var(--go); color:#fff; font:800 19px/1.2 "Archivo", system-ui, sans-serif;
           font-stretch:125%; text-decoration:none; padding:18px; border-radius:2px; }
   a.btn:focus-visible, a.alt:focus-visible { outline:3px solid var(--ink); outline-offset:3px; }
+  code { word-break: break-all; }
   a.alt { display:block; text-align:center; color:var(--ink); background:var(--well); margin-top:10px; padding:12px;
           border-radius:2px; text-decoration:none; font-weight:700; }
   ol { padding:0 0 0 22px; margin:14px 0 0; }
@@ -44,6 +45,14 @@
     </div>
   </div>
 
+  <!-- A friend's invite link (?join=CODE or ?ghost=CODE): straight in. -->
+  <section id="invite" hidden>
+  <h2 id="invite-title">You're invited to a race</h2>
+  <p id="invite-what"></p>
+  <a class="btn" id="invite-play" href="play/">Play now in the browser</a>
+  <small id="invite-app"></small>
+  </section>
+
   <section>
   <h2>iPhone and iPad</h2>
   <p class="pick" id="pick-ios">You're on an iPhone or iPad: this one's for you.</p>
@@ -57,14 +66,20 @@
     <li>Tilt steering: allow <b>motion</b> when asked (on your first tap). Graphics start on Battery saver; Pause → Graphics for High.</li>
   </ol>
   <h3>2. Install the iPhone app</h3>
-  <a class="alt" href="https://github.com/sohamtiwari-prog/apex-circuit/releases/latest/download/ApexCircuit-iPhone.ipa">Download the iPhone app (.ipa)</a>
+  <p>The app looks and plays exactly like the Android one: full graphics, Wi-Fi races. It's free and isn't on the App Store, so it's installed with <b>SideStore</b> (or AltStore) using your own Apple ID.</p>
+  <p><b>Already have SideStore or AltStore?</b> One tap adds Apex Circuit; new versions then show up there as updates.</p>
+  <a class="btn" href="sidestore://source?url=https://sohamtiwari-prog.github.io/apex-circuit/apps.json">Add to SideStore</a>
+  <a class="alt" href="altstore://source?url=https://sohamtiwari-prog.github.io/apex-circuit/apps.json">Add to AltStore</a>
+  <small>If the button does nothing: in SideStore or AltStore open <b>Sources</b>, tap <b>+</b> and paste <code>https://sohamtiwari-prog.github.io/apex-circuit/apps.json</code></small>
+  <p><b>First time?</b></p>
   <ol>
-    <li>It isn't on the App Store, so it goes on through a computer (Windows or Mac) with <b>Sideloadly</b> (sideloadly.io), free, using your own Apple ID.</li>
-    <li>Download the .ipa above on the computer, plug in the iPhone, drop the .ipa into Sideloadly, type your Apple ID and press <b>Start</b>.</li>
+    <li>Set up <b>SideStore</b> once, following the guide at <b>sidestore.io</b>. It needs a computer (Windows, Mac or Linux) for about 15 minutes, once.</li>
+    <li>Then tap <b>Add to SideStore</b> above and install Apex Circuit from it.</li>
     <li>On the iPhone: <b>Settings → General → VPN &amp; Device Management</b>, tap your Apple ID, <b>Trust</b>. On iOS 16 or later also turn on <b>Settings → Privacy &amp; Security → Developer Mode</b> (the phone restarts).</li>
-    <li>With a free Apple ID the app stops opening after <b>7 days</b>: run Sideloadly again (or turn on its automatic refresh) and your progress stays.</li>
+    <li>A free Apple ID signs apps for <b>7 days</b>. SideStore renews it on the phone itself (open it once a week, or let its shortcut do it): no computer after the first time. Updates keep your progress.</li>
   </ol>
-  <small>The app draws with the phone's own graphics (Metal), like the Android app, where the browser is limited to WebGL. To carry your progress over, copy your backup code in the browser (Your driver) and restore it in the app. Online races with friends work in both; Wi-Fi races need the Android app.</small>
+  <small>No SideStore? <a href="https://github.com/sohamtiwari-prog/apex-circuit/releases/latest/download/ApexCircuit-iPhone.ipa">Download the .ipa</a> and install it from a computer with <b>Sideloadly</b> (sideloadly.io). That works too, but the app has to be re-installed from the computer every 7 days.<br>
+  To carry your progress over from the browser or another phone: Your driver → Backup code, then Restore in the app.</small>
   </section>
 
   <section>
@@ -91,6 +106,30 @@
   var ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (ios) document.getElementById('pick-ios').style.display = 'block';
   if (/Android/.test(ua)) document.getElementById('pick-android').style.display = 'block';
+  (function () {
+    var q = new URLSearchParams(location.search);
+    var join = (q.get('join') || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 4);
+    var ghost = (q.get('ghost') || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8);
+    if (join.length !== 4 && ghost.length < 6) return;
+    var box = document.getElementById('invite');
+    box.hidden = false;
+    var play = document.getElementById('invite-play');
+    if (join.length === 4) {
+      document.getElementById('invite-what').textContent = 'Your friend is waiting in game ' + join + '. In the browser it joins as soon as it opens: nothing to install.';
+      play.href = 'play/?join=' + join;
+      document.getElementById('invite-app').textContent = 'Have the app? Open Friends, type ' + join + ' under Online and tap Join.';
+    } else {
+      document.getElementById('invite-title').textContent = 'Beat your friend\'s lap';
+      document.getElementById('invite-what').textContent = 'Their best lap, as a ghost to race. In the browser it starts as soon as it opens.';
+      play.href = 'play/?ghost=' + ghost;
+      document.getElementById('invite-app').textContent = 'Have the app? Quick race, Time trial, type ghost code ' + ghost + '.';
+    }
+    if (/Android/.test(ua)) {
+      play.textContent = 'Play in the browser instead';
+      play.className = 'alt';
+      document.getElementById('invite-app').textContent += ' No app yet? Download it below.';
+    }
+  }());
 </script>
 </body>
 </html>

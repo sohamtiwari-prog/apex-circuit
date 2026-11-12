@@ -84,20 +84,30 @@ func _layout() -> void:
 
 
 func _region_at(p: Vector2) -> String:
+	# A thumb out past the edge of the controls (on an iPhone they sit in
+	# from the notch and corners: SafeArea) still presses what's nearest.
+	var inside := Rect2(Vector2.ZERO, size)
+	var q := p.clamp(Vector2.ZERO, size)
+	var slack := 12.0 if inside.has_point(p) else 12.0 + size.y * 0.04
 	for key in _regions:
 		var r: Rect2 = _regions[key]
-		if r.grow(12.0).has_point(p):
+		if r.grow(slack).has_point(q):
 			return key
 	return ""
 
 
 func _input(event: InputEvent) -> void:
+	# Touches come in screen positions; the controls are laid out in their
+	# own (moved in from the edges on an iPhone).
+	if event is InputEventScreenTouch or event is InputEventScreenDrag:
+		event = event.duplicate()
+		event.position -= get_global_rect().position
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			var reg := _region_at(event.position)
 			if reg != "":
 				_touches[event.index] = reg
-			elif mode == "drag" and _drag_finger < 0 and _steer_zone.has_point(event.position):
+			elif mode == "drag" and _drag_finger < 0 and _steer_zone.has_point(event.position.clamp(Vector2.ZERO, size)):
 				_drag_finger = event.index
 				_drag_origin = event.position + Vector2(0, drag_range())
 				_drag_pos = event.position

@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Apex Circuit">
 <meta name="theme-color" content="#d3d7dc">
 <title>Apex Circuit</title>
@@ -20,6 +20,10 @@ body {
 	font-family: "Barlow Semi Condensed", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
 #canvas { display: block; width: 100%; height: 100%; }
+/* The game draws edge to edge (under the notch, like the app) and keeps its
+   buttons clear of it itself: scripts/safe_area.gd reads these. */
+#safeprobe { position: fixed; left: 0; top: 0; width: 0; height: 0; visibility: hidden; pointer-events: none;
+	padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 #canvas:focus { outline: none; }
 .overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; box-sizing: border-box; }
 #status { background: #d3d7dc; z-index: 2; }
@@ -44,6 +48,9 @@ body {
 	padding: 10px 12px; border: 0; border-bottom: 4px solid #ffd200; background: #e4e7ea; color: #000;
 	border-radius: 2px; -webkit-user-select: text; user-select: text; }
 #textbar input:focus { outline: none; }
+/* Dark look (the game's Dark setting): black board, white type. */
+#textbar.dark { background: #000; box-shadow: 0 4px 0 rgba(255,255,255,0.18); }
+#textbar.dark input { background: #1d2024; color: #fff; }
 #textbar button { font: 800 18px "Archivo", -apple-system, sans-serif; font-stretch: 125%; border: 0;
 	background: #00a04a; color: #fff; padding: 12px 18px; border-radius: 2px; }
 </style>
@@ -51,6 +58,7 @@ $GODOT_HEAD_INCLUDE
 </head>
 <body>
 <canvas id="canvas">Your browser does not support the canvas tag.</canvas>
+<div id="safeprobe"></div>
 <noscript>Apex Circuit needs JavaScript.</noscript>
 
 <div id="status" class="overlay">
@@ -153,9 +161,16 @@ $GODOT_HEAD_INCLUDE
 			}
 		}
 	}
+	// Safe-area insets in CSS pixels, and the page height they're out of.
+	window.__apexSafe = function () {
+		const cs = getComputedStyle(document.getElementById('safeprobe'));
+		const v = (k) => parseFloat(cs.getPropertyValue(k)) || 0;
+		return [v('padding-left'), v('padding-top'), v('padding-right'), v('padding-bottom'), window.innerHeight].join(',');
+	};
 	window.__apexText = {
-		open: function (text, placeholder, maxLen, callback) {
+		open: function (text, placeholder, maxLen, callback, dark) {
 			tameIme();
+			bar.classList.toggle('dark', !!dark);
 			cb = callback;
 			box.value = text || '';
 			box.placeholder = placeholder || 'Type here';
