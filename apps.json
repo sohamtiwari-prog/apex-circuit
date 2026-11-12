@@ -1,0 +1,52 @@
+{
+  "name": "Apex Circuit",
+  "identifier": "io.github.sohamtiwari-prog.apexcircuit",
+  "subtitle": "The Apex Circuit iPhone app",
+  "description": "Install Apex Circuit and get its updates. Free; signed on your phone with your own Apple ID.",
+  "iconURL": "https://sohamtiwari-prog.github.io/apex-circuit/icon.png",
+  "website": "https://sohamtiwari-prog.github.io/apex-circuit/",
+  "tintColor": "#FFD200",
+  "nsfw": false,
+  "featuredApps": [
+    "com.sohamtiwari.apexcircuit"
+  ],
+  "apps": [
+    {
+      "name": "Apex Circuit",
+      "bundleIdentifier": "com.sohamtiwari.apexcircuit",
+      "developerName": "sohamtiwari-prog",
+      "subtitle": "Karts to Grand Prix, on your phone.",
+      "localizedDescription": "A racing game for your phone: karts, F4, F3, F2 and Grand Prix cars on original and real-world circuits. Career from karts to Grand Prix, championships, time trials against friends' ghost laps, and races with friends online. Same game as the Android app; progress moves between them with a backup code.",
+      "iconURL": "https://sohamtiwari-prog.github.io/apex-circuit/icon.png",
+      "tintColor": "#FFD200",
+      "category": "games",
+      "screenshots": [],
+      "versions": [
+        {
+          "version": "0.1.83",
+          "buildVersion": "83",
+          "date": "2026-11-12T15:02:29Z",
+          "localizedDescription": "iPhone: clear of the notch, one-tap install and updates, invite links",
+          "downloadURL": "https://github.com/sohamtiwari-prog/apex-circuit/releases/download/v0.1.83/ApexCircuit-iPhone.ipa",
+          "size": 24703360,
+          "minOSVersion": "14.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSCameraUsageDescription": "",
+          "NSLocalNetworkUsageDescription": "Finds friends racing on the same Wi-Fi.",
+          "NSMicrophoneUsageDescription": "",
+          "NSPhotoLibraryUsageDescription": ""
+        }
+      },
+      "version": "0.1.83",
+      "versionDate": "2026-11-12T15:02:29Z",
+      "versionDescription": "iPhone: clear of the notch, one-tap install and updates, invite links",
+      "downloadURL": "https://github.com/sohamtiwari-prog/apex-circuit/releases/download/v0.1.83/ApexCircuit-iPhone.ipa",
+      "size": 24703360
+    }
+  ],
+  "news": []
+}
