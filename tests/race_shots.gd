@@ -16,7 +16,7 @@ func _run() -> void:
 	save.data = save.default_profile()
 	var st: Dictionary = save.data["settings"]
 	st["mode"] = "race"; st["laps"] = 1; st["opponents"] = 19
-	st["track"] = args[1] if args.size() > 1 else "silvermoor"; st["car"] = "gp26"; st["team"] = 0
+	st["track"] = args[1] if args.size() > 1 else "silvermoor"; st["car"] = args[2] if args.size() > 2 else "gp26"; st["team"] = 0
 	var race: Node = (load("res://scenes/race.tscn") as PackedScene).instantiate()
 	root.add_child(race)
 	race.autopilot = load("res://scripts/ai_driver.gd").new()

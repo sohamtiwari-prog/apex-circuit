@@ -3,7 +3,7 @@ extends SceneTree
 ## a time trial driven by the AI at full pace on the racing line, the
 ## fastest of its first flying laps. Run when tracks or cars change.
 ##   godot --headless --fixed-fps 120 --script res://tests/make_ideal_laps.gd -- <track|all> [car|all]
-const CARS := ["gp26"]
+const CARS := ["kart", "f4", "f3", "f2", "gp26"]
 
 
 func _initialize() -> void:
@@ -23,6 +23,8 @@ func _run() -> void:
 	DirAccess.make_dir_recursive_absolute("res://data/ideal")
 	for tid in tracks:
 		for cid in cars:
+			if not Track.ids_for(String(cid)).has(String(tid)):
+				continue          # (karts only on the kart circuits, and only karts there)
 			# Full pace; if that can't string a clean lap together, a touch less.
 			for skill in [1.0, 0.98, 0.96]:
 				if await _record(String(tid), String(cid), skill):

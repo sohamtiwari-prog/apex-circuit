@@ -38,7 +38,7 @@ func _run() -> void:
 	root.add_child(ground)
 	var specs = load("res://scripts/car_specs.gd")
 	var out := {}
-	for id in specs.CATALOG:
+	for id in specs.CATALOG + [specs.SAFETY_CAR]:
 		var spec: Dictionary = specs.get_spec(id, 0)
 		spec["no_steer_cal"] = true
 		var max_angle: float = spec["steer_low"]

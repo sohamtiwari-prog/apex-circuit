@@ -69,7 +69,7 @@ func _run() -> void:
 	v7["championship"] = {"class": "muscle", "rounds": ["styria"], "round": 0}
 	save._migrate(v7)
 	_check(String(v7["settings"]["car"]) == "gp26" and String(v7["settings"]["garage_car"]) == "gp26", "an older save's road car is the GP car now")
-	_check((v7["championship"] as Dictionary).is_empty() and int(v7["settings"]["career_series"]) == 0, "...its season in a class that's gone is over; the career is the Grand Prix series")
+	_check((v7["championship"] as Dictionary).is_empty(), "...its season in a class that's gone is over")
 
 	# Create a driver.
 	save.set_driver("  Soham ", 7, "#e01a1a", "000000")

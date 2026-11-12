@@ -45,6 +45,8 @@ func build(car_spec: Dictionary, car: RaceCar) -> void:
 	spec = car_spec
 	if spec["body"] == "gp":
 		_build_gp()
+	elif spec["body"] == "kart":
+		_build_kart()
 	else:
 		_build_road()
 	var mesh := ArrayMesh.new()
@@ -78,6 +80,19 @@ func build(car_spec: Dictionary, car: RaceCar) -> void:
 	if spec["body"] == "gp":
 		_gp_decals()
 		set_number(int(spec.get("number", 26)))
+	elif spec["body"] == "kart":
+		set_number(int(spec.get("number", 26)))
+	# The junior single-seaters: the GP car's body, drawn smaller (wheels
+	# stay where the spec puts them).
+	if spec.has("body_scale"):
+		var shell := Node3D.new()
+		shell.name = "Shell"
+		shell.scale = spec["body_scale"]
+		for c in get_children():
+			if c != _blob and not (c in _wheel_mis):
+				remove_child(c)
+				shell.add_child(c)
+		add_child(shell)
 	# The far version is merged once the car has settled on its suspension.
 	_lod_wait = 0.8
 	set_process(true)
@@ -195,7 +210,7 @@ var _numbers: Array = []
 ## Sponsor names on the sidepods, engine cover and rear wing (GP liveries).
 func _gp_decals() -> void:
 	var lv: Dictionary = spec["livery"]
-	var ti := CarSpecs.TEAMS.find(lv)
+	var ti := CarSpecs.teams_for(String(spec.get("id", "gp26"))).find(lv)
 	var main: String = SPONSORS[posmod(ti, SPONSORS.size())]
 	var second: String = SPONSORS[posmod(ti + 3, SPONSORS.size())]
 	var ink: Color = lv["accent"] if Color(lv["base"]).get_luminance() > 0.45 else Color(0.97, 0.97, 0.98)
@@ -218,7 +233,7 @@ func _decal(text: String, pos: Vector3, rot: Vector3, px: float, col: Color, siz
 	l.rotation = rot
 	l.double_sided = false
 	l.visibility_range_end = 32.0
-	add_child(l)
+	(get_node("Shell") if has_node("Shell") else self).add_child(l)
 	# (Not in the browser: with a grid of cars' worth of these 3D labels,
 	# WebGL stopped drawing the whole 3D world. The livery stays; the
 	# lettering goes.)
@@ -228,13 +243,19 @@ func _decal(text: String, pos: Vector3, rot: Vector3, px: float, col: Color, siz
 
 ## Race number on the nose and the engine cover.
 func set_number(n: int) -> void:
-	if spec["body"] != "gp":
+	if spec["body"] != "gp" and spec["body"] != "kart":
 		return
 	for l in _numbers:
 		l.queue_free()
 	_numbers.clear()
 	var lv: Dictionary = spec["livery"]
 	var ink: Color = Color(0.97, 0.97, 0.98) if Color(lv["base"]).get_luminance() < 0.6 else Color(0.06, 0.06, 0.08)
+	if spec["body"] == "kart":
+		# On the front panel and both side pods.
+		_numbers.append(_decal(str(n), Vector3(0, 0.27, 0.535), Vector3(-0.42, 0, 0), 0.0024, ink, 64))
+		for sx in [-1.0, 1.0]:
+			_numbers.append(_decal(str(n), Vector3(0.585 * sx, 0.1, -0.05), Vector3(0, PI / 2 * sx, 0), 0.0022, ink, 64))
+		return
 	_numbers.append(_decal(str(n), Vector3(0, 0.2, 2.15), Vector3(-PI / 2 + 0.22, 0, 0), 0.0026, ink, 64))
 	for sx in [-1.0, 1.0]:
 		_numbers.append(_decal(str(n), Vector3(0.025 * sx, 0.66, -1.35), Vector3(0, PI / 2 * sx, 0), 0.003, ink, 64))
@@ -373,7 +394,7 @@ func _build_gp() -> void:
 		return base)
 	# Airbox intake above the driver's head, and the T-cam on top.
 	MeshKit.ellipsoid(matte, Vector3(0, 0.67, -0.04), Vector3(0.11, 0.08, 0.05), 12, carbon)
-	MeshKit.box(matte, Vector3(0.09, 0.035, 0.07), Vector3(0, 0.765, -0.06), Color(0.95, 0.8, 0.05) if CarSpecs.TEAMS.find(lv) % 2 == 1 else Color(0.06, 0.06, 0.07))
+	MeshKit.box(matte, Vector3(0.09, 0.035, 0.07), Vector3(0, 0.765, -0.06), Color(0.95, 0.8, 0.05) if CarSpecs.teams_for(String(spec.get("id", "gp26"))).find(lv) % 2 == 1 else Color(0.06, 0.06, 0.07))
 	# Exhaust under the rear wing.
 	MeshKit.lathe(_st("metal"), [Vector2(-0.1, 0.045), Vector2(0.1, 0.045)], 10, Color(0.55, 0.5, 0.45),
 		Transform3D(Basis(Vector3.UP, PI / 2), Vector3(0, 0.2, -2.32)))
@@ -452,6 +473,96 @@ func _build_gp() -> void:
 		var a := lerpf(-1.05, 1.05, k / 8.0)
 		visor.append(hc + Vector3(sin(a) * 0.118, 0.03, cos(a) * 0.132))
 	MeshKit.tube(hst, visor, 0.026, 6, Color(0.02, 0.02, 0.03))
+	var hmesh := MeshKit.finish(hst)
+	hmesh.surface_set_material(0, _material("paint"))
+	helmet = MeshInstance3D.new()
+	helmet.mesh = hmesh
+	add_child(helmet)
+
+
+## The kart: a tube frame on the ground, plastic nose, front panel and side
+## pods in the team's colours, the seat, the engine and exhaust on the right,
+## and the driver sitting in it all (body, arms on the wheel, helmet).
+func _build_kart() -> void:
+	var lv: Dictionary = spec["livery"]
+	var base: Color = lv["base"]
+	var accent: Color = lv["accent"]
+	var stripe: Color = lv["stripe"]
+	var paint := _st("paint")
+	var matte := _st("matte")
+	var metal := _st("metal")
+	var tube_col := Color(0.62, 0.64, 0.68)
+	var black := Color(0.04, 0.04, 0.05)
+	# Frame: two main rails, the front and rear cross members, the axle.
+	for sx in [-1.0, 1.0]:
+		MeshKit.tube(metal, [Vector3(0.2 * sx, -0.01, 0.78), Vector3(0.24 * sx, -0.01, 0.35), Vector3(0.26 * sx, -0.01, -0.3), Vector3(0.3 * sx, 0.0, -0.62)], 0.016, 8, tube_col)
+		MeshKit.tube(metal, [Vector3(0.24 * sx, -0.01, 0.55), Vector3(0.5 * sx, 0.02, 0.53)], 0.014, 6, tube_col)
+	MeshKit.tube(metal, [Vector3(-0.3, 0.0, -0.53), Vector3(0.3, 0.0, -0.53)], 0.02, 8, tube_col)
+	MeshKit.tube(metal, [Vector3(-0.66, 0.08, -0.53), Vector3(0.66, 0.08, -0.53)], 0.022, 8, Color(0.35, 0.36, 0.38))
+	MeshKit.tube(metal, [Vector3(-0.2, -0.01, 0.75), Vector3(0.2, -0.01, 0.75)], 0.016, 6, tube_col)
+	# Floor tray.
+	MeshKit.box(matte, Vector3(0.44, 0.012, 0.95), Vector3(0, -0.02, 0.25), black)
+	# Nose: the front bumper fairing, wide and low.
+	var nose := []
+	for r in [[1.02, 0.07, 0.36, 0.05], [0.95, 0.09, 0.44, 0.09], [0.84, 0.1, 0.46, 0.11], [0.72, 0.08, 0.4, 0.09], [0.66, 0.05, 0.3, 0.05]]:
+		nose.append(MeshKit.station(r[0], r[1], r[2], r[3], 3.2))
+	MeshKit.loft(paint, nose, 18, func(p: Vector3, th: float) -> Color:
+		if th < -0.3:
+			return accent
+		return stripe if absf(p.x) < 0.05 else base)
+	# Front panel (the number plate) on its stays, leaning back.
+	MeshKit.box(paint, Vector3(0.34, 0.24, 0.02), Vector3(0, 0.25, 0.53), base, Vector3(-24, 0, 0))
+	MeshKit.box(paint, Vector3(0.36, 0.035, 0.025), Vector3(0, 0.375, 0.48), stripe, Vector3(-24, 0, 0))
+	# Side pods.
+	for sx in [-1.0, 1.0]:
+		var pod := []
+		for r in [[0.32, 0.06, 0.07, 0.05], [0.22, 0.09, 0.1, 0.09], [-0.25, 0.09, 0.1, 0.09], [-0.42, 0.06, 0.07, 0.05]]:
+			pod.append(MeshKit.station(r[0], r[1], r[2], r[3], 3.0, 0.5 * sx))
+		MeshKit.loft(paint, pod, 14, func(p: Vector3, th: float) -> Color:
+			if absf(th) < 0.35 and p.y < 0.11 and p.y > 0.07:
+				return stripe
+			return accent if th < -0.3 else base)
+	# Rear bumper bar.
+	MeshKit.tube(metal, [Vector3(-0.55, 0.12, -0.8), Vector3(-0.5, 0.14, -0.93), Vector3(0.5, 0.14, -0.93), Vector3(0.55, 0.12, -0.8)], 0.02, 8, tube_col)
+	MeshKit.box(paint, Vector3(1.0, 0.08, 0.06), Vector3(0, 0.1, -0.96), accent)
+	# Seat, a little left of the middle (the engine sits on the right).
+	MeshKit.ellipsoid(matte, Vector3(-0.06, 0.18, -0.2), Vector3(0.19, 0.2, 0.15), 14, Color(0.08, 0.09, 0.1))
+	# Engine and exhaust on the right.
+	MeshKit.box(metal, Vector3(0.18, 0.22, 0.22), Vector3(0.33, 0.14, -0.38), Color(0.55, 0.56, 0.6))
+	MeshKit.box(matte, Vector3(0.12, 0.08, 0.16), Vector3(0.33, 0.29, -0.38), black)
+	MeshKit.tube(metal, [Vector3(0.42, 0.18, -0.36), Vector3(0.52, 0.22, -0.5), Vector3(0.5, 0.25, -0.75), Vector3(0.42, 0.24, -0.88)], 0.035, 10, Color(0.5, 0.48, 0.45))
+	# Chain guard and the rear axle sprocket.
+	MeshKit.box(matte, Vector3(0.05, 0.16, 0.28), Vector3(0.24, 0.08, -0.47), black)
+	# Steering column and wheel.
+	MeshKit.tube(metal, [Vector3(0, 0.02, 0.6), Vector3(0, 0.33, 0.14)], 0.012, 6, tube_col)
+	var ring: Array = []
+	for k in 17:
+		var a := TAU * k / 16.0
+		ring.append(Vector3(sin(a) * 0.15, 0.36 + cos(a) * 0.12, 0.13 - cos(a) * 0.05))
+	MeshKit.tube(matte, ring, 0.016, 6, black)
+	MeshKit.box(matte, Vector3(0.12, 0.06, 0.02), Vector3(0, 0.37, 0.14), Color(0.15, 0.6, 0.9), Vector3(-25, 0, 0))
+	# The driver: legs out to the pedals, body leaning back, arms to the wheel.
+	var suit: Color = accent if accent.get_luminance() > 0.08 else base
+	for sx in [-1.0, 1.0]:
+		MeshKit.tube(paint, [Vector3(-0.06 + 0.09 * sx, 0.12, -0.12), Vector3(-0.02 + 0.1 * sx, 0.2, 0.25), Vector3(0.11 * sx, 0.08, 0.62)], 0.055, 8, suit)
+		MeshKit.ellipsoid(matte, Vector3(0.11 * sx, 0.08, 0.66), Vector3(0.045, 0.05, 0.08), 8, black)
+		MeshKit.tube(paint, [Vector3(-0.06 + 0.17 * sx, 0.5, -0.24), Vector3(0.18 * sx, 0.38, -0.02), Vector3(0.13 * sx, 0.38, 0.12)], 0.04, 7, suit)
+		MeshKit.ellipsoid(matte, Vector3(0.13 * sx, 0.38, 0.13), Vector3(0.035, 0.035, 0.04), 7, black)
+	MeshKit.ellipsoid(paint, Vector3.ZERO, Vector3(0.19, 0.22, 0.12), 14, suit, Transform3D(Basis(Vector3.RIGHT, -0.32), Vector3(-0.06, 0.44, -0.27)))
+	MeshKit.box(paint, Vector3(0.2, 0.03, 0.2), Vector3(-0.06, 0.58, -0.3), stripe, Vector3(-18, 0, 0))
+	var hst := MeshKit.new_tool()
+	var hc := Vector3(-0.06, 0.73, -0.24)
+	MeshKit.ellipsoid(hst, hc, Vector3(0.13, 0.135, 0.145), 16, lv["helmet"])
+	var visor: Array = []
+	for k in 9:
+		var a := lerpf(-1.05, 1.05, k / 8.0)
+		visor.append(hc + Vector3(sin(a) * 0.123, 0.025, cos(a) * 0.137))
+	MeshKit.tube(hst, visor, 0.028, 6, Color(0.02, 0.02, 0.03))
+	var crown: Array = []
+	for k in 9:
+		var a := lerpf(-1.2, 1.35, k / 8.0)
+		crown.append(hc + Vector3(0, cos(a) * 0.136, sin(a) * 0.146))
+	MeshKit.tube(hst, crown, 0.015, 5, stripe)
 	var hmesh := MeshKit.finish(hst)
 	hmesh.surface_set_material(0, _material("paint"))
 	helmet = MeshInstance3D.new()

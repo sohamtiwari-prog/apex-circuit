@@ -29,11 +29,9 @@ static func event(day := "") -> Dictionary:
 		day = today()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("apex-daily-" + day)
-	var tracks: Array = []
-	for t in Track.CATALOG:
-		tracks.append(String(t["id"]))
-	var track: String = tracks[rng.randi() % tracks.size()]
 	var car: String = CarSpecs.CATALOG[rng.randi() % CarSpecs.CATALOG.size()]
+	var tracks: Array = Track.ids_for(car)
+	var track: String = tracks[rng.randi() % tracks.size()]
 	var tw: Array = TWISTS[rng.randi() % TWISTS.size()]
 	var type: String = tw[0]
 	var laps := 2 if type != "time_trial" else 3

@@ -24,7 +24,9 @@ func _run() -> void:
 	save.data["settings"]["look"] = OS.get_environment("APEX_LOOK") if OS.get_environment("APEX_LOOK") != "" else "light"
 	save.data["settings"]["player_name"] = "Soham"
 	save.data["driver"] = {"created": true, "name": "Soham", "number": 26, "helmet": "ffd200", "helmet2": "000000", "id": "d1"}
-	save.data["career"] = {"club_1": 3, "club_2": 2, "club_3": 3, "club_4": 1, "club_5": 2}
+	# Promoted out of karting (10 stars), into F4.
+	save.data["career"] = {"kart_1": 3, "kart_2": 3, "kart_3": 2, "kart_4": 2, "kart_6": 1, "f4_1": 2}
+	save.data["settings"]["career_series"] = 1
 	await _open("res://scenes/hub.tscn")
 	await _shot(out + "/g1_hub.png")
 	await _open("res://scenes/career.tscn")
@@ -32,16 +34,20 @@ func _run() -> void:
 	var garage = await _open("res://scenes/garage.tscn")
 	garage._select("gp26")
 	await _shot(out + "/g3_garage.png")
-	garage._select("gp26")
+	garage._select("kart")
 	await _shot(out + "/g4_garage_car.png")
 	await _open("res://scenes/championship.tscn")
 	await _shot(out + "/g5_champ_setup.png")
-	Championship.start(save, "gp", "gp26", "", 6, 3)
-	Championship.record_round(save, [3, 0, 5, 1, 2, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19], 0)
+	Championship.start(save, "kart", "kart", "", 6)
+	Championship.record_round(save, [3, 0, 5, 1, 2, 4, 6, 7, 8, 9, 10, 11], 0)
 	await _open("res://scenes/championship.tscn")
 	await _shot(out + "/g6_champ_season.png")
+	save.data["settings"]["car"] = "kart"
 	await _open("res://scenes/menu.tscn")
 	await _shot(out + "/g7_quick.png")
+	save.data["settings"]["car"] = "f3"
+	await _open("res://scenes/menu.tscn")
+	await _shot(out + "/g7b_quick_f3.png")
 	save.data["trophies"] = [{"series": "Sports Car Cup", "position": 1, "date": "2026-10-28"}, {"series": "Muscle Car Series", "position": 3, "date": "2026-10-20"}]
 	save.data["best_laps"] = {"silvermoor|gp26": 102345, "marina|gp26": 101020, "styria|gp26": 71640}
 	await _open("res://scenes/profile.tscn")

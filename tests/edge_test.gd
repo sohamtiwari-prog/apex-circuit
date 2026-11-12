@@ -38,7 +38,8 @@ func _cross(race: Node, car_id: String, assists: bool, outward: bool) -> void:
 		hud.touch.brake = 0.0
 		await physics_frame
 		var v: float = car.forward_speed()
-		worst_drop = maxf(worst_drop, (prev_v - v) * 120.0)       # m/s^2 of deceleration
+		if f >= 30:          # (after it's settled from being put down: a light kart lands with a jolt)
+			worst_drop = maxf(worst_drop, (prev_v - v) * 120.0)       # m/s^2 of deceleration
 		prev_v = v
 		min_v = minf(min_v, v)
 		var lat: float = absf(track.lateral(car.global_position, track.nearest_index(car.global_position, idx)))
@@ -53,7 +54,10 @@ func _cross(race: Node, car_id: String, assists: bool, outward: bool) -> void:
 	_check(min_v > 22.0, "%s: grass slows the car, but gently" % label)
 func _run() -> void:
 	await process_frame
+	var only := OS.get_cmdline_user_args()
 	for car_id in CarSpecs.CATALOG:
+		if not only.is_empty() and not only.has(car_id):
+			continue
 		var save: Node = root.get_node("Save")
 		save.data = save.default_profile()
 		var st: Dictionary = save.data["settings"]

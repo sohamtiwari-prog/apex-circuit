@@ -67,7 +67,7 @@ func _build_ui() -> void:
 
 func _select(id: String) -> void:
 	car_id = id
-	room.show_spec(save.car_spec(id, int(save.get_setting("team")) if id == "gp26" else 0))
+	room.show_spec(save.car_spec(id, int(save.get_setting("team")) if CarSpecs.has_teams(id) else 0))
 	_refresh()
 
 
@@ -105,8 +105,9 @@ func _team_list() -> void:
 	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_list.add_child(grid)
 	var cur := int(save.get_setting("team"))
-	for i in CarSpecs.TEAMS.size():
-		var t: Dictionary = CarSpecs.TEAMS[i]
+	var teams: Array = CarSpecs.teams_for(car_id)
+	for i in teams.size():
+		var t: Dictionary = teams[i]
 		var k: int = i
 		var b := UIStyle.button(String(t["name"]), func():
 			save.set_setting("team", k)
@@ -148,8 +149,8 @@ func _build_panel() -> void:
 	var brake: float = float(spec["brake_base"]) + float(spec["brake_aero"]) * v * v
 	var top_kmh := Garage.top_speed_kmh(spec)
 	_stat("Power", "%d hp" % (int(round(float(spec["power"]) / 745.7 / 10.0)) * 10), float(spec["power"]) / 1.1e6)
-	_stat("Weight", "%d kg" % int(float(spec["mass"])), 1.0 - (float(spec["mass"]) - 700.0) / 1500.0)
-	_stat("Top speed", "%d km/h" % int(top_kmh), (top_kmh - 200.0) / 220.0)
+	_stat("Weight", "%d kg" % int(float(spec["mass"])), 1.0 - float(spec["mass"]) / 1000.0)
+	_stat("Top speed", "%d km/h" % int(top_kmh), (top_kmh - 80.0) / 300.0)
 	_stat("Grip at 200", "%.1f g" % grip, grip / 4.5)
 	_stat("Braking", "%.1f g" % (minf(brake, float(spec["brake_max"])) / 9.81), minf(brake, float(spec["brake_max"])) / 30.0)
 	var series: Array = []

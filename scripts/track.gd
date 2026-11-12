@@ -38,6 +38,11 @@ const CATALOG := [
 	{"id": "isebay", "name": "Ise Bay Circuit", "desc": "Japan · 5.81 km · figure of eight: the esses, over the bridge, 130R", "style": "park"},
 	{"id": "jiading", "name": "Jiading International Circuit", "desc": "China · 5.45 km · the snail, then a 1.2 km straight", "style": "park"},
 	{"id": "kestrel_park", "name": "Kestrel Park", "desc": "Original club circuit · 2.06 km", "style": "park"},
+	# Kart circuits: narrow, short, tight; the karting series races here (and
+	# only karts do).
+	{"id": "pinecrest", "name": "Pinecrest Kart Circuit", "desc": "Kart circuit · 1.19 km · hairpins in the pines", "style": "forest", "kart": true},
+	{"id": "harbourline", "name": "Harbourline Karting", "desc": "Kart circuit · 1.57 km · two hairpins by the water", "style": "city", "kart": true},
+	{"id": "redrock", "name": "Red Rock Raceway", "desc": "Kart circuit · 1.28 km · fast sweepers in the canyon", "style": "desert", "kart": true},
 ]
 
 # Original club circuit, defined by control points (x, z) in metres.
@@ -84,6 +89,8 @@ var _profiles := {}
 ## (unscaled transform, box size). Used to keep scenery off the road.
 var scenery_boxes: Array = []
 var trackside: Trackside
+var team_car := "gp26"         # whose team colours mark the pit boxes
+var kart := false               # a kart circuit: a tighter grid
 
 # Landscape heightmap (tools/terrain.py): true ground heights on a grid.
 var terrain_h := PackedFloat32Array()
@@ -178,6 +185,21 @@ static func catalog_entry(id: String) -> Dictionary:
 	return CATALOG[0]
 
 
+static func is_kart_track(id: String) -> bool:
+	return bool(catalog_entry(id).get("kart", false))
+
+
+## The circuits a car races on: karts on the kart circuits, everything else
+## on the full-size ones.
+static func ids_for(car_id: String) -> Array:
+	var kart := car_id == "kart"
+	var out := []
+	for t in CATALOG:
+		if bool(t.get("kart", false)) == kart:
+			out.append(String(t["id"]))
+	return out
+
+
 static func catalog_name(id: String) -> String:
 	for t in CATALOG:
 		if t["id"] == id:
@@ -194,6 +216,7 @@ func build(id: String = "kestrel_park") -> void:
 	if OS.has_feature("web"):
 		detail = minf(detail, 0.35)
 	style = catalog_entry(id)["style"]
+	kart = bool(catalog_entry(id).get("kart", false))
 	if id == "kestrel_park" and not FileAccess.file_exists("res://tracks/kestrel_park.json"):
 		road_half = 6.5
 		wall_offset = 19.0
@@ -1300,6 +1323,14 @@ func _build_road() -> void:
 	add_child(body)
 
 
+## Grid slot k: how far back from the line (m) and how far across. Karts
+## line up half as far apart as single-seaters.
+func grid_slot(k: int) -> Vector2:
+	var row := 4.0 if kart else 8.0
+	var back := row * 0.75 + (k / 2) * row + (k % 2) * row * 0.5
+	return Vector2(back, (-1.0 if k % 2 == 0 else 1.0) * minf(road_half * 0.45, 3.2 if not kart else 1.6))
+
+
 ## The starting grid painted on the road: for each slot (where race.gd's
 ## _grid_pose puts the cars) a white line across in front of the car and
 ## short lines back along each side of it.
@@ -1308,11 +1339,12 @@ func _grid_boxes(st: SurfaceTool, white: Color) -> void:
 	var paint := PackedVector3Array()          # (paint only: not part of the collision surface)
 	var lift := 0.006
 	for k in 20:
-		var back := 6.0 + (k / 2) * 8.0 + (k % 2) * 4.0
-		var idx := (n - int(back / SPACING)) % n
-		var side := (-1.0 if k % 2 == 0 else 1.0) * minf(road_half * 0.45, 3.2)
-		# The front line, 2.6 m ahead of the car's middle, 0.3 m deep.
-		var s0: float = cum[idx] + 2.6
+		var g := grid_slot(k)
+		var idx := (n - int(g.x / SPACING)) % n
+		var side := g.y
+		var hw := 0.75 if kart else 1.15
+		# The front line, 2.6 m ahead of the car's middle (1.1 for a kart), 0.3 m deep.
+		var s0: float = cum[idx] + (1.1 if kart else 2.6)
 		var i := idx
 		while cum[(i + 1) % n] <= s0 and (i + 1) % n != 0:
 			i = (i + 1) % n
@@ -1320,9 +1352,9 @@ func _grid_boxes(st: SurfaceTool, white: Color) -> void:
 		var seg: float = points[i].distance_to(points[j])
 		var t0 := clampf((s0 - cum[i]) / seg, 0.0, 0.85)
 		var t1 := minf(t0 + 0.3 / seg, 1.0)
-		_band(st, paint, i, j, side - 1.15, side + 1.15, white, t0, t1, lift, lift)
+		_band(st, paint, i, j, side - hw, side + hw, white, t0, t1, lift, lift)
 		# Side lines, back from the front line.
-		for e in [-1.15, 1.0]:
+		for e in [-hw, hw - 0.15]:
 			_band(st, paint, idx, (idx + 1) % n, side + e, side + e + 0.15, white, 0.65, 1.0, lift, lift)
 
 
@@ -2072,8 +2104,8 @@ static func _smoother(x: float) -> float:
 ## the team boxes. Street circuits keep their pits on the straight itself.
 func _plan_pit_lane() -> void:
 	has_pit_lane = false
-	if total_length < 1500.0:
-		return
+	if total_length < 1500.0 or kart:
+		return                  # (karting has no pit stops)
 	var n := points.size()
 	pit_off = wall_offset
 	# Longest lane that fits, the line about two-thirds of the way along it.

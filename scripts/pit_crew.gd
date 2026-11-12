@@ -36,7 +36,7 @@ func setup(c: RaceCar, track: Track, team: int, compound_colour: Color) -> void:
 	var fwd := Vector3(b.z.x, 0.0, b.z.z).normalized()
 	global_transform = Transform3D(Basis.looking_at(-fwd, Vector3.UP), car.global_position - Vector3(0, 0.25, 0))
 	var spec := car.spec
-	var t: Dictionary = CarSpecs.TEAMS[posmod(team, CarSpecs.TEAMS.size())]
+	var t: Dictionary = CarSpecs.team(team, String(spec.get("id", "gp26")))
 	var suit: Color = t["base"]
 	var trim: Color = t.get("accent", Color(0.95, 0.95, 0.95))
 	var st := MeshKit.new_tool()

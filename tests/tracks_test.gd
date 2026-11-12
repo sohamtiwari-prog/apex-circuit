@@ -1,6 +1,7 @@
 extends SceneTree
-## Every track in the catalog must be drivable: the AI in a GP car completes
-## a flying lap, stays on the road and never flips.
+## Every track in the catalog must be drivable: the AI completes a flying
+## lap, stays on the road and never flips (a GP car on the full-size
+## circuits, a kart on the kart circuits).
 ##   godot --headless --fixed-fps 120 --script res://tests/tracks_test.gd [track_id]
 
 var failures: Array[String] = []
@@ -76,7 +77,7 @@ func _run() -> void:
 	var only := OS.get_cmdline_user_args()
 	for t in Track.CATALOG:
 		if only.is_empty() or only.has(t["id"]):
-			await _lap(t["id"], "gp26")
+			await _lap(t["id"], "kart" if bool(t.get("kart", false)) else "gp26")
 	print("")
 	if failures.is_empty():
 		print("ALL CHECKS PASSED")

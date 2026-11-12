@@ -7,14 +7,19 @@ Grand Prix tracks follow real circuit layouts under fictional names.
 
 ## Cars and tracks
 
-| Car | Modelled on | | |
-|---|---|---|---|
-| **Apex GP-26** | current F1 car, 10 team liveries | 1000 hp · 800 kg | 0-100 2.4 s · 342 km/h |
+Five classes, the ladder a driver climbs, each with ten fictional teams:
 
-For now the game is **Grand Prix only**: the GP car in ten teams' liveries
-(the road cars of earlier versions are gone). The junior single-seaters,
-karts, F4, F3 and F2, are planned as series of their own in a later
-update. The one other car is the Safety Car, a mid-engined road car.
+| Car | Class | Power, weight | Top speed |
+|---|---|---|---|
+| **Apex K-125** | 125 cc racing kart (two-stroke, one gear, no suspension) | 30 hp, 165 kg | 125 km/h |
+| **Apex J4** | F4-class single-seater (no DRS) | 160 hp, 570 kg | 228 km/h |
+| **Apex J3** | F3-class single-seater | 380 hp, 675 kg | 280 km/h |
+| **Apex J2** | F2-class single-seater | 620 hp, 795 kg | 325 km/h |
+| **Apex GP-26** | current F1 car | 1000 hp, 800 kg | 342 km/h |
+
+Each has its own handling, grip, aero, gearing and engine note (from the
+kart's two-stroke buzz to the GP car's scream). The one other car is the Safety Car, a
+mid-engined road car.
 
 Cars are modelled procedurally (scripts/mesh_kit.gd: lofted bodywork,
 airfoil wings, lathed tyres). Names and teams are fictional.
@@ -40,6 +45,17 @@ airfoil wings, lathed tyres). Names and teams are fictional.
 | **Ise Bay Circuit** | the Japanese GP venue (figure of eight, with its bridge) | 5.81 km |
 | **Jiading International Circuit** | the Chinese GP venue | 5.45 km |
 | **Kestrel Park** | original club circuit | 2.06 km |
+
+Karts race on three original kart circuits (narrow, tight, a tighter grid
+and no pit lane), and only karts race there:
+
+| Kart circuit | | Length |
+|---|---|---|
+| **Pinecrest Kart Circuit** | hairpins in the pines | 1.19 km |
+| **Harbourline Karting** | two hairpins by the water | 1.57 km |
+| **Red Rock Raceway** | fast sweepers in the canyon | 1.28 km |
+
+(Their layouts are drawn in tools/kart_track.py.)
 
 Layouts are accurate to within ~1% of the official lengths, with real
 elevation (see below).
@@ -147,14 +163,16 @@ other's ranks in the lobby.
 
 ## Career rivals and rewards
 
-The career series has a **rival**: Kai Lindgren, the reigning Grand Prix
-champion. He's on the grid of every race in the series, a little quicker than the rest and tagged RIVAL
+Every career series has its **rival**: Ollie Brandt in karting, Noa Kessler
+in F4, Rafael Okoye in F3, Ines Marchetti in F2 and Kai Lindgren, the
+reigning Grand Prix champion. They're on the grid of every race in their
+series, a little quicker than the rest and tagged RIVAL
 over their car; the series' duel is against them. The results say whether
 you beat them, and the career screen keeps your head-to-head record.
 
-Career stars unlock things for the paint shop: metallic colours at 3 stars,
-the **Carbon** pattern at 6, champion's gold at 10 and the **Chequered**
-pattern at 15 (the next one is shown on the career screen).
+Career stars unlock things for the paint shop: metallic colours at 6 stars,
+the **Carbon** pattern at 20, the **Chequered** pattern at 40 and champion's
+gold at 70 (the next one is shown on the career screen).
 
 ## Paint shop
 
@@ -306,11 +324,16 @@ now for what's coming at your current speed.
 
 - **Home screen:** Career, Championship, Quick race, Friends and Garage,
   with your car, rank and career stars.
-- **Career:** the Grand Prix series, six events: a race, a time trial
-  (gold / silver / bronze), a duel against one rival, an overtake challenge
-  (start last), an eliminator (last car out every lap), and a full World
-  Championship season to finish. Up to 3 stars per event.
-- **Garage:** the GP car and its ten teams: pick the team you race for (its
+- **Career:** a ladder, **Karting → F4 → F3 → F2 → Grand Prix**. Every
+  driver starts in karts; **10 stars in a series promotes you** to the next
+  (the results screen says so), and the series below stay open. Each
+  series has six events in its own car: a race, a time trial (gold /
+  silver / bronze), a duel against its rival, an overtake challenge (start
+  last), an eliminator (last car out every lap), and a full championship
+  season to finish. Up to 3 stars per event, 90 in all. Drivers from before
+  the ladder keep Grand Prix and everything below it open; to climb it from
+  the bottom, add a new driver.
+- **Garage:** the five classes and each one's ten teams: pick the team you race for (its
   livery), see how the car performs (power, weight, top speed, grip,
   braking and its Performance Rating), and go to the paint shop or the car
   setup. No money, no buying, no upgrades: it's down to the driving.
@@ -320,9 +343,13 @@ now for what's coming at your current speed.
 - **Profile & trophies:** your rank, totals (races, wins, podiums, laps,
   distance, stars), your best lap at every track and the trophy
   cabinet from championships.
-- **Championship:** the Grand Prix World Championship, 3 to 10 rounds, 2 to 5
-  laps; the same 20 drivers all season, points 25-18-15-12-10-8-6-4-2-1
-  (+1 fastest lap), driver and team standings and a trophy.
+- **Championship:** one per class, each opened by reaching its series in
+  the career: Karting (12 karts on the kart circuits), F4 (16 cars), F3, F2
+  and the Grand Prix World Championship (20 cars, up to 10 rounds). The
+  same drivers all season, points 25-18-15-12-10-8-6-4-2-1 (+1 fastest
+  lap), driver and team standings and a trophy.
+- **Quick race and Friends:** every class, any time (karts on the kart
+  circuits, the rest on the full-size ones).
 - **Race weekends:** qualifying (one flying lap from a rolling out-lap,
   or skip it) sets the grid; choose soft / medium / hard / wet tyres; tyres
   wear (grip fades, then drops off a cliff). Weather can be dry, wet or change during
@@ -701,16 +728,17 @@ tracks/              imported circuit centrelines (JSON)
 tools/
   import_circuit.py  converts a real circuit outline (GeoJSON) into a track file
   racing_line.py     adds a minimum-curvature racing line to a track file
+  kart_track.py      the original kart circuits, drawn as control points
 tests/
   sim_test.gd        physics checks per car (0-100, top speed, braking, AI laps)
   game_test.gd       end-to-end: countdown, laps, save, reload, corruption recovery
-  tracks_test.gd     the AI completes a clean lap of every track
+  tracks_test.gd     the AI completes a clean lap of every track (a kart on the kart circuits)
   grip_test.gd       measures each car's cornering grip (calibrates the AI)
   cars_test.gd       every car: 0-100, top speed, clean AI lap
   race_test.gd       a full 20-car race to the results screen
   collision_test.gd  rear-end hits, offset hits, rubbing wheels, slipstream
   replay_test.gd     recording, smooth playback, every replay camera, restore after
-  career_test.gd     garage, career events, a championship season
+  career_test.gd     the career ladder and promotion, career events, karting and GP seasons
   weekend_test.gd    qualifying, tyre wear, pit stops, changing weather
   pit_test.gd        the pit lane on three circuits: entry, team box, crew, exit
   pit_stuck_test.gd  awkward stops never leave you stuck (late, offline, spins, resets, jams)

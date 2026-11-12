@@ -153,12 +153,12 @@ func _build_ui() -> void:
 		get_tree().change_scene_to_file("res://scenes/race.tscn"),
 		("%d of 3 stars" % dstars) if dstars > 0 else ("New in %d h" % hours_left if hours_left > 1 else "New within the hour"))
 	_tile(grid, "championship", "podium", "Championship", Championship.summary(save), func(): get_tree().change_scene_to_file("res://scenes/championship.tscn"))
-	_tile(grid, "career", "trophy", "Career", "The Grand Prix series", func(): get_tree().change_scene_to_file("res://scenes/career.tscn"),
+	_tile(grid, "career", "trophy", "Career", "Karts to Grand Prix: you're in %s" % String(Career.SERIES[Career.reached(save)]["name"]), func(): get_tree().change_scene_to_file("res://scenes/career.tscn"),
 		"%d of %d stars" % [Career.total_stars(save), Career.SERIES.size() * 18])
 	_tile(grid, "quick", "flag", "Quick race", "Any track, any rules", func(): get_tree().change_scene_to_file("res://scenes/menu.tscn"))
 	_tile(grid, "friends", "friends", "Friends", "Race on the same Wi-Fi or online", func(): get_tree().change_scene_to_file("res://scenes/lobby.tscn"))
 	_tile(grid, "garage", "spanner", "Garage", "Your team, paint and setup", func(): get_tree().change_scene_to_file("res://scenes/garage.tscn"),
-		("%d cars" % CarSpecs.CATALOG.size()) if CarSpecs.CATALOG.size() > 1 else ("%d teams" % CarSpecs.TEAMS.size()))
+		"%d classes" % CarSpecs.CATALOG.size())
 	for k in ["daily", "championship", "career", "quick", "friends", "garage"]:
 		boards.append(_tiles[k])
 	UIStyle.reveal(boards)
@@ -271,7 +271,7 @@ func _car_card(parent: Control) -> Control:
 ## starred, its track, and Race straight into it in the car you last used
 ## in that series.
 func _next_card(parent: Control) -> Control:
-	var si := clampi(int(save.get_setting("career_series")), 0, Career.SERIES.size() - 1)
+	var si := clampi(int(save.get_setting("career_series")), 0, Career.reached(save))
 	var n: int = (Career.SERIES[si]["events"] as Array).size()
 	var ei := 0
 	for k in n:
@@ -297,7 +297,7 @@ func _next_card(parent: Control) -> Control:
 	h.add_child(v)
 	v.add_child(UIStyle.label("Next in %s" % String(Career.SERIES[si]["name"]), 20, UIStyle.FOG, "bold"))
 	v.add_child(UIStyle.label("%d. %s" % [ei + 1, Career.TYPE_NAMES[ev["type"]]], 30, UIStyle.PAPER, "display"))
-	var where := "A six-round season, 20 cars"
+	var where := "A six-round season, %d cars" % int(Championship.class_info(String(Career.SERIES[si]["id"])).get("field", 20))
 	if ev["type"] != "season":
 		where = "%s, %d laps" % [String(Track.catalog_entry(String(ev["track"]))["name"]), int(ev["laps"])]
 	v.add_child(UIStyle.label(where, 21, UIStyle.PAPER, "semibold"))

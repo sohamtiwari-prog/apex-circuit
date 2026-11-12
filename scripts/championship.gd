@@ -2,15 +2,25 @@ class_name Championship
 extends RefCounted
 ## Championship seasons: the same 20 drivers over several rounds, points
 ## for the top ten (25-18-15-12-10-8-6-4-2-1, +1 for the fastest lap in the
-## top ten), driver standings (and team standings for Grand Prix), and a
+## top ten), driver and team standings, and a
 ## trophy at the end. Every round is a race weekend:
 ## qualifying sets the grid, then the race (tyres, pit stops, weather).
 ##
 ## The season lives in save.data["championship"] so it survives restarts.
 
 const POINTS := [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
+## One per career series (the same ids), each in its own class of car on
+## its own calendar; `field` cars, `laps` a round, AI `skill` around.
 const CLASSES := [
-	{"id": "gp", "name": "Grand Prix World Championship", "cars": ["gp26"],
+	{"id": "kart", "name": "Karting Championship", "cars": ["kart"], "field": 12, "laps": 6, "skill": 0.88,
+		"rounds": ["pinecrest", "redrock", "harbourline", "redrock", "pinecrest", "harbourline"]},
+	{"id": "f4", "name": "F4 Championship", "cars": ["f4"], "field": 16, "laps": 4, "skill": 0.9,
+		"rounds": ["kestrel_park", "styria", "pannonia", "silvermoor", "duinen", "brianza"]},
+	{"id": "f3", "name": "F3 Championship", "cars": ["f3"], "field": 20, "laps": 3, "skill": 0.92,
+		"rounds": ["desert", "silvermoor", "styria", "pannonia", "ardennes", "brianza"]},
+	{"id": "f2", "name": "F2 Championship", "cars": ["f2"], "field": 20, "laps": 3, "skill": 0.94,
+		"rounds": ["desert", "jiading", "riviera", "lakeside", "marina", "gulf"]},
+	{"id": "gp", "name": "Grand Prix World Championship", "cars": ["gp26"], "field": 20, "laps": 3, "skill": 0.95,
 		"rounds": ["lakeside", "jiading", "isebay", "desert", "red_sea", "riviera", "ile_royale", "styria", "silvermoor", "ardennes", "pannonia", "duinen", "brianza", "caspian", "marina", "lone_star", "entrelagos", "gulf"]},
 ]
 
@@ -19,7 +29,18 @@ static func class_info(id: String) -> Dictionary:
 	for c in CLASSES:
 		if c["id"] == id:
 			return c
-	return CLASSES[0]
+	return CLASSES[CLASSES.size() - 1]
+
+
+## The classes you can race a season in: those whose career series you've
+## reached.
+static func open_classes(save: Node) -> Array:
+	var out := []
+	for c in CLASSES:
+		var si := Career.series_index(String(c["id"]))
+		if si < 0 or Career.is_open(save, si):
+			out.append(c)
+	return out
 
 
 static func active(save: Node) -> Dictionary:
@@ -40,23 +61,26 @@ static func summary(save: Node) -> String:
 
 
 ## Starts a new season (replacing any season in progress).
-static func start(save: Node, class_id: String, car_id: String, career_event := "", rounds := 6, laps := 3) -> void:
+static func start(save: Node, class_id: String, car_id: String, career_event := "", rounds := 6, laps := -1) -> void:
 	var info := class_info(class_id)
 	var tracks: Array = (info["rounds"] as Array).slice(0, rounds)
+	if laps <= 0:
+		laps = int(info.get("laps", 3))
+	var field := int(info.get("field", 20))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(Time.get_unix_time_from_system())
-	var base: float = {"gp": 0.95}.get(class_id, 0.95)
+	var base := float(info.get("skill", 0.95))
 	var drivers: Array = [{"name": "You", "team": int(save.get_setting("team")), "skill": 0.0, "car": car_id}]
 	var names: Array = (load("res://scripts/race.gd").DRIVER_NAMES as Array).duplicate()
 	names.shuffle()
 	var models: Array = info["cars"]
-	for i in 19:
+	for i in field - 1:
 		var team := 0
-		if class_id == "gp":
+		if CarSpecs.has_teams(car_id):
 			# Two per team; the player's team-mate first.
 			var player_team := int(save.get_setting("team"))
 			var order: Array = [player_team]
-			for t in CarSpecs.TEAMS.size():
+			for t in CarSpecs.teams_for(car_id).size():
 				if t != player_team:
 					order.append(t)
 					order.append(t)
@@ -67,7 +91,7 @@ static func start(save: Node, class_id: String, car_id: String, career_event := 
 			"skill": clampf(base + rng.randf_range(-0.03, 0.025), 0.82, 0.995),
 			"car": String(models[i % models.size()]) if models.size() > 1 else String(models[0])})
 	var points: Array = []
-	points.resize(20)
+	points.resize(field)
 	points.fill(0)
 	save.data["championship"] = {
 		"class": class_id, "name": info["name"], "car": car_id, "rounds": tracks, "laps": laps,
@@ -83,8 +107,8 @@ static func round_event(save: Node) -> Dictionary:
 	var r := int(s["round"])
 	var info := class_info(String(s["class"]))
 	return {
-		"id": "", "type": "champ_round", "series": 4, "series_name": String(s["name"]),
-		"track": String(s["rounds"][r]), "laps": int(s["laps"]), "opponents": 19,
+		"id": "", "type": "champ_round", "series": maxi(Career.series_index(String(s["class"])), 0), "series_name": String(s["name"]),
+		"track": String(s["rounds"][r]), "laps": int(s["laps"]), "opponents": (s["drivers"] as Array).size() - 1,
 		"skill": 0.93, "cars": info["cars"], "car": String(s["car"]),
 		"drivers": s["drivers"], "round": r, "rounds": (s["rounds"] as Array).size(),
 		"qualifying": true, "weekend": true,

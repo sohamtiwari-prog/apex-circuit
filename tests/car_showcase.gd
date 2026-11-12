@@ -35,7 +35,9 @@ func _run() -> void:
 
 	var ids: Array = CarSpecs.CATALOG
 	var x := 0.0
+	var xs := {}
 	for id in ids:
+		xs[id] = x
 		var car := RaceCar.new()
 		car.setup(CarSpecs.get_spec(id, 0))
 		car.freeze = true
@@ -61,4 +63,10 @@ func _run() -> void:
 	await _shot(cam, Vector3(0.0, 0.5, 6.5), Vector3(0.0, 0.1, 0), out + "/front.png", 38.0)
 	await _shot(cam, Vector3(-6.0, 0.6, -7.0), Vector3(0.0, 0.1, -7.0), out + "/gp_side.png", 38.0)
 	await _shot(cam, Vector3(8.0, 9.0, 14.0), Vector3(8.0, -0.4, -3.0), out + "/lineup.png", 45.0)
+	# Each class close up, front three-quarter.
+	for id in ids:
+		var cx: float = xs[id]
+		var d: float = 1.6 if id == "kart" else 4.2
+		await _shot(cam, Vector3(cx + d, 0.4 + d * 0.3, d * 1.05), Vector3(cx, -0.25, 0), out + "/car_%s.png" % id, 34.0)
+	await _shot(cam, Vector3(6.4, 1.2, 7.5), Vector3(6.4, -0.2, 0), out + "/ladder.png", 40.0)
 	quit(0)

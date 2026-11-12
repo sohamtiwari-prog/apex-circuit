@@ -34,8 +34,7 @@ func _ready() -> void:
 	save = get_node("/root/Save")
 	DisplayServer.screen_set_keep_on(true)
 	car_ids = Array(CarSpecs.CATALOG)
-	for t in Track.CATALOG:
-		track_ids.append(t["id"])
+	track_ids = Track.ids_for(String(save.get_setting("car")))
 	_build_stage()
 	_build_ui()
 	UIStyle.reveal_boards.call_deferred(self)
@@ -58,7 +57,7 @@ func _show_car(id: String) -> void:
 	if preview != null:
 		preview.queue_free()
 	preview = RaceCar.new()
-	preview.setup(save.car_spec(id, int(save.get_setting("team")) if id == "gp26" else 0))
+	preview.setup(save.car_spec(id, int(save.get_setting("team")) if CarSpecs.has_teams(id) else 0))
 	preview.freeze = true
 	showcase.add_child(preview)
 	preview.position.y = preview.spawn_height() - 0.05
@@ -131,7 +130,7 @@ func _build_car_side(cols: Control) -> void:
 	sv.add_child(gap)
 	sv.add_child(_team_name)
 	sv.add_child(_team_row)
-	for i in range(CarSpecs.TEAMS.size()):
+	for i in range(10):
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(46, 46)
 		b.focus_mode = Control.FOCUS_NONE
@@ -152,7 +151,7 @@ func _build_car_side(cols: Control) -> void:
 	var next := UIStyle.button("›", func(): _step_car(1), false, 64)
 	next.custom_minimum_size = Vector2(84, 66)
 	nav.add_child(next)
-	prev.visible = CarSpecs.CATALOG.size() > 1      # (one car for now: nothing to step through)
+	prev.visible = CarSpecs.CATALOG.size() > 1
 	next.visible = prev.visible
 	_car_count = UIStyle.outlined(UIStyle.label("", 22, UIStyle.PAPER, "semibold"), 4)
 	_car_count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -418,9 +417,13 @@ func _step_track(d: int) -> void:
 
 func _select_car(id: String, persist: bool) -> void:
 	if not car_ids.has(id):
-		id = car_ids[0]
+		id = "gp26"
 	if persist:
 		save.set_setting("car", id)
+		# Karts race on the kart circuits, everything else on the full-size
+		# ones: the track list follows the car.
+		track_ids = Track.ids_for(id)
+		_select_track(String(save.get_setting("track")), true)
 	_show_car(id)
 	var spec: Dictionary = save.car_spec(id)
 	_car_name.text = spec["name"]
@@ -436,10 +439,12 @@ func _select_car(id: String, persist: bool) -> void:
 	var top: float = float(spec.get("top_kmh", 340.0))
 	_set_bar("Power", pw / 950.0, "%d hp" % (int(round(float(spec["power"]) / 745.7 / 10.0)) * 10))
 	_set_bar("Grip", grip / 4.5, "%.1f g" % grip)
-	_set_bar("Top speed", (top - 200.0) / 220.0, "%d km/h" % int(top))
-	var gp := id == "gp26"
+	_set_bar("Top speed", (top - 80.0) / 300.0, "%d km/h" % int(top))
+	var gp := CarSpecs.has_teams(id)
 	_team_row.visible = gp
 	_team_name.visible = gp
+	if gp:
+		_select_team(int(save.get_setting("team")), false)
 	_refresh_info()
 
 
@@ -450,9 +455,10 @@ func _set_bar(stat: String, frac: float, text: String) -> void:
 
 
 func _select_team(i: int, persist: bool) -> void:
-	i = posmod(i, CarSpecs.TEAMS.size())
+	var teams: Array = CarSpecs.teams_for(String(save.get_setting("car")))
+	i = posmod(i, teams.size())
 	for k in range(team_buttons.size()):
-		var t: Dictionary = CarSpecs.TEAMS[k]
+		var t: Dictionary = teams[k % teams.size()]
 		var sb := UIStyle.panel(t["base"], true, Color(0, 0, 0, 0), 4)
 		sb.border_color = UIStyle.PAPER if k == i else Color(t["accent"], 0.9)
 		sb.set_border_width_all(4 if k == i else 2)
@@ -462,12 +468,13 @@ func _select_team(i: int, persist: bool) -> void:
 		save.set_setting("team", i)
 		_show_car(String(save.get_setting("car")))
 	if _team_name != null:
-		_team_name.text = String(CarSpecs.TEAMS[i]["name"])
+		_team_name.text = String(teams[i]["name"])
 
 
 func _select_track(id: String, persist: bool) -> void:
 	if not track_ids.has(id):
 		id = track_ids[0]
+		persist = true            # (the saved one isn't raced in this car)
 	if persist:
 		save.set_setting("track", id)
 	var entry := Track.catalog_entry(id)

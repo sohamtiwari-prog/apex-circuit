@@ -556,6 +556,10 @@ func _step_car(d: int) -> void:
 	var pick := {"name": _my_name(), "car": id, "team": int(save.get_setting("team")), "rp": _my_rp(), "paint": _my_paint()}
 	if Net.is_host():
 		_players()[1] = pick
+		# The track list follows the host's class (karts on kart circuits).
+		var tracks := Track.ids_for(id)
+		if not tracks.has(String(_settings().get("track"))):
+			_settings()["track"] = tracks[0]
 		_broadcast_lobby()
 	else:
 		Net.send(1, {"t": "hello", "proto": Net.PROTOCOL, "ver": Net.game_version(), "name": pick["name"], "car": id, "team": pick["team"], "rp": pick["rp"], "paint": pick["paint"]})
@@ -566,9 +570,7 @@ func _step_car(d: int) -> void:
 func _step_track(d: int) -> void:
 	if not Net.is_host():
 		return
-	var ids: Array = []
-	for t in Track.CATALOG:
-		ids.append(t["id"])
+	var ids: Array = Track.ids_for(String(save.get_setting("car")))
 	var cur := ids.find(String(_settings().get("track")))
 	_settings()["track"] = ids[posmod(cur + d, ids.size())]
 	_broadcast_lobby()
@@ -664,9 +666,9 @@ func _start_race() -> void:
 		var rounds := 5 if party == "series5" else 3
 		var tracks: Array = [String(st.get("track", "silvermoor"))]
 		var pool: Array = []
-		for t in Track.CATALOG:
-			if not tracks.has(String(t["id"])):
-				pool.append(String(t["id"]))
+		for t in Track.ids_for(String(save.get_setting("car"))):
+			if not tracks.has(t):
+				pool.append(t)
 		pool.shuffle()
 		tracks.append_array(pool.slice(0, rounds - 1))
 		st["series"] = {"round": 0, "rounds": rounds, "tracks": tracks, "points": {}}
@@ -708,7 +710,7 @@ static func make_start(st: Dictionary, ps: Dictionary, order: Array = []) -> Dic
 			human += 1
 		else:
 			grid.append({"slot": slot, "kind": "bot", "id": 0, "name": names[bot % names.size()], "car": host_car,
-				"team": (bot / 2) % CarSpecs.TEAMS.size() if host_car == "gp26" else bot + 1,
+				"team": (bot / 2) % CarSpecs.teams_for(host_car).size() if CarSpecs.has_teams(host_car) else bot + 1,
 				"skill": clampf(base_skill + rng.randf_range(-0.02, 0.02) - slot * 0.0015, 0.75, 1.0)})
 			bot += 1
 	var go := st.duplicate()

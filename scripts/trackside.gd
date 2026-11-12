@@ -581,7 +581,7 @@ func _pit_complex() -> void:
 		else:
 			_quad("concrete", p0 + d, p0 - d, p1 - d, p1 + d, white)
 	# Team boxes: an outline in the team's colour with a stop bar at the front.
-	var teams: Array = CarSpecs.TEAMS
+	var teams: Array = CarSpecs.teams_for(track.team_car)
 	for team in track.pit_boxes:
 		var ps: float = track.pit_boxes[team]
 		var col: Color = teams[int(team) % teams.size()]["base"]

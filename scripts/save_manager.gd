@@ -12,7 +12,7 @@ const SAVE_DIR := "user://save"
 const SAVE_PATH := SAVE_DIR + "/profile.json"
 const BACKUP_PATH := SAVE_DIR + "/profile.bak.json"
 const TMP_PATH := SAVE_DIR + "/profile.tmp.json"
-const SCHEMA_VERSION := 8
+const SCHEMA_VERSION := 9
 ## Other drivers on this phone wait here (<id>.json, and <id>_ghosts/ for
 ## their best-lap ghosts) while someone else drives.
 const DRIVERS_DIR := SAVE_DIR + "/drivers"
@@ -122,6 +122,7 @@ const _DEFAULTS := {
 	},
 	"best_finish": {},               # "track|car" -> best race position
 	"career": {},                    # event id -> best stars (0..3)
+	"career_open": 0,                # the highest career series kept open whatever the stars (Career.reached)
 	"championship": {},              # the season in progress (scripts/championship.gd)
 	"trophies": [],                  # finished seasons: {series, position, year}
 	"checkpoint_best": {},           # "track|car" -> metres, the furthest checkpoint run
@@ -285,11 +286,21 @@ func _migrate(profile: Dictionary) -> void:
 	# a class that has gone is over (its trophies stay in the cabinet).
 	for key in ["car", "garage_car", "paint_car"]:
 		if String(st.get(key, "")) != "" and not CarSpecs.CATALOG.has(String(st.get(key, ""))):
-			st[key] = CarSpecs.CATALOG[0]
+			st[key] = "gp26"
 	var cs: Dictionary = profile.get("championship", {})
 	if cs.has("class") and Championship.class_info(String(cs["class"]))["id"] != String(cs["class"]):
 		profile["championship"] = {}
-	st["career_series"] = clampi(int(st.get("career_series", 0)), 0, Career.SERIES.size() - 1) if int(profile.get("schema", 1)) >= 8 else 0
+	# v9: the career is a ladder, karts to Grand Prix, opened by promotion.
+	# A driver from before it was already racing Grand Prix: they keep it
+	# (and everything below it), and carry on in it.
+	var schema := int(profile.get("schema", 1))
+	if schema < 9:
+		var gp := Career.series_index("gp")
+		var raced: bool = bool(d.get("created", false)) or not (profile["career"] as Dictionary).is_empty() \
+			or not (profile["best_laps"] as Dictionary).is_empty()
+		profile["career_open"] = gp if raced else 0
+		st["career_series"] = gp if raced else 0
+	st["career_series"] = clampi(int(st.get("career_series", 0)), 0, Career.SERIES.size() - 1)
 	profile["schema"] = SCHEMA_VERSION
 
 

@@ -4,12 +4,12 @@ extends RefCounted
 ## body design. Units are SI (kg, W, N, m). Car forward is +Z.
 ## Names are fictional; designs are modelled on real car types.
 ##
-## For now the game is Grand Prix only: one car you can drive, the GP car,
-## in ten teams' liveries. (The junior single-seaters, F2, F3, F4 and
-## karts, come in a later update as series of their own.) The safety car
+## The ladder, bottom to top: a kart, three junior single-seaters (the F4,
+## F3 and F2 classes) and the Grand Prix car, each with ten teams'
+## liveries. The career climbs it (scripts/career.gd). The safety car
 ## (scripts/safety_car.gd) is the one other car, a road car.
 
-const CATALOG := ["gp26"]
+const CATALOG := ["kart", "f4", "f3", "f2", "gp26"]
 const SAFETY_CAR := "vanta_gt"
 
 ## Grand Prix teams (fictional) and their liveries: base, accent, stripe, helmet.
@@ -26,8 +26,83 @@ const TEAMS := [
 	{"id": "azur", "name": "Azur Racing", "base": Color(0.92, 0.94, 0.98), "accent": Color(0.1, 0.25, 0.75), "stripe": Color(0.9, 0.1, 0.25), "helmet": Color(0.15, 0.3, 0.85)},
 ]
 
-static func team(index: int) -> Dictionary:
-	return TEAMS[posmod(index, TEAMS.size())]
+static func team(index: int, car_id := "gp26") -> Dictionary:
+	var list := teams_for(car_id)
+	return list[posmod(index, list.size())]
+
+
+## Every class in the catalog races as teams (the safety car doesn't).
+static func has_teams(car_id: String) -> bool:
+	return CATALOG.has(car_id)
+
+
+## Whether a car has a drag-reduction flap (F4 and karts don't).
+static func has_drs(spec: Dictionary) -> bool:
+	return String(spec.get("body", "")) == "gp" and bool(spec.get("drs", true))
+
+
+## Each class's ten teams (the Grand Prix teams for the GP car).
+static func teams_for(car_id: String) -> Array:
+	match car_id:
+		"f2":
+			return F2_TEAMS
+		"f3":
+			return F3_TEAMS
+		"f4":
+			return F4_TEAMS
+		"kart":
+			return KART_TEAMS
+	return TEAMS
+
+
+const F2_TEAMS := [
+	{"id": "vortex", "name": "Vortex Racing", "base": Color(0.1, 0.25, 0.75), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(1.0, 0.82, 0.0), "helmet": Color(0.95, 0.95, 0.97)},
+	{"id": "carmine", "name": "Carmine Corse", "base": Color(0.75, 0.05, 0.12), "accent": Color(0.08, 0.08, 0.1), "stripe": Color(0.95, 0.95, 0.97), "helmet": Color(0.95, 0.1, 0.12)},
+	{"id": "northline", "name": "Northline Motorsport", "base": Color(0.92, 0.93, 0.95), "accent": Color(0.05, 0.12, 0.3), "stripe": Color(0.0, 0.65, 0.9), "helmet": Color(0.05, 0.12, 0.3)},
+	{"id": "halvard", "name": "Halvard GP", "base": Color(0.05, 0.05, 0.06), "accent": Color(0.85, 0.65, 0.2), "stripe": Color(0.85, 0.65, 0.2), "helmet": Color(0.85, 0.65, 0.2)},
+	{"id": "sable", "name": "Sable Racing", "base": Color(0.0, 0.5, 0.38), "accent": Color(0.05, 0.06, 0.07), "stripe": Color(0.75, 0.95, 0.2), "helmet": Color(0.0, 0.5, 0.38)},
+	{"id": "kingfisher", "name": "Kingfisher Racing", "base": Color(0.0, 0.6, 0.85), "accent": Color(1.0, 0.45, 0.05), "stripe": Color(1.0, 0.45, 0.05), "helmet": Color(1.0, 0.45, 0.05)},
+	{"id": "orion", "name": "Orion Motorsport", "base": Color(0.38, 0.12, 0.6), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(1.0, 0.3, 0.7), "helmet": Color(0.95, 0.95, 0.97)},
+	{"id": "verdant", "name": "Verdant GP", "base": Color(0.55, 0.8, 0.1), "accent": Color(0.06, 0.07, 0.08), "stripe": Color(0.06, 0.07, 0.08), "helmet": Color(0.55, 0.8, 0.1)},
+	{"id": "stellar", "name": "Stellar Team", "base": Color(1.0, 0.75, 0.0), "accent": Color(0.05, 0.1, 0.35), "stripe": Color(0.05, 0.1, 0.35), "helmet": Color(1.0, 0.75, 0.0)},
+	{"id": "brightwater", "name": "Brightwater Racing", "base": Color(0.6, 0.62, 0.66), "accent": Color(0.9, 0.1, 0.1), "stripe": Color(0.9, 0.1, 0.1), "helmet": Color(0.92, 0.92, 0.95)},
+]
+const F3_TEAMS := [
+	{"id": "copperline", "name": "Copperline", "base": Color(0.72, 0.38, 0.18), "accent": Color(0.06, 0.06, 0.07), "stripe": Color(0.95, 0.95, 0.97), "helmet": Color(0.72, 0.38, 0.18)},
+	{"id": "falcon", "name": "Falcon Junior", "base": Color(0.06, 0.15, 0.4), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(0.95, 0.2, 0.2), "helmet": Color(0.95, 0.95, 0.97)},
+	{"id": "aurora", "name": "Aurora Racing", "base": Color(0.95, 0.4, 0.6), "accent": Color(0.08, 0.08, 0.1), "stripe": Color(0.25, 0.85, 0.95), "helmet": Color(0.95, 0.4, 0.6)},
+	{"id": "meridian", "name": "Meridian Motorsport", "base": Color(0.95, 0.95, 0.97), "accent": Color(0.0, 0.45, 0.3), "stripe": Color(0.0, 0.45, 0.3), "helmet": Color(0.0, 0.45, 0.3)},
+	{"id": "granite", "name": "Granite GP", "base": Color(0.35, 0.37, 0.4), "accent": Color(1.0, 0.82, 0.0), "stripe": Color(1.0, 0.82, 0.0), "helmet": Color(0.35, 0.37, 0.4)},
+	{"id": "cobalt", "name": "Cobalt Racing", "base": Color(0.0, 0.32, 0.85), "accent": Color(0.06, 0.06, 0.07), "stripe": Color(0.95, 0.95, 0.97), "helmet": Color(0.0, 0.32, 0.85)},
+	{"id": "redline", "name": "Redline Academy", "base": Color(0.9, 0.08, 0.08), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(0.06, 0.06, 0.07), "helmet": Color(0.95, 0.95, 0.97)},
+	{"id": "tidewater", "name": "Tidewater", "base": Color(0.0, 0.55, 0.55), "accent": Color(0.95, 0.85, 0.6), "stripe": Color(0.95, 0.85, 0.6), "helmet": Color(0.0, 0.55, 0.55)},
+	{"id": "lumen", "name": "Lumen Racing", "base": Color(1.0, 0.92, 0.2), "accent": Color(0.06, 0.06, 0.07), "stripe": Color(0.06, 0.06, 0.07), "helmet": Color(1.0, 0.92, 0.2)},
+	{"id": "summit", "name": "Summit Motorsport", "base": Color(0.3, 0.15, 0.08), "accent": Color(1.0, 0.55, 0.1), "stripe": Color(1.0, 0.55, 0.1), "helmet": Color(1.0, 0.55, 0.1)},
+]
+const F4_TEAMS := [
+	{"id": "spark", "name": "Spark Motorsport", "base": Color(1.0, 0.5, 0.0), "accent": Color(0.06, 0.06, 0.07), "stripe": Color(0.95, 0.95, 0.97), "helmet": Color(1.0, 0.5, 0.0)},
+	{"id": "arrowjr", "name": "Junior Arrow", "base": Color(0.95, 0.95, 0.97), "accent": Color(0.85, 0.05, 0.1), "stripe": Color(0.85, 0.05, 0.1), "helmet": Color(0.85, 0.05, 0.1)},
+	{"id": "firefly", "name": "Firefly Racing", "base": Color(0.8, 0.95, 0.15), "accent": Color(0.06, 0.06, 0.07), "stripe": Color(0.06, 0.06, 0.07), "helmet": Color(0.8, 0.95, 0.15)},
+	{"id": "bluebird", "name": "Bluebird Racing", "base": Color(0.25, 0.6, 1.0), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(0.05, 0.15, 0.45), "helmet": Color(0.95, 0.95, 0.97)},
+	{"id": "kite", "name": "Kite Racing", "base": Color(0.55, 0.2, 0.75), "accent": Color(1.0, 0.82, 0.0), "stripe": Color(1.0, 0.82, 0.0), "helmet": Color(1.0, 0.82, 0.0)},
+	{"id": "rookie", "name": "Rookie Works", "base": Color(0.06, 0.06, 0.07), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(0.0, 0.85, 0.45), "helmet": Color(0.0, 0.85, 0.45)},
+	{"id": "ember", "name": "Ember GP", "base": Color(0.8, 0.15, 0.05), "accent": Color(1.0, 0.7, 0.1), "stripe": Color(1.0, 0.7, 0.1), "helmet": Color(1.0, 0.7, 0.1)},
+	{"id": "lantern", "name": "Lantern Racing", "base": Color(0.95, 0.8, 0.45), "accent": Color(0.3, 0.12, 0.05), "stripe": Color(0.3, 0.12, 0.05), "helmet": Color(0.95, 0.8, 0.45)},
+	{"id": "pinewood", "name": "Pinewood Racing", "base": Color(0.05, 0.35, 0.18), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(0.95, 0.95, 0.97), "helmet": Color(0.05, 0.35, 0.18)},
+	{"id": "quicksilver", "name": "Quicksilver Junior", "base": Color(0.78, 0.8, 0.84), "accent": Color(0.1, 0.25, 0.8), "stripe": Color(0.1, 0.25, 0.8), "helmet": Color(0.1, 0.25, 0.8)},
+]
+const KART_TEAMS := [
+	{"id": "bolt", "name": "Bolt Kart", "base": Color(1.0, 0.82, 0.0), "accent": Color(0.06, 0.06, 0.07), "stripe": Color(0.06, 0.06, 0.07), "helmet": Color(1.0, 0.82, 0.0)},
+	{"id": "torque", "name": "Torque Kart", "base": Color(0.9, 0.08, 0.08), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(0.95, 0.95, 0.97), "helmet": Color(0.95, 0.95, 0.97)},
+	{"id": "zippy", "name": "Zippy Racing", "base": Color(0.0, 0.7, 0.4), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(0.06, 0.06, 0.07), "helmet": Color(0.0, 0.7, 0.4)},
+	{"id": "raptor", "name": "Raptor Kart", "base": Color(0.06, 0.06, 0.07), "accent": Color(1.0, 0.45, 0.05), "stripe": Color(1.0, 0.45, 0.05), "helmet": Color(1.0, 0.45, 0.05)},
+	{"id": "nimbus", "name": "Nimbus Kart", "base": Color(0.3, 0.65, 1.0), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(0.95, 0.95, 0.97), "helmet": Color(0.3, 0.65, 1.0)},
+	{"id": "mako", "name": "Mako Kart", "base": Color(0.05, 0.2, 0.55), "accent": Color(0.0, 0.85, 0.85), "stripe": Color(0.0, 0.85, 0.85), "helmet": Color(0.0, 0.85, 0.85)},
+	{"id": "viper", "name": "Viper Kart", "base": Color(0.55, 0.85, 0.1), "accent": Color(0.06, 0.06, 0.07), "stripe": Color(0.06, 0.06, 0.07), "helmet": Color(0.55, 0.85, 0.1)},
+	{"id": "comet", "name": "Comet Kart", "base": Color(0.95, 0.95, 0.97), "accent": Color(0.55, 0.15, 0.75), "stripe": Color(0.55, 0.15, 0.75), "helmet": Color(0.55, 0.15, 0.75)},
+	{"id": "hornet", "name": "Hornet Kart", "base": Color(1.0, 0.55, 0.0), "accent": Color(0.06, 0.06, 0.07), "stripe": Color(1.0, 0.82, 0.0), "helmet": Color(1.0, 0.55, 0.0)},
+	{"id": "lynx", "name": "Lynx Kart", "base": Color(0.85, 0.3, 0.55), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(0.95, 0.95, 0.97), "helmet": Color(0.95, 0.95, 0.97)},
+]
 
 
 ## Returns a full spec. `team_index` picks the GP car's team livery. Any
@@ -38,10 +113,18 @@ static func get_spec(id: String, team_index := 0) -> Dictionary:
 	match id:
 		SAFETY_CAR:
 			s = vanta_gt()
+		"f2":
+			s = f2()
+		"f3":
+			s = f3()
+		"f4":
+			s = f4()
+		"kart":
+			s = kart()
 		_:
 			s = gp26()
-	if s["body"] == "gp":
-		var t := team(team_index)
+	if s["body"] in ["gp", "kart"]:
+		var t := team(team_index, String(s["id"]))
 		s["livery"] = t
 		s["team_name"] = t["name"]
 		s["color"] = t["base"]
@@ -66,7 +149,7 @@ static func apply_paint(s: Dictionary, p: Dictionary) -> Dictionary:
 		stripe = base
 		accent = base.darkened(0.25)
 		base = Color(0.05, 0.05, 0.06)
-	if s["body"] == "gp":
+	if s.has("livery"):
 		var lv: Dictionary = (s["livery"] as Dictionary).duplicate()
 		lv["base"] = base
 		lv["accent"] = accent
@@ -263,6 +346,171 @@ static func gp26() -> Dictionary:
 		"chase_height": 1.5,
 		"chase_look": 5.0,
 
+	}
+
+
+# ------------------------------------------------------------ the junior single-seaters
+# The F2, F3 and F4 classes: the Grand Prix car's design, smaller (the body
+# is drawn at "body_scale" of the GP car's: wheelbase and track), with less
+# power, less downforce, steel or smaller carbon brakes, narrower tyres.
+
+## A junior single-seater from the GP car: `o` overrides (gears come from
+## top_kmh / first_kmh / gear_count).
+static func _formula(o: Dictionary) -> Dictionary:
+	var s := gp26()
+	s.erase("gears")
+	for k in o:
+		s[k] = o[k]
+	var wb: float = (float(s["wheel_front_z"]) - float(s["wheel_rear_z"])) / 3.5
+	var tr: float = float(s["track_front"]) / 0.8
+	s["body_scale"] = Vector3(tr, (wb + tr) * 0.5, wb)
+	var k: Vector3 = s["body_scale"]
+	var boxes: Array = []
+	for b in gp26()["collision"]:
+		boxes.append([(b[0] as Vector3) * k, (b[1] as Vector3) * k])
+	s["collision"] = boxes
+	var cams: Array = []
+	for c in gp26()["cams"]:
+		var cc: Dictionary = (c as Dictionary).duplicate()
+		cc["pos"] = (c["pos"] as Vector3) * k
+		cams.append(cc)
+	s["cams"] = cams
+	s["chase_dist"] = 5.4 * k.z
+	s["chase_height"] = 1.5 * k.y
+	return s
+
+
+## The F2 class: 620 hp turbo V6, 795 kg, about 320 km/h.
+static func f2() -> Dictionary:
+	return _formula({
+		"id": "f2", "name": "Apex J2", "series": "F2",
+		"desc": "F2-class single-seater · 620 hp · 795 kg · 320 km/h",
+		"mass": 795.0, "power": 462000.0, "max_drive_force": 8200.0,
+		"drag": 0.68, "downforce": 2.4,
+		"brake_base": 14.0, "brake_aero": 0.0034, "brake_max": 42.0,
+		"wheel_front_z": 1.57, "wheel_rear_z": -1.57, "track_front": 0.78, "track_rear": 0.76,
+		"radius_front": 0.34, "radius_rear": 0.35, "tyre_width_front": 0.28, "tyre_width_rear": 0.36,
+		"grip_front": 2.4, "grip_rear": 2.6,
+		"top_kmh": 325.0, "first_kmh": 105.0, "gear_count": 6,
+		"idle_rpm": 3500.0, "redline": 9500.0, "upshift_rpm": 9300.0, "downshift_rpm": 7800.0, "peak_rpm": 8500.0,
+		"cylinders": 6, "engine_base_hz": 300.0, "engine_tone": "gp",
+	})
+
+
+## The F3 class: 380 hp V6, 675 kg, about 275 km/h.
+static func f3() -> Dictionary:
+	return _formula({
+		"id": "f3", "name": "Apex J3", "series": "F3",
+		"desc": "F3-class single-seater · 380 hp · 675 kg · 275 km/h",
+		"mass": 675.0, "power": 283000.0, "max_drive_force": 6900.0,
+		"drag": 0.66, "downforce": 1.7,
+		"brake_base": 13.0, "brake_aero": 0.0026, "brake_max": 36.0,
+		"wheel_front_z": 1.48, "wheel_rear_z": -1.48, "track_front": 0.76, "track_rear": 0.74,
+		"radius_front": 0.32, "radius_rear": 0.33, "tyre_width_front": 0.26, "tyre_width_rear": 0.32,
+		"grip_front": 2.25, "grip_rear": 2.45,
+		"top_kmh": 280.0, "first_kmh": 95.0, "gear_count": 6,
+		"idle_rpm": 3000.0, "redline": 8800.0, "upshift_rpm": 8600.0, "downshift_rpm": 7000.0, "peak_rpm": 8000.0,
+		"cylinders": 6, "engine_base_hz": 260.0, "engine_tone": "v8flat",
+	})
+
+
+## The F4 class: 160 hp turbo four, 570 kg, about 225 km/h.
+static func f4() -> Dictionary:
+	return _formula({
+		"id": "f4", "name": "Apex J4", "series": "F4",
+		"desc": "F4-class single-seater · 160 hp · 570 kg · 225 km/h",
+		"mass": 570.0, "power": 120000.0, "max_drive_force": 5200.0, "drs": false,
+		"drag": 0.5, "downforce": 0.7,
+		"brake_base": 12.0, "brake_aero": 0.0012, "brake_max": 26.0,
+		"wheel_front_z": 1.38, "wheel_rear_z": -1.38, "track_front": 0.72, "track_rear": 0.71,
+		"radius_front": 0.3, "radius_rear": 0.31, "tyre_width_front": 0.22, "tyre_width_rear": 0.27,
+		"grip_front": 2.0, "grip_rear": 2.2,
+		"top_kmh": 228.0, "first_kmh": 80.0, "gear_count": 6,
+		"idle_rpm": 2500.0, "redline": 7000.0, "upshift_rpm": 6800.0, "downshift_rpm": 5200.0, "peak_rpm": 6000.0,
+		"cylinders": 4, "engine_base_hz": 160.0, "engine_tone": "i4",
+	})
+
+
+# ------------------------------------------------------------ the kart
+## A 125 cc two-stroke racing kart: 30 hp, 165 kg with its driver, one gear,
+## about 125 km/h, no suspension, no downforce, brakes on the rear axle only.
+static func kart() -> Dictionary:
+	return {
+		"id": "kart",
+		"name": "Apex K-125",
+		"series": "Karting",
+		"desc": "Racing kart · 30 hp · 165 kg · 125 km/h",
+		"body": "kart",
+		"color": Color(1.0, 0.82, 0.0),
+		"accent": Color(0.06, 0.06, 0.07),
+
+		"mass": 165.0,
+		"com": Vector3(0, 0.12, -0.12),
+		"power": 22500.0,
+		"max_drive_force": 1500.0,
+		"drag": 0.55,
+		"downforce": 0.0,
+		"downforce_balance": 0.0,
+		"brake_base": 11.0,
+		"brake_aero": 0.0,
+		"brake_max": 12.0,
+		"steer_low": 0.42,
+		"steer_high": 0.12,
+		"steer_full_speed": 30.0,
+		"steer_rate": 3.2,
+
+		"wheel_front_z": 0.53,
+		"wheel_rear_z": -0.53,
+		"track_front": 0.56,
+		"track_rear": 0.64,
+		"wheel_y": 0.13,
+		"radius_front": 0.135,
+		"radius_rear": 0.14,
+		"tyre_width_front": 0.13,
+		"tyre_width_rear": 0.2,
+		"rest_length": 0.05,
+		"travel": 0.035,
+		"stiffness": 70.0,
+		"damp_comp": 2.0,
+		"damp_relax": 3.0,
+		"max_susp_force": 9000.0,
+		"grip_front": 1.85,
+		"grip_rear": 1.95,
+		"roll_influence": 0.05,
+		"mu_front": 1.3,
+		"mu_rear": 1.5,
+		"slip_peak_front": 6.0,
+		"slip_peak_rear": 5.0,
+		"susp_hz": 6.0,
+		"susp_damping": 0.8,
+		"arb_front": 0.6,
+		"arb_rear": 0.5,
+		"brake_bias": 0.0,
+		"collision": [
+			[Vector3(1.3, 0.22, 1.8), Vector3(0, 0.12, 0.0)],
+			[Vector3(0.5, 0.5, 0.45), Vector3(0, 0.45, -0.25)],
+		],
+
+		"gears": [6.4],
+		"idle_rpm": 3000.0,
+		"redline": 15500.0,
+		"upshift_rpm": 99999.0,
+		"downshift_rpm": 0.0,
+		"peak_rpm": 12500.0,
+		"shift_time": 0.04,
+		"cylinders": 2,                 # (a two-stroke single fires every turn: as a four-stroke twin)
+		"engine_base_hz": 150.0,
+		"engine_tone": "kart2t",
+		"wear_mul": 0.4,                # (hard kart tyres last the whole meeting: no stops)
+		"top_kmh": 125.0,
+
+		"cams": [
+			{"name": "Cockpit", "pos": Vector3(0, 0.78, -0.25), "pitch": -6.0, "cockpit": true},
+			{"name": "Low", "pos": Vector3(0, 0.34, 1.02), "pitch": -2.0},
+		],
+		"chase_dist": 3.2,
+		"chase_height": 1.15,
+		"chase_look": 3.0,
 	}
 
 

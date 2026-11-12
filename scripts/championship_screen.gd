@@ -1,5 +1,6 @@
 extends Node3D
-## Championship. No season running: pick a class (and a car for it), how
+## Championship. No season running: pick a class (one you've reached in
+## the career; the ones above are shown locked), how
 ## many rounds and how long the races are, and start. During a season: the
 ## rounds (done ones with your result), the standings, and the next race
 ## weekend. At the end: your final position and trophy.
@@ -22,6 +23,9 @@ func _ready() -> void:
 	add_child(room)
 	room.build(Vector3(5.0, 1.8, 6.2), Vector3(-1.2, 0.0, 1.8), 40.0)
 	room.spin = 0.12
+	var open := Championship.open_classes(save)
+	_pick_class = String(open[open.size() - 1]["id"])
+	_laps = int(Championship.class_info(_pick_class).get("laps", 3))
 	_build_ui()
 	UIStyle.reveal_boards.call_deferred(self)
 	_refresh()
@@ -84,22 +88,30 @@ func _panel(min_w: float, expand := false) -> VBoxContainer:
 # ------------------------------------------------------------ new season
 
 func _build_setup() -> void:
-	# (One championship for now, Grand Prix: nothing to choose between.)
 	var left: VBoxContainer = _panel(520) if Championship.CLASSES.size() > 1 else null
 	if left != null:
 		left.add_child(UIStyle.label("Choose a championship", 22, UIStyle.PAPER, "display"))
+	var open := Championship.open_classes(save)
 	for c in (Championship.CLASSES if left != null else []):
 		var cars: Array = []
 		for car in c["cars"]:
 			cars.append(CarSpecs.display_name(String(car)))
 		var id := String(c["id"])
-		var b := UIStyle.tile(String(c["name"]), " or ".join(cars), func():
+		var is_open := open.has(c)
+		var sub := "%s, %d cars" % [" or ".join(cars), int(c.get("field", 20))]
+		if not is_open:
+			sub = "Locked: get promoted to %s in the career" % String(Career.SERIES[maxi(Career.series_index(id), 0)]["name"])
+		var b := UIStyle.tile(String(c["name"]), sub, func():
 			_pick_class = id
+			_laps = int(Championship.class_info(id).get("laps", 3))
 			if id != "gp" and _rounds > 6:
 				_rounds = 6                # (only the Grand Prix calendar has 10)
-			_refresh(), id == _pick_class, 24)
-		b.custom_minimum_size = Vector2(0, 70)
+			_refresh(), id == _pick_class, 22)
+		b.custom_minimum_size = Vector2(0, 58)
 		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		if not is_open:
+			b.disabled = true
+			b.modulate = Color(0.8, 0.8, 0.8)      # (opaque: greyed, not see-through)
 		left.add_child(b)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -145,7 +157,7 @@ func _build_setup() -> void:
 	rb.custom_minimum_size = Vector2(0, 56)
 	chips.add_child(rb)
 	var lb := UIStyle.button("%d laps each" % _laps, func():
-		var opts := [3, 5, 2]
+		var opts := [6, 10, 4] if _pick_class == "kart" else [3, 5, 2]
 		_laps = opts[(opts.find(_laps) + 1) % opts.size()]
 		_refresh(), false, 22)
 	lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -249,9 +261,9 @@ func _build_season(s: Dictionary) -> void:
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(nm)
 		row.add_child(UIStyle.label("%d" % int(s["points"][i]), 22, UIStyle.PAPER, "extrabold", true))
-	if String(s["class"]) == "gp":
+	if CarSpecs.has_teams(String(s["car"])):
 		var teams := Championship.team_standings(s)
-		var tl := "Teams: " + ", ".join(teams.slice(0, 3).map(func(t): return "%s %d" % [String(CarSpecs.team(int(t["team"]))["name"]), int(t["points"])]))
+		var tl := "Teams: " + ", ".join(teams.slice(0, 3).map(func(t): return "%s %d" % [String(CarSpecs.team(int(t["team"]), String(s["car"]))["name"]), int(t["points"])]))
 		var lt := UIStyle.label(tl, 16, UIStyle.FOG, "semibold")
 		lt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		right.add_child(lt)
@@ -259,6 +271,6 @@ func _build_season(s: Dictionary) -> void:
 
 func _driver_color(s: Dictionary, i: int) -> Color:
 	var d: Dictionary = s["drivers"][i]
-	if String(s["class"]) == "gp":
-		return CarSpecs.team(int(d["team"]))["base"]
+	if CarSpecs.has_teams(String(s["car"])):
+		return CarSpecs.team(int(d["team"]), String(s["car"]))["base"]
 	return CarSpecs.get_spec(String(d["car"]), int(d["team"]))["color"] if i > 0 else UIStyle.APEX

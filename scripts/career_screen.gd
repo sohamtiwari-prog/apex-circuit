@@ -1,7 +1,8 @@
 extends Node3D
-## Career: the five series across the top (all open, with the stars you've
-## won in each), the selected series' six events below, and the chosen
-## event's details on the right with a car picker and Start.
+## Career: the ladder across the top, karts to Grand Prix (the stars you've
+## won in each; the ones you haven't been promoted to yet locked, with the
+## stars it takes), the selected series' six events below, and the chosen
+## event's details on the right with Start.
 
 var save: Node
 var room: Showroom
@@ -22,7 +23,7 @@ func _ready() -> void:
 	add_child(room)
 	room.build(Vector3(5.0, 1.8, 6.2), Vector3(-0.6, 0.0, 1.4), 40.0)
 	room.spin = 0.15
-	si = clampi(int(save.get_setting("career_series")), 0, Career.SERIES.size() - 1)
+	si = clampi(int(save.get_setting("career_series")), 0, Career.reached(save))
 	ei = _first_open_event(si)
 	_build_ui()
 	UIStyle.reveal_boards.call_deferred(self)
@@ -87,14 +88,21 @@ func _refresh() -> void:
 	# Series strip.
 	for k in Career.SERIES.size():
 		var s: Dictionary = Career.SERIES[k]
+		var open := Career.is_open(save, k)
 		var sub := "%d / 18 stars" % Career.series_stars(save, k)
+		if not open:
+			var need := Career.PROMOTION - Career.series_stars(save, k - 1)
+			sub = "Locked: %d more in %s" % [maxi(need, 1), String(Career.SERIES[k - 1]["name"])]
 		var b := UIStyle.tile(String(s["name"]), sub, func():
 			si = k
 			ei = _first_open_event(k)
 			save.set_setting("career_series", k)
-			_refresh(), k == si, 30)
+			_refresh(), k == si, 28)
 		b.custom_minimum_size = Vector2(0, 74)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if not open:
+			b.disabled = true
+			b.modulate = Color(0.8, 0.8, 0.8)      # (opaque: greyed, not see-through)
 		_series_box.add_child(b)
 	# Events of the selected series.
 	var events: Array = Career.SERIES[si]["events"]
@@ -167,7 +175,7 @@ static func _outline(id: String) -> PackedVector3Array:
 
 func _where(ev: Dictionary) -> String:
 	if ev["type"] == "season":
-		return "6 rounds, 20 cars"
+		return "6 rounds, %d cars" % int(Championship.class_info(String(Career.SERIES[si]["id"])).get("field", 20))
 	var tname := String(Track.catalog_entry(String(ev["track"]))["name"])
 	match String(ev["type"]):
 		"time_trial":
@@ -270,7 +278,7 @@ func _start() -> void:
 			if _go_btn != null:
 				_go_btn.text = "Tap again: ends your season in progress"
 			return
-		Championship.start(save, "gp", _car_pick, String(ev["id"]))
+		Championship.start(save, String(Career.SERIES[si]["id"]), _car_pick, String(ev["id"]))
 		get_tree().change_scene_to_file("res://scenes/championship.tscn")
 		return
 	ev["car"] = _car_pick

@@ -234,6 +234,7 @@ func _ready() -> void:
 	_tod = Look.resolve_time(_tod, track_id)
 
 	track = Track.new()
+	track.team_car = car_id
 	track.night = _tod == "night"
 	add_child(track)
 	track.build(track_id)
@@ -246,14 +247,14 @@ func _ready() -> void:
 	else:
 		var team := int(save.get_setting("team"))
 		car = RaceCar.new()
-		car.setup(save.car_spec(car_id, team if car_id == "gp26" else 0))
+		car.setup(save.car_spec(car_id, team if CarSpecs.has_teams(car_id) else 0))
 		add_child(car)
 		player = Entrant.new()
 		player.car = car
 		player.is_player = true
 		player.name = "You"
 		player.team = String(car.spec.get("team_name", car.spec["name"]))
-		player.team_idx = team if car_id == "gp26" else 0
+		player.team_idx = team if CarSpecs.has_teams(car_id) else 0
 		entrants.append(player)
 		if mode == "race":
 			_spawn_opponents(team)
@@ -381,11 +382,11 @@ func _spawn_opponents(player_team: int) -> void:
 		models = event.get("cars", [car_id])
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(track_id) + count
-	# GP: two cars per team (the player's teammate first); road: varied paint.
+	# Two cars per team (the player's teammate first).
 	var slots: Array = []
-	if car_id == "gp26":
+	if CarSpecs.has_teams(car_id):
 		slots.append(player_team)
-		for t in range(CarSpecs.TEAMS.size()):
+		for t in range(CarSpecs.teams_for(car_id).size()):
 			if t != player_team:
 				slots.append(t)
 				slots.append(t)
@@ -398,7 +399,7 @@ func _spawn_opponents(player_team: int) -> void:
 		var t: int = slots[i % slots.size()]
 		var c := RaceCar.new()
 		var model: String = models[(i + 1) % models.size()] if models.size() > 1 else String(models[0])
-		if model != "gp26" and car_id == "gp26":
+		if model != car_id and CarSpecs.has_teams(car_id):
 			t = i + 1
 		var drv: Dictionary = {}
 		if event.has("drivers") and i + 1 < (event["drivers"] as Array).size():
@@ -521,10 +522,9 @@ func _flying_pose() -> Transform3D:
 ## Grid slot k: two columns, staggered, 8 m between rows, behind the line.
 func _grid_pose(k: int) -> Transform3D:
 	var n := track.size()
-	var back := 6.0 + (k / 2) * 8.0 + (k % 2) * 4.0
-	var idx := (n - int(back / Track.SPACING)) % n
-	var side := (-1.0 if k % 2 == 0 else 1.0) * minf(track.road_half * 0.45, 3.2)
-	return track.pose_at(idx, entrants[0].car.spawn_height(), side)
+	var g := track.grid_slot(k)
+	var idx := (n - int(g.x / Track.SPACING)) % n
+	return track.pose_at(idx, entrants[0].car.spawn_height(), g.y)
 
 
 func _place(e: Entrant, xform: Transform3D) -> void:
@@ -1199,7 +1199,7 @@ func _update_entrant(e: Entrant, delta: float) -> void:
 	var quarter := int(e.idx * 4 / n)
 	if quarter == e.next_checkpoint and e.next_checkpoint < 4:
 		e.next_checkpoint += 1
-	if not track.drs_zones.is_empty() and e.car.spec["body"] == "gp":
+	if not track.drs_zones.is_empty() and CarSpecs.has_drs(e.car.spec):
 		_update_drs(e)
 	# Sector lines at a third and two thirds of the lap.
 	for k in [0, 1]:
@@ -1638,8 +1638,9 @@ func _settle_rewards() -> Dictionary:
 			if e.best_lap > 0.0 and e.best_lap < fl:
 				fl = e.best_lap
 				fastest = 0 if e.is_player else e.driver
+		var reached := Career.reached(save)
 		var out := Championship.record_round(save, order, fastest)
-		return {"champ": out, "event": event, "position": player.position}
+		return {"champ": out, "event": event, "position": player.position, "promoted": _promotion(reached)}
 	if ev_type == "checkpoint":
 		return _checkpoint_reward()
 	if not event.has("id") or String(event["id"]) == "":
@@ -1650,6 +1651,7 @@ func _settle_rewards() -> Dictionary:
 	else:
 		stars = Career.stars_for_position(ev_type, player.position)
 	var prev: int = save.career_stars(String(event["id"]))
+	var reached := Career.reached(save)
 	var had: Array = Career.rewards_unlocked(save)
 	var fresh: int = save.set_career_stars(String(event["id"]), stars)
 	var now: Array = Career.rewards_unlocked(save)
@@ -1659,7 +1661,17 @@ func _settle_rewards() -> Dictionary:
 			rewards.append(String(r[2]))
 	return {"event": event, "stars": stars, "prev": prev, "new": fresh,
 		"targets": tt_targets, "best": player.best_lap, "position": player.position,
-		"rival": _rival_result(), "rewards": rewards}
+		"rival": _rival_result(), "rewards": rewards, "promoted": _promotion(reached)}
+
+
+## The series you've just been promoted to ("" if none): stars won now
+## took you up the ladder from `reached`.
+func _promotion(reached: int) -> String:
+	var now := Career.reached(save)
+	if now <= reached:
+		return ""
+	save.set_setting("career_series", now)
+	return String(Career.SERIES[now]["name"])
 
 
 # ------------------------------------------------------------ checkpoint run
@@ -2116,7 +2128,7 @@ func _update_hud() -> void:
 	hud.update_engine(car.gear, car.rpm, float(car.spec["upshift_rpm"]), float(car.spec["redline"]),
 		float(car.spec["idle_rpm"]), car.speed_kmh())
 	hud.set_tow(car.tow)
-	if car.spec["body"] == "gp" and not track.drs_zones.is_empty():
+	if CarSpecs.has_drs(car.spec) and not track.drs_zones.is_empty():
 		hud.set_drs(3 if car.drs_open else (2 if player.drs_armed else 1))
 	else:
 		hud.set_drs(0)
@@ -2285,9 +2297,9 @@ func _make_ghost_car() -> void:
 	ghost_car = RaceCar.new()
 	if not challenge.is_empty():
 		# Your friend's car, in their paint.
-		ghost_car.setup(CarSpecs.apply_paint(CarSpecs.get_spec(car_id, int(challenge.get("team", 0)) if car_id == "gp26" else 0), challenge.get("paint", {})))
+		ghost_car.setup(CarSpecs.apply_paint(CarSpecs.get_spec(car_id, int(challenge.get("team", 0)) if CarSpecs.has_teams(car_id) else 0), challenge.get("paint", {})))
 	else:
-		ghost_car.setup(CarSpecs.get_spec(car_id, int(save.get_setting("team")) if car_id == "gp26" else 0))
+		ghost_car.setup(CarSpecs.get_spec(car_id, int(save.get_setting("team")) if CarSpecs.has_teams(car_id) else 0))
 	ghost_car.freeze = true
 	ghost_car.collision_layer = 0
 	ghost_car.collision_mask = 0
@@ -2375,7 +2387,7 @@ func _update_ideal() -> void:
 
 ## A see-through copy of your car for a ghost.
 func _ghost_body(color: Color, transparency: float) -> RaceCar:
-	var spec := CarSpecs.get_spec(car_id, int(save.get_setting("team")) if car_id == "gp26" else 0)
+	var spec := CarSpecs.get_spec(car_id, int(save.get_setting("team")) if CarSpecs.has_teams(car_id) else 0)
 	spec["color"] = color
 	var g := RaceCar.new()
 	g.setup(spec)

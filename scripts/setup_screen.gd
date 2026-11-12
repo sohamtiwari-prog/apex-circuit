@@ -59,7 +59,7 @@ func step(key: String, d: int) -> void:
 
 func _select(id: String) -> void:
 	car_id = id
-	room.show_spec(save.car_spec(car_id, int(save.get_setting("team")) if car_id == "gp26" else 0))
+	room.show_spec(save.car_spec(car_id, int(save.get_setting("team")) if CarSpecs.has_teams(car_id) else 0))
 	_refresh()
 
 

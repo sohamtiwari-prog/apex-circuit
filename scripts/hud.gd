@@ -1750,11 +1750,29 @@ func _champ_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void:
 		col.add_child(UIStyle.label("CHAMPION!" if int(f["position"]) == 1 else "Season over: P%d" % int(f["position"]), 40, UIStyle.YELLOW, "extrabold", true))
 		if int(f.get("new_stars", 0)) > 0:
 			col.add_child(UIStyle.label("+%d career stars" % int(f["new_stars"]), 24, UIStyle.YELLOW, "bold", true))
+	_promoted_line(col, reward)
 	var sp2 := Control.new()
 	sp2.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(sp2)
 	if not rank.is_empty():
 		col.add_child(UIStyle.label("+%d RP   %s" % [int(rank["after"]) - int(rank["before"]), Ranks.tier_name(int(rank["after"]))], 22, Ranks.tier_color(int(rank["after"])), "bold", true))
+
+
+## Promoted up the career ladder: the next series is open.
+func _promoted_line(col: Control, reward: Dictionary) -> void:
+	var to := String(reward.get("promoted", ""))
+	if to == "":
+		return
+	var box := PanelContainer.new()
+	var sb := UIStyle.panel(UIStyle.YELLOW, true, Color(0, 0, 0, 0), 4)
+	sb.set_content_margin_all(10)
+	box.add_theme_stylebox_override("panel", sb)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", -2)
+	box.add_child(v)
+	v.add_child(UIStyle.label("Promoted to %s" % to, 30, Color.BLACK, "display"))
+	v.add_child(UIStyle.label("Its career events and championship are open.", 17, Color.BLACK, "semibold"))
+	col.add_child(box)
 
 
 ## Career event result: stars (new ones flash in), what they were for, and
@@ -1803,6 +1821,7 @@ func _reward_column(cols: Control, reward: Dictionary, rank: Dictionary) -> void
 		var rl := UIStyle.label("Unlocked: " + String(r), 20, UIStyle.YELLOW, "bold", true)
 		rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		col.add_child(rl)
+	_promoted_line(col, reward)
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(sp)

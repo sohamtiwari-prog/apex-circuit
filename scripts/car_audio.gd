@@ -328,6 +328,16 @@ func _engine_wave(tone: String, on_load: bool) -> AudioStreamWAV:
 			# Boxer six: the signature mix of half orders.
 			harmonics = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 6.0]
 			gains = [0.3, 1.0, 0.5, 0.5, 0.25, 0.3, 0.15, 0.08]
+		"i4":
+			# Turbo four (the F4 class): the second order dominates, a
+			# little whistle on top.
+			harmonics = [1.0, 2.0, 3.0, 4.0, 6.0, 11.0]
+			gains = [0.6, 1.0, 0.3, 0.35, 0.12, 0.05]
+		"kart2t":
+			# Two-stroke single (the kart): a buzzing, rasping fundamental
+			# with a long tail of odd harmonics.
+			harmonics = [1.0, 2.0, 3.0, 4.0, 5.0, 7.0, 9.0]
+			gains = [1.0, 0.55, 0.6, 0.3, 0.35, 0.22, 0.14]
 		"v12":
 			# V12: smooth and pure, almost no sub-harmonics.
 			harmonics = [1.0, 2.0, 3.0, 4.0, 6.0]

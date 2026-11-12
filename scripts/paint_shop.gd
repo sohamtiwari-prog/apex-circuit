@@ -41,8 +41,8 @@ func _ready() -> void:
 func paint() -> Dictionary:
 	var p: Dictionary = save.my_paint(car_id).duplicate()
 	if p.is_empty():
-		var s := CarSpecs.get_spec(car_id, int(save.get_setting("team")) if car_id == "gp26" else 0)
-		if s["body"] == "gp":
+		var s := CarSpecs.get_spec(car_id, int(save.get_setting("team")) if CarSpecs.has_teams(car_id) else 0)
+		if s.has("livery"):
 			var lv: Dictionary = s["livery"]
 			p = {"base": Color(lv["base"]).to_html(false), "accent": Color(lv["accent"]).to_html(false),
 				"stripe": Color(lv["stripe"]).to_html(false), "helmet": Color(lv["helmet"]).to_html(false)}
@@ -70,7 +70,7 @@ func _select(id: String) -> void:
 
 
 func _show() -> void:
-	room.show_spec(save.car_spec(car_id, int(save.get_setting("team")) if car_id == "gp26" else 0))
+	room.show_spec(save.car_spec(car_id, int(save.get_setting("team")) if CarSpecs.has_teams(car_id) else 0))
 	_refresh()
 
 
@@ -132,7 +132,7 @@ func _refresh() -> void:
 	for c in _panel.get_children():
 		c.queue_free()
 	var p := paint()
-	var gp := String(CarSpecs.get_spec(car_id)["body"]) == "gp"
+	var gp := CarSpecs.get_spec(car_id).has("livery")      # a team car: livery, helmet, number
 	_title.text = CarSpecs.display_name(car_id)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 8)
