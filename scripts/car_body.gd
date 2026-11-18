@@ -440,10 +440,12 @@ func _skin(p: Vector3, th: float, low: float) -> Color:
 				var cx := floori((p.x + 2.0) / 0.11)
 				return _base if (cz + cx) % 2 == 0 else _stripe
 			return _accent if hh < low + 0.08 else _base
-	# Classic: an accent sweep along the lower flank, a pinstripe above it.
-	if hh < low + 0.075:
+	# Classic: the accent along the lower flank sweeping up towards the
+	# back of the car, a pinstripe along its edge.
+	var sweep := low + 0.075 + 0.2 * pow(clampf((0.45 - p.z) / 2.0, 0.0, 1.0), 1.4)
+	if hh < sweep:
 		return _accent
-	if hh < low + 0.095:
+	if hh < sweep + 0.022:
 		return _stripe
 	return _base
 
