@@ -283,6 +283,27 @@ func _car_card(parent: Control) -> Control:
 	_fill(b, cv, 18)
 	cv.add_child(UIStyle.label("%s, PR %.1f" % [String(spec["desc"]).split(" · ")[0], Garage.pr(spec)], 21, UIStyle.FOG, "bold"))
 	cv.add_child(UIStyle.label(String(spec["name"]), 30, UIStyle.PAPER, "display"))
+	# The team you drive for, in its colours.
+	if CarSpecs.has_teams(String(spec.get("id", ""))):
+		var t := CarSpecs.team(int(save.get_setting("team")), String(spec["id"]))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var chip := ColorRect.new()
+		chip.color = t["base"]
+		chip.custom_minimum_size = Vector2(26, 14)
+		chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var bar := ColorRect.new()
+		bar.color = t["accent"]
+		bar.custom_minimum_size = Vector2(26, 4)
+		bar.position = Vector2(0, 10)
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chip.add_child(bar)
+		row.add_child(chip)
+		row.add_child(UIStyle.label(String(t["name"]), 20, UIStyle.PAPER, "semibold"))
+		cv.add_child(row)
+		b.custom_minimum_size = Vector2(420, 118)
 	return b
 
 

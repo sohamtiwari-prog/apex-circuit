@@ -79,6 +79,27 @@ func build(cam_pos := Vector3(5.6, 1.9, 6.4), look := Vector3(0.9, 0.15, -1.6), 
 		_glow(strip, Color.WHITE, pal["strip"])
 		strip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_props()
+	# A key light over the turntable (the paint's highlight runs along the
+	# car), and the garage itself reflected in the paint, not a sky.
+	var key := SpotLight3D.new()
+	key.position = Vector3(0.6, 5.6, 0.8)
+	key.rotation_degrees = Vector3(-90, 0, 0)
+	key.spot_range = 9.0
+	key.spot_angle = 34.0
+	key.spot_angle_attenuation = 0.6
+	key.light_energy = 2.4 if pal == DAY else 4.5
+	key.light_color = Color(1.0, 0.98, 0.95)
+	key.shadow_enabled = false
+	add_child(key)
+	var probe := ReflectionProbe.new()
+	probe.update_mode = ReflectionProbe.UPDATE_ONCE
+	probe.size = Vector3(16, 6.4, 14)
+	probe.position = Vector3(0, 3.0, 0)
+	probe.origin_offset = Vector3(0, -2.2, 0)
+	probe.box_projection = true
+	probe.intensity = 0.9
+	probe.ambient_mode = ReflectionProbe.AMBIENT_DISABLED
+	add_child(probe)
 
 	cam = Camera3D.new()
 	cam.fov = fov

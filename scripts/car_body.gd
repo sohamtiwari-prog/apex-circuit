@@ -54,7 +54,7 @@ func build(car_spec: Dictionary, car: RaceCar) -> void:
 	# Small parts (louvres, fences, strakes, suspension): only drawn close up,
 	# and left out of the far version.
 	if _tools.has("fine"):
-		var fm := MeshKit.finish(_tools["fine"])
+		var fm := MeshKit.finish_crisp(_tools["fine"], null, _shape_key("fine"))
 		fm.surface_set_material(0, _material("matte"))
 		_fine = MeshInstance3D.new()
 		_fine.mesh = fm
@@ -63,7 +63,7 @@ func build(car_spec: Dictionary, car: RaceCar) -> void:
 		add_child(_fine)
 		_tools.erase("fine")
 	for key in _tools:
-		MeshKit.finish(_tools[key], mesh)
+		MeshKit.finish_crisp(_tools[key], mesh, _shape_key(key))
 		mesh.surface_set_material(mesh.get_surface_count() - 1, _material(key))
 		if key == "tail":
 			tail_surface = mesh.get_surface_count() - 1
@@ -96,6 +96,12 @@ func build(car_spec: Dictionary, car: RaceCar) -> void:
 	# The far version is merged once the car has settled on its suspension.
 	_lod_wait = 0.8
 	set_process(true)
+
+
+## Which shape a surface is (for sharing its normals between cars of one
+## model: only their colours differ).
+func _shape_key(surface: String) -> String:
+	return "%s|%s|%s" % [spec.get("id", ""), spec.get("body", ""), surface]
 
 
 func _process(delta: float) -> void:
@@ -214,11 +220,13 @@ func _gp_decals() -> void:
 	var main: String = SPONSORS[posmod(ti, SPONSORS.size())]
 	var second: String = SPONSORS[posmod(ti + 3, SPONSORS.size())]
 	var ink: Color = lv["accent"] if Color(lv["base"]).get_luminance() > 0.45 else Color(0.97, 0.97, 0.98)
+	var dark := Color(0.95, 0.95, 0.96)
 	for sx in [-1.0, 1.0]:
-		_decal(main, Vector3(0.765 * sx, 0.13, 0.05), Vector3(0, PI / 2 * sx, 0), 0.0022, ink, 52)
-		_decal(second, Vector3(0.255 * sx, 0.36, -0.78), Vector3(0, PI / 2 * sx, 0), 0.0017, ink, 40)
-	_decal(main, Vector3(0, 0.86, -2.47), Vector3(0, PI, 0), 0.0024, ink, 48)
-	_decal(second, Vector3(0, 0.255, 1.7), Vector3(-PI / 2 + 0.28, 0, 0), 0.0014, ink, 40)
+		_decal(main, Vector3(0.765 * sx, _h(0.42), 0.12), Vector3(0, PI / 2 * sx, 0), 0.0019, ink, 52)
+		_decal(second, Vector3(0.146 * sx, _h(0.68), -0.85), Vector3(0, PI / 2 * sx, 0.06 * sx), 0.0015, ink, 40)
+		_decal(second, Vector3(0.505 * sx, _h(0.62), -2.33), Vector3(0, PI / 2 * sx, 0), 0.0013, dark, 40)
+	_decal(main, Vector3(0, _h(0.86), -2.56), Vector3(-0.35, PI, 0), 0.0021, ink, 48)
+	_decal(second, Vector3(0, _h(0.36), 2.22), Vector3(-PI / 2 + 0.27, 0, 0), 0.0012, ink, 40)
 
 
 ## Lettering in the browser: flat text meshes, one per word and size shared
@@ -286,9 +294,10 @@ func set_number(n: int) -> void:
 		for sx in [-1.0, 1.0]:
 			_numbers.append(_decal(str(n), Vector3(0.585 * sx, 0.1, -0.05), Vector3(0, PI / 2 * sx, 0), 0.0022, ink, 64))
 		return
-	_numbers.append(_decal(str(n), Vector3(0, 0.2, 2.15), Vector3(-PI / 2 + 0.22, 0, 0), 0.0026, ink, 64))
+	# On the nose, ahead of the cameras, and on the airbox's flanks.
+	_numbers.append(_decal(str(n), Vector3(0, _h(0.255), 2.6), Vector3(-PI / 2 + 0.33, 0, 0), 0.0021, ink, 64))
 	for sx in [-1.0, 1.0]:
-		_numbers.append(_decal(str(n), Vector3(0.025 * sx, 0.66, -1.35), Vector3(0, PI / 2 * sx, 0), 0.003, ink, 64))
+		_numbers.append(_decal(str(n), Vector3(0.153 * sx, _h(0.76), -0.45), Vector3(0, PI / 2 * sx, 0.1 * sx), 0.0024, ink, 64))
 
 
 ## Hide the driver's own helmet when the camera sits inside it.
@@ -310,6 +319,14 @@ static func _material(key: String) -> StandardMaterial3D:
 	m.vertex_color_use_as_albedo = true
 	m.vertex_color_is_srgb = true
 	match key:
+		"satin":
+			# Racing liveries: a satin finish, the colour deep, the sky's
+			# reflection soft and wide.
+			m.metallic = 0.12
+			m.roughness = 0.34
+			m.clearcoat_enabled = true
+			m.clearcoat = 0.55
+			m.clearcoat_roughness = 0.2
 		"paint":
 			# Glossy paint under a clear lacquer: the colour stays rich (low
 			# metallic) and the lacquer carries sharp sky reflections.
@@ -378,136 +395,334 @@ static func _stations(rows: Array, bottom_half_width := -1.0) -> Array:
 
 # ------------------------------------------------------------ GP car
 
+## The GP car is a modern (ground-effect era) Grand Prix car, built to its
+## real proportions: heights are given above the ground (_h) so they read
+## like the drawings. A flat-topped survival cell and a long slim nose
+## sitting on the front wing; the open cockpit under the halo; the roll-hoop
+## airbox and an engine cover that narrows to a spine and a fin; wide
+## sidepods with a dark inlet, a deep undercut and a ramp down to the rear;
+## the full-width floor; thin carbon wing elements; the rounded rear wing on
+## its single pylon, the beam wing below; aerofoil suspension arms.
+
+var _g := -0.17                     # the ground, in the car's frame (set per car)
+var _base := Color.WHITE
+var _accent := Color.WHITE
+var _stripe := Color.WHITE
+var _pattern := "classic"
+const CARBON := Color(0.035, 0.035, 0.04)
+const COCKPIT := Color(0.012, 0.012, 0.015)
+
+
+func _h(v: float) -> float:
+	return _g + v
+
+
+## The livery on a painted surface: carbon below `low` (above the ground),
+## then the paint pattern.
+func _skin(p: Vector3, th: float, low: float) -> Color:
+	var hh := p.y - _g
+	if hh < low or th < -1.2:
+		return CARBON
+	match _pattern:
+		"stripes":
+			if th > 0.25 and absf(absf(p.x) - 0.075) < 0.028:
+				return _stripe
+			return _accent if hh < low + 0.08 else _base
+		"split":
+			if hh < low + 0.11:
+				return _accent
+			if hh < low + 0.13:
+				return _stripe
+			return _base
+		"chequer":
+			if th > 0.3:
+				var cz := floori(p.z / 0.22)
+				var cx := floori((p.x + 2.0) / 0.11)
+				return _base if (cz + cx) % 2 == 0 else _stripe
+			return _accent if hh < low + 0.08 else _base
+	# Classic: an accent sweep along the lower flank, a pinstripe above it.
+	if hh < low + 0.075:
+		return _accent
+	if hh < low + 0.095:
+		return _stripe
+	return _base
+
+
 func _build_gp() -> void:
 	var lv: Dictionary = spec["livery"]
-	var base: Color = lv["base"]
-	var accent: Color = lv["accent"]
-	var stripe: Color = lv["stripe"]
-	var carbon := Color(0.05, 0.05, 0.06)
-	var paint := _st("paint")
+	_base = lv["base"]
+	_accent = lv["accent"]
+	_stripe = lv["stripe"]
+	_pattern = String(spec.get("pattern", "classic"))
+	_g = float(spec["wheel_y"]) - float(spec["rest_length"]) - float(spec["radius_front"]) + 0.01
+	var paint := _st("satin")
 	var matte := _st("matte")
-
-	# Nose cone flowing into the survival cell, airbox and engine cover.
-	var spine := _stations([
-		[2.78, -0.02, 0.07, 0.045, 2.3], [2.55, 0.02, 0.11, 0.07, 2.4], [2.25, 0.07, 0.15, 0.1, 2.5],
-		[1.9, 0.12, 0.18, 0.13, 2.6], [1.55, 0.17, 0.22, 0.16, 2.7], [1.2, 0.21, 0.28, 0.19, 2.8],
-		[0.9, 0.22, 0.33, 0.21, 3.0], [0.6, 0.2, 0.36, 0.19, 3.0], [0.25, 0.21, 0.37, 0.2, 3.0],
-		[0.0, 0.27, 0.34, 0.27, 3.0], [-0.25, 0.38, 0.24, 0.36, 2.6], [-0.55, 0.36, 0.25, 0.31, 2.6],
-		[-0.95, 0.3, 0.24, 0.24, 2.6], [-1.35, 0.24, 0.2, 0.18, 2.6], [-1.75, 0.19, 0.15, 0.13, 2.5],
-		[-2.15, 0.16, 0.11, 0.1, 2.4], [-2.4, 0.15, 0.07, 0.07, 2.3]])
-	var pattern := String(spec.get("pattern", "classic"))
-	MeshKit.loft(paint, spine, 24, func(p: Vector3, th: float) -> Color:
-		match pattern:
-			"stripes":
-				# Twin stripes nose to tail.
-				if absf(absf(p.x) - 0.06) < 0.022 and th > 0.25:
-					return stripe
-				return accent if th < -0.4 else base
-			"split":
-				# Two-tone: the lower half in the accent, a pinstripe between.
-				if absf(th) < 0.12:
-					return stripe
-				return accent if th < 0.0 else base
-			"chequer":
-				# The chequered flag over the top, the accent underneath.
-				if th < -0.4:
-					return accent
-				var cz := floori(p.z / 0.26)
-				var ct := floori((th + PI) / (TAU / 14.0))
-				return base if (cz + ct) % 2 == 0 else stripe
-		if absf(p.x) < 0.035 and th > 0.3 and p.z > -0.1:
-			return stripe                      # centre stripe along the nose
-		if th < -0.4:
-			return accent                      # darker underside
-		if p.z < -0.6 and th > 0.2 and absf(p.x) < 0.12:
-			return accent                      # engine-cover spine
-		return base)
-	# Airbox intake above the driver's head, and the T-cam on top.
-	MeshKit.ellipsoid(matte, Vector3(0, 0.67, -0.04), Vector3(0.11, 0.08, 0.05), 12, carbon)
-	MeshKit.box(matte, Vector3(0.09, 0.035, 0.07), Vector3(0, 0.765, -0.06), Color(0.95, 0.8, 0.05) if CarSpecs.teams_for(String(spec.get("id", "gp26"))).find(lv) % 2 == 1 else Color(0.06, 0.06, 0.07))
-	# Exhaust under the rear wing.
-	MeshKit.lathe(_st("metal"), [Vector2(-0.1, 0.045), Vector2(0.1, 0.045)], 10, Color(0.55, 0.5, 0.45),
-		Transform3D(Basis(Vector3.UP, PI / 2), Vector3(0, 0.2, -2.32)))
-	# Shark fin.
-	MeshKit.box(paint, Vector3(0.02, 0.26, 1.0), Vector3(0, 0.66, -1.35), base, Vector3(-8, 0, 0))
-
-	# Sidepods with a coke-bottle taper.
-	for sx in [-1.0, 1.0]:
-		var pod := []
-		for r in [[0.85, 0.12, 0.17, 0.17, 0.56], [0.55, 0.12, 0.21, 0.19, 0.56], [0.1, 0.11, 0.22, 0.18, 0.54],
-				[-0.4, 0.08, 0.2, 0.15, 0.5], [-0.9, 0.05, 0.15, 0.11, 0.45], [-1.4, 0.03, 0.09, 0.07, 0.38], [-1.75, 0.02, 0.05, 0.05, 0.32]]:
-			pod.append(MeshKit.station(r[0], r[1], r[2], r[3], 3.0, r[4] * sx))
-		MeshKit.loft(paint, pod, 16, func(p: Vector3, th: float) -> Color:
-			if p.z > 0.8:
-				return carbon                  # inlet
-			if pattern == "split":
-				return accent if th < 0.1 else base
-			if absf(th) < 0.5 and p.y > 0.05 and p.y < 0.12:
-				return stripe                  # side stripe
-			return accent if th < -0.3 else base)
-		# Mirror on a stalk.
-		MeshKit.ellipsoid(paint, Vector3(0.48 * sx, 0.47, 0.72), Vector3(0.07, 0.035, 0.04), 10, base)
-		MeshKit.tube(matte, [Vector3(0.3 * sx, 0.34, 0.74), Vector3(0.44 * sx, 0.46, 0.73)], 0.012, 6, carbon)
-
 	var fine := _st("fine")
-	_gp_floor(matte, fine, carbon)
-	_gp_front_wing(paint, matte, fine, base, accent, stripe, carbon)
-	_gp_rear_wing(paint, matte, fine, base, accent, stripe, carbon)
-	# Cooling louvres on the top of the sidepods and the engine cover.
+
+	# --- Survival cell and nose: [z, bottom, top, half-width bottom / middle / top, squareness]
+	var cell := [
+		[2.9, 0.115, 0.165, 0.028, 0.04, 0.03, 2.4], [2.76, 0.105, 0.205, 0.05, 0.068, 0.055, 2.8],
+		[2.55, 0.12, 0.26, 0.07, 0.092, 0.078, 3.2], [2.25, 0.15, 0.34, 0.09, 0.118, 0.104, 3.6],
+		[1.95, 0.18, 0.42, 0.105, 0.142, 0.128, 3.9], [1.65, 0.19, 0.49, 0.12, 0.166, 0.152, 4.2],
+		[1.35, 0.18, 0.56, 0.135, 0.195, 0.178, 4.5], [1.05, 0.16, 0.62, 0.15, 0.225, 0.205, 4.8],
+		[0.75, 0.13, 0.665, 0.17, 0.252, 0.232, 5.0], [0.4, 0.11, 0.68, 0.18, 0.265, 0.245, 5.0],
+		[0.05, 0.1, 0.69, 0.18, 0.262, 0.238, 4.8], [-0.3, 0.1, 0.665, 0.165, 0.238, 0.205, 4.2],
+		[-0.7, 0.1, 0.6, 0.145, 0.2, 0.155, 3.6], [-1.1, 0.1, 0.52, 0.12, 0.16, 0.112, 3.2],
+		[-1.5, 0.1, 0.44, 0.1, 0.128, 0.086, 3.0], [-1.9, 0.12, 0.38, 0.08, 0.1, 0.07, 2.8],
+		[-2.25, 0.14, 0.33, 0.06, 0.074, 0.055, 2.6], [-2.42, 0.16, 0.3, 0.04, 0.05, 0.04, 2.4]]
+	var secs: Array = []
+	for r in cell:
+		secs.append(MeshKit.section(r[0], _h(r[1]), _h(r[2]), r[3], r[4], r[5], r[6]))
+	MeshKit.loft(paint, secs, 28, func(p: Vector3, th: float) -> Color:
+		var hh := p.y - _g
+		# The cockpit opening: dark, from behind the halo's pillar to the
+		# headrest; narrower towards the front.
+		var cw := 0.2 if p.z < 0.7 else lerpf(0.2, 0.11, clampf((p.z - 0.7) / 0.28, 0.0, 1.0))
+		if p.z > -0.02 and p.z < 0.98 and absf(p.x) < cw and hh > 0.6 and th > 0.4:
+			return COCKPIT
+		# Headrest pads either side of the helmet.
+		if p.z > -0.12 and p.z < 0.12 and absf(p.x) < 0.23 and hh > 0.62 and th > 0.4:
+			return Color(0.06, 0.06, 0.07)
+		if th < -0.9:
+			return CARBON
+		if p.z > 2.6:
+			return _accent if _pattern != "chequer" else _stripe     # the nose tip
+		return _skin(p, th, 0.27 if p.z < 1.2 else 0.16))
+
+	# --- Airbox over the driver's head, and the engine cover behind it.
+	var cover := [
+		[0.02, 0.6, 0.955, 0.075, 0.108, 0.085, 3.4], [-0.14, 0.58, 0.975, 0.105, 0.128, 0.1, 3.4],
+		[-0.42, 0.56, 0.9, 0.14, 0.15, 0.075, 3.0], [-0.8, 0.5, 0.79, 0.15, 0.135, 0.05, 2.8],
+		[-1.2, 0.45, 0.67, 0.13, 0.105, 0.035, 2.6], [-1.6, 0.41, 0.56, 0.1, 0.075, 0.025, 2.4],
+		[-1.98, 0.37, 0.47, 0.06, 0.045, 0.016, 2.2]]
+	secs = []
+	for r in cover:
+		secs.append(MeshKit.section(r[0], _h(r[1]), _h(r[2]), r[3], r[4], r[5], r[6]))
+	MeshKit.loft(paint, secs, 24, func(p: Vector3, th: float) -> Color:
+		if p.z > 0.0:
+			return COCKPIT                      # the intake mouth (the front cap)
+		return _skin(p, th, 0.5))
+	# The intake's lip, and the T-cam on top (black on one car of each team,
+	# fluorescent yellow on the other, as on TV).
+	var cam_yellow := CarSpecs.teams_for(String(spec.get("id", "gp26"))).find(lv) % 2 == 1
+	MeshKit.box(fine, Vector3(0.2, 0.025, 0.02), Vector3(0, _h(0.96), 0.02), _base)
+	MeshKit.box(paint, Vector3(0.12, 0.03, 0.085), Vector3(0, _h(0.995), -0.16), Color(0.95, 0.85, 0.05) if cam_yellow else Color(0.05, 0.05, 0.06), Vector3(-4, 0, 0))
+	# Fin along the engine cover to the rear wing.
+	MeshKit.plate(paint, [Vector2(-0.62, _h(0.86)), Vector2(-1.1, _h(0.8)), Vector2(-1.8, _h(0.7)), Vector2(-2.06, _h(0.66)),
+		Vector2(-2.06, _h(0.48)), Vector2(-1.4, _h(0.6)), Vector2(-0.72, _h(0.82))], 0.0, 0.01, _base)
+
+	# --- Sidepods: [z, centre x, bottom, top, half-widths bottom / middle / top, squareness]
+	var pod := [
+		[0.84, 0.5, 0.36, 0.6, 0.16, 0.19, 0.185, 6.0], [0.7, 0.515, 0.28, 0.625, 0.12, 0.215, 0.205, 4.6],
+		[0.32, 0.525, 0.2, 0.615, 0.095, 0.222, 0.215, 3.6], [-0.08, 0.51, 0.15, 0.565, 0.095, 0.212, 0.195, 3.2],
+		[-0.5, 0.46, 0.12, 0.485, 0.1, 0.18, 0.15, 3.0], [-0.9, 0.38, 0.1, 0.4, 0.1, 0.14, 0.1, 2.8],
+		[-1.3, 0.28, 0.1, 0.32, 0.09, 0.1, 0.065, 2.6], [-1.62, 0.19, 0.1, 0.26, 0.06, 0.06, 0.04, 2.4]]
 	for sx in [-1.0, 1.0]:
+		secs = []
+		for r in pod:
+			secs.append(MeshKit.section(r[0], _h(r[2]), _h(r[3]), r[4], r[5], r[6], r[7], r[1] * sx))
+		MeshKit.loft(paint, secs, 22, func(p: Vector3, th: float) -> Color:
+			if p.z > 0.83:
+				return COCKPIT                  # the inlet
+			return _skin(p, th, 0.3))
+		# Cooling louvres on the pod top, and the mirror on its two stays.
 		for k in 5:
-			MeshKit.box(fine, Vector3(0.16, 0.012, 0.035), Vector3(0.47 * sx, 0.305 - k * 0.012, -0.32 - k * 0.075), carbon, Vector3(-6, 0, 0))
+			MeshKit.box(fine, Vector3(0.15, 0.01, 0.03), Vector3(0.5 * sx, _h(0.565) - k * 0.016, -0.2 - k * 0.07), CARBON, Vector3(-9, 0, 0))
+		MeshKit.ellipsoid(paint, Vector3(0.6 * sx, _h(0.76), 0.62), Vector3(0.085, 0.04, 0.035), 12, _base)
+		MeshKit.box(_st("glass"), Vector3(0.15, 0.06, 0.006), Vector3(0.6 * sx, _h(0.76), 0.586), Color(0.62, 0.68, 0.75))
+		MeshKit.tube(fine, [Vector3(0.6 * sx, _h(0.72), 0.6), Vector3(0.6 * sx, _h(0.62), 0.55)], 0.011, 6, CARBON)
+		MeshKit.tube(fine, [Vector3(0.53 * sx, _h(0.76), 0.6), Vector3(0.3 * sx, _h(0.84), 0.55)], 0.009, 6, CARBON)
 
-	# Halo: hoop from behind the shoulders converging on a centre pillar.
-	var halo := []
-	for t in range(9):
-		var u := float(t) / 8.0
-		var ang := lerpf(-PI * 0.5, PI * 0.5, u)
-		halo.append(Vector3(sin(ang) * 0.33, 0.7 + cos(ang) * 0.06, -0.02 + cos(ang) * 0.84))
-	MeshKit.tube(matte, halo, 0.025, 8, carbon)
-	MeshKit.tube(matte, [Vector3(0, 0.76, 0.82), Vector3(0, 0.6, 0.92), Vector3(0, 0.42, 0.96)], 0.025, 8, carbon)
+	_gp_floor(matte, fine)
+	_gp_front_wing(paint, matte, fine)
+	_gp_rear_wing(paint, matte, fine)
+	_gp_halo(paint)
+	_gp_suspension(fine)
 
-	# Steering wheel with a lit display.
-	MeshKit.box(_st("fine"), Vector3(0.28, 0.13, 0.03), Vector3(0, 0.45, 0.62), carbon, Vector3(-20, 0, 0))
-	MeshKit.box(_st("head"), Vector3(0.1, 0.04, 0.01), Vector3(0, 0.47, 0.603), Color.WHITE, Vector3(-20, 0, 0))
-
-	# Suspension: wishbones and push-rods to each upright.
-	for front in [true, false]:
-		var z: float = spec["wheel_front_z"] if front else spec["wheel_rear_z"]
-		var tw: float = spec["track_front"] if front else spec["track_rear"]
-		for sx in [-1.0, 1.0]:
-			var outer := Vector3((tw - 0.13) * sx, 0.0, z)
-			for yy in [0.3, 0.1]:
-				MeshKit.tube(_st("fine"), [Vector3(0.28 * sx, yy, z + 0.22), outer + Vector3(0, yy, 0)], 0.016, 5, carbon)
-				MeshKit.tube(_st("fine"), [Vector3(0.28 * sx, yy, z - 0.22), outer + Vector3(0, yy, 0)], 0.016, 5, carbon)
+	# Steering wheel with its lit display, just visible in the cockpit.
+	MeshKit.box(fine, Vector3(0.26, 0.11, 0.03), Vector3(0, _h(0.6), 0.64), CARBON, Vector3(-28, 0, 0))
+	MeshKit.box(_st("head"), Vector3(0.1, 0.04, 0.01), Vector3(0, _h(0.615), 0.625), Color.WHITE, Vector3(-28, 0, 0))
+	# Camera pods either side of the nose, and the nose's pitot.
+	for sx in [-1.0, 1.0]:
+		MeshKit.ellipsoid(fine, Vector3(0.1 * sx, _h(0.39), 2.1), Vector3(0.022, 0.022, 0.06), 8, CARBON)
+	MeshKit.tube(fine, [Vector3(0, _h(0.21), 2.9), Vector3(0, _h(0.2), 3.02)], 0.005, 4, Color(0.6, 0.6, 0.62))
 
 	# Driver's helmet (separate so the cockpit camera can hide it).
 	var hst := MeshKit.new_tool()
 	var hcol: Color = lv["helmet"]
-	var hc := Vector3(0, 0.53, 0.24)
-	MeshKit.ellipsoid(hst, hc, Vector3(0.125, 0.13, 0.14), 16, hcol)
-	# The design: a band round it in the team's stripe colour, a stripe
-	# over the top, and the visor, curved round the front.
+	var hc := Vector3(0, _h(0.82), 0.24)
+	MeshKit.ellipsoid(hst, hc, Vector3(0.122, 0.13, 0.14), 16, hcol)
 	var ring: Array = []
 	for k in 17:
 		var a := TAU * k / 16.0
-		ring.append(hc + Vector3(sin(a) * 0.124, 0.02, cos(a) * 0.139))
-	MeshKit.tube(hst, ring, 0.011, 5, stripe)
+		ring.append(hc + Vector3(sin(a) * 0.121, 0.02, cos(a) * 0.139))
+	MeshKit.tube(hst, ring, 0.011, 5, _stripe)
 	var crown: Array = []
 	for k in 9:
 		var a := lerpf(-1.2, 1.35, k / 8.0)
 		crown.append(hc + Vector3(0, cos(a) * 0.131, sin(a) * 0.141))
-	MeshKit.tube(hst, crown, 0.014, 5, accent)
+	MeshKit.tube(hst, crown, 0.014, 5, _accent)
 	var visor: Array = []
 	for k in 9:
 		var a := lerpf(-1.05, 1.05, k / 8.0)
-		visor.append(hc + Vector3(sin(a) * 0.118, 0.03, cos(a) * 0.132))
+		visor.append(hc + Vector3(sin(a) * 0.116, 0.03, cos(a) * 0.132))
 	MeshKit.tube(hst, visor, 0.026, 6, Color(0.02, 0.02, 0.03))
 	var hmesh := MeshKit.finish(hst)
 	hmesh.surface_set_material(0, _material("paint"))
 	helmet = MeshInstance3D.new()
 	helmet.mesh = hmesh
 	add_child(helmet)
+
+
+## The halo: a front pillar from the chassis, the hoop round the driver's
+## head, and its two rear legs down to the chassis behind the cockpit.
+## Painted on top, carbon underneath (a flattened tube).
+func _gp_halo(paint: SurfaceTool) -> void:
+	var hoop: Array = []
+	for k in 15:
+		var a := lerpf(-1.95, 1.95, k / 14.0)
+		var x := sin(a) * 0.3
+		var z := 0.4 + cos(a) * 0.47
+		var hh := 0.925 - 0.05 * (1.0 - cos(a))
+		hoop.append(Vector3(x, _h(hh), z))
+	# Rear legs down into the chassis behind the cockpit.
+	var path: Array = [Vector3(-0.245, _h(0.69), -0.04), Vector3(-0.258, _h(0.77), 0.06)]
+	path.append_array(hoop)
+	path.append_array([Vector3(0.258, _h(0.77), 0.06), Vector3(0.245, _h(0.69), -0.04)])
+	MeshKit.tube(paint, path, 0.029, 10, _base)
+	# The centre pillar, from the top of the chassis up to the hoop's front.
+	MeshKit.tube(paint, [Vector3(0, _h(0.6), 1.05), Vector3(0, _h(0.78), 0.98), Vector3(0, _h(0.915), 0.87)], 0.026, 10, _base)
+
+
+## Suspension: carbon aerofoil-section wishbones from the chassis (gearbox
+## at the rear) to each upright, a push/pull rod and the steering arm.
+func _gp_suspension(fine: SurfaceTool) -> void:
+	for front in [true, false]:
+		var z: float = spec["wheel_front_z"] if front else spec["wheel_rear_z"]
+		var tw: float = spec["track_front"] if front else spec["track_rear"]
+		var inner := 0.15 if front else 0.12
+		for sx in [-1.0, 1.0]:
+			var ox: float = (tw - 0.14) * sx
+			var top := Vector3(ox, _h(0.48 if front else 0.5), z)
+			var bot := Vector3(ox, _h(0.2), z)
+			for zz in [0.24, -0.2]:
+				MeshKit.tube(fine, [Vector3(inner * sx, _h(0.46 if front else 0.42), z + zz), top], 0.013, 6, CARBON)
+				MeshKit.tube(fine, [Vector3(inner * sx, _h(0.24 if front else 0.2), z + zz * 1.2), bot], 0.013, 6, CARBON)
+			# Push rod (front) / pull rod (rear) across to the chassis.
+			if front:
+				MeshKit.tube(fine, [bot + Vector3(-0.04 * sx, 0.02, 0), Vector3(0.17 * sx, _h(0.5), z - 0.08)], 0.011, 6, CARBON)
+				MeshKit.tube(fine, [Vector3(0.14 * sx, _h(0.34), z + 0.12), Vector3(ox, _h(0.34), z + 0.1)], 0.009, 6, CARBON)
+			else:
+				MeshKit.tube(fine, [top + Vector3(-0.04 * sx, -0.02, 0), Vector3(0.12 * sx, _h(0.2), z + 0.1)], 0.011, 6, CARBON)
+			# The upright, inside the wheel.
+			MeshKit.box(fine, Vector3(0.05, 0.3, 0.1), Vector3(ox + 0.03 * sx, _h(0.34), z), CARBON)
+
+
+## Floor: the full-width floor with its tunnels' fences under the front,
+## the edge curling up along the side, an edge wing ahead of the rear tyres,
+## the plank under the middle and the diffuser at the back.
+func _gp_floor(matte: SurfaceTool, fine: SurfaceTool) -> void:
+	var y := _h(0.045)
+	var half := [Vector2(0.3, 1.3), Vector2(0.52, 1.08), Vector2(0.78, 0.78), Vector2(0.88, 0.45), Vector2(0.9, -0.2),
+		Vector2(0.87, -0.8), Vector2(0.76, -1.2), Vector2(0.6, -1.42), Vector2(0.56, -1.85), Vector2(0.52, -2.18)]
+	var outline: Array = []
+	for p in half:
+		outline.append(p)
+	for i in range(half.size() - 1, -1, -1):
+		outline.append(Vector2(-half[i].x, half[i].y))
+	MeshKit.hplate(matte, outline, y, 0.02, CARBON)
+	# The plank (the wear strip) under the middle.
+	MeshKit.box(matte, Vector3(0.3, 0.012, 3.0), Vector3(0, y - 0.016, -0.25), Color(0.42, 0.33, 0.2))
+	for sx in [-1.0, 1.0]:
+		# The floor edge curls up, then a slim edge wing ahead of the tyre.
+		MeshKit.plate(matte, [Vector2(0.5, y), Vector2(0.4, y + 0.05), Vector2(-0.75, y + 0.07), Vector2(-1.05, y + 0.03), Vector2(-1.05, y)], 0.895 * sx, 0.012, CARBON)
+		MeshKit.airfoil(fine, 0.6 * sx, 0.8 * sx, y + 0.13, -1.0, 0.22, 0.1, 0.05, 12.0, CARBON)
+		MeshKit.plate(fine, [Vector2(-0.98, y), Vector2(-0.98, y + 0.15), Vector2(-1.25, y + 0.17), Vector2(-1.25, y)], 0.8 * sx, 0.01, CARBON)
+		# Fences at the mouth of the tunnels, under the front of the floor.
+		for k in 3:
+			var fx: float = (0.3 + k * 0.09) * sx
+			MeshKit.plate(fine, [Vector2(1.18 - k * 0.07, y), Vector2(1.06 - k * 0.07, y + 0.17 - k * 0.02), Vector2(0.62, y + 0.2 - k * 0.02), Vector2(0.62, y)], fx, 0.01, CARBON)
+	# Diffuser: the ramp up under the gearbox, its walls and strakes.
+	MeshKit.box(matte, Vector3(1.06, 0.02, 0.86), Vector3(0, y + 0.13, -1.86), CARBON, Vector3(-17, 0, 0))
+	for x in [-0.53, -0.32, -0.13, 0.13, 0.32, 0.53]:
+		MeshKit.plate(fine, [Vector2(-1.45, y), Vector2(-2.28, y + 0.27), Vector2(-2.28, y + 0.3), Vector2(-1.45, y + 0.04)], x, 0.01, CARBON)
+
+
+## Front wing: four thin carbon elements across the full width, the flaps
+## stacked behind and above the main plane and sweeping up outboard into the
+## curved endplates; the top flap's edge and the endplates carry the colour.
+## The nose sits on the main plane.
+func _gp_front_wing(paint: SurfaceTool, matte: SurfaceTool, fine: SurfaceTool) -> void:
+	var elems := [
+		# height at the centre, rise outboard, leading edge z, chord, angle, x start
+		[0.07, 0.03, 3.0, 0.27, 3.0, 0.0],
+		[0.095, 0.09, 2.76, 0.16, 13.0, 0.11],
+		[0.125, 0.14, 2.62, 0.14, 23.0, 0.11],
+		[0.16, 0.19, 2.5, 0.12, 33.0, 0.11],
+	]
+	for ei in elems.size():
+		var e: Array = elems[ei]
+		var top_flap := ei == elems.size() - 1
+		for sx in [-1.0, 1.0]:
+			var secs: Array = []
+			for k in 9:
+				var u := float(k) / 8.0
+				var ax: float = lerpf(float(e[5]), 0.97, u)
+				var rise := float(e[1]) * pow(smoothstep(0.3, 0.97, ax), 1.6)
+				var sweep := 0.07 * u * u
+				secs.append([ax * sx, _h(float(e[0]) + rise), float(e[2]) - sweep, float(e[3]), float(e[4]) + 4.0 * u])
+			MeshKit.wing(paint if top_flap else matte, secs, 0.09, 0.05, func(_x, upper):
+				if top_flap and upper:
+					return _base
+				return CARBON)
+	# Endplates: low at the front, rising to the back and curling over.
+	var ep := [Vector2(3.0, _h(0.03)), Vector2(3.0, _h(0.1)), Vector2(2.86, _h(0.16)), Vector2(2.68, _h(0.23)),
+		Vector2(2.52, _h(0.28)), Vector2(2.44, _h(0.28)), Vector2(2.42, _h(0.22)), Vector2(2.5, _h(0.03))]
+	for sx in [-1.0, 1.0]:
+		MeshKit.plate(matte, ep, 0.985 * sx, 0.014, CARBON)
+		MeshKit.strip(paint, [Vector2(2.86, _h(0.16)), Vector2(2.68, _h(0.23)), Vector2(2.52, _h(0.28)), Vector2(2.44, _h(0.28))], 0.045, 0.985 * sx, 0.018, _base)
+		# The foot along the bottom.
+		MeshKit.box(fine, Vector3(0.07, 0.012, 0.62), Vector3(0.955 * sx, _h(0.02), 2.7), CARBON)
+
+
+## Rear wing: a spoon-shaped main plane and the DRS flap, their tips rounding
+## down into the endplates; the beam wing low down; the single swan-neck
+## pylon; the gearbox's crash structure with the rain light; rain lights in
+## the endplates' trailing edges.
+func _gp_rear_wing(paint: SurfaceTool, matte: SurfaceTool, fine: SurfaceTool) -> void:
+	var half := 0.48
+	var main: Array = []
+	var flap: Array = []
+	for k in 11:
+		var x := lerpf(-half, half, float(k) / 10.0)
+		var t := absf(x) / half
+		var dip := 0.03 * (1.0 - t * t)              # the spoon
+		var tip := 0.09 * pow(smoothstep(0.7, 1.0, t), 1.5)   # rounding down into the endplate
+		main.append([x, _h(0.73) - dip - tip, -2.1, 0.28, 9.0])
+		flap.append([x, _h(0.83) - dip * 0.6 - tip, -2.36, 0.19, 30.0])
+	MeshKit.wing(paint, main, 0.11, 0.06, func(_x, upper): return _base if upper else CARBON)
+	MeshKit.wing(paint, flap, 0.1, 0.06, func(_x, upper): return _accent if upper else CARBON)
+	# Beam wing, two elements.
+	MeshKit.airfoil(fine, -0.44, 0.44, _h(0.38), -2.15, 0.15, 0.11, 0.05, 10.0, CARBON)
+	MeshKit.airfoil(fine, -0.44, 0.44, _h(0.44), -2.3, 0.12, 0.11, 0.05, 24.0, CARBON)
+	# Endplates: a rounded top, down to the beam wing.
+	var ep := [Vector2(-2.14, _h(0.37)), Vector2(-2.07, _h(0.6)), Vector2(-2.04, _h(0.75)), Vector2(-2.09, _h(0.87)),
+		Vector2(-2.2, _h(0.925)), Vector2(-2.42, _h(0.935)), Vector2(-2.57, _h(0.9)), Vector2(-2.62, _h(0.8)),
+		Vector2(-2.57, _h(0.6)), Vector2(-2.44, _h(0.37))]
+	for sx in [-1.0, 1.0]:
+		var x: float = (half + 0.01) * sx
+		MeshKit.plate(matte, ep, x, 0.016, CARBON)
+		MeshKit.strip(paint, [Vector2(-2.09, _h(0.87)), Vector2(-2.2, _h(0.925)), Vector2(-2.42, _h(0.935)), Vector2(-2.57, _h(0.9))], 0.065, x, 0.02, _base)
+		MeshKit.box(_st("tail"), Vector3(0.02, 0.16, 0.01), Vector3(x, _h(0.7), -2.615), Color.WHITE, Vector3(-12, 0, 0))
+	# Swan-neck pylon from the crash structure to the main plane's underside.
+	MeshKit.plate(matte, [Vector2(-2.2, _h(0.3)), Vector2(-2.12, _h(0.5)), Vector2(-2.14, _h(0.66)), Vector2(-2.3, _h(0.68)),
+		Vector2(-2.34, _h(0.5)), Vector2(-2.42, _h(0.3))], 0.0, 0.035, CARBON)
+	MeshKit.ellipsoid(fine, Vector3(0, _h(0.8), -2.3), Vector3(0.03, 0.045, 0.09), 8, CARBON)    # DRS actuator
+	# Crash structure, the rain light, and the exhaust above.
+	MeshKit.box(matte, Vector3(0.14, 0.11, 0.42), Vector3(0, _h(0.26), -2.4), CARBON)
+	MeshKit.box(_st("tail"), Vector3(0.1, 0.06, 0.02), Vector3(0, _h(0.26), -2.615), Color.WHITE)
+	MeshKit.lathe(_st("metal"), [Vector2(-0.06, 0.042), Vector2(0.08, 0.04)], 12, Color(0.5, 0.45, 0.4),
+		Transform3D(Basis(Vector3.UP, PI / 2), Vector3(0, _h(0.37), -2.36)))
 
 
 ## The kart: a tube frame on the ground, plastic nose, front panel and side
@@ -598,102 +813,6 @@ func _build_kart() -> void:
 	helmet = MeshInstance3D.new()
 	helmet.mesh = hmesh
 	add_child(helmet)
-
-
-## Floor: the plank, the floor edges with their fences, and a diffuser
-## with strakes under the rear.
-func _gp_floor(matte: SurfaceTool, fine: SurfaceTool, carbon: Color) -> void:
-	MeshKit.box(matte, Vector3(1.5, 0.025, 3.0), Vector3(0, -0.11, -0.4), carbon)
-	MeshKit.box(matte, Vector3(0.3, 0.025, 3.4), Vector3(0, -0.125, -0.2), Color(0.45, 0.35, 0.2))
-	var edge := carbon.lightened(0.04)
-	for sx in [-1.0, 1.0]:
-		# The edge of the floor curls up, with a slot cut in it.
-		MeshKit.box(matte, Vector3(0.05, 0.025, 2.3), Vector3(0.775 * sx, -0.09, -0.55), edge, Vector3(0, 0, -18 * sx))
-		MeshKit.box(matte, Vector3(0.015, 0.03, 0.5), Vector3(0.8 * sx, -0.07, -1.35), edge)
-		# Fences at the front of the floor, ahead of the sidepods.
-		for k in 3:
-			MeshKit.plate(fine, [Vector2(1.18 - k * 0.05, -0.11), Vector2(1.0 - k * 0.05, 0.02), Vector2(0.72 - k * 0.05, 0.03), Vector2(0.7 - k * 0.05, -0.11)],
-				(0.45 + k * 0.1) * sx, 0.012, carbon)
-	# Diffuser: the ramp up under the gearbox, its walls and strakes.
-	var ramp := [Vector2(-1.55, -0.12), Vector2(-2.42, 0.1), Vector2(-2.42, 0.14), Vector2(-1.55, -0.08)]
-	MeshKit.box(matte, Vector3(1.0, 0.02, 0.9), Vector3(0, -0.005, -1.98), carbon, Vector3(-14, 0, 0))
-	for x in [-0.5, -0.3, -0.12, 0.12, 0.3, 0.5]:
-		MeshKit.plate(fine, ramp, x, 0.012, carbon)
-
-
-## Front wing: four elements, the flaps sweeping up towards the nose,
-## carbon main plane with painted flaps, shaped endplates.
-func _gp_front_wing(paint: SurfaceTool, matte: SurfaceTool, fine: SurfaceTool, base: Color, accent: Color, stripe: Color, carbon: Color) -> void:
-	var elems := [
-		# y at the nose, rise, z, chord, aoa, colour, surface
-		[-0.105, 0.0, 2.86, 0.33, 3.0, carbon, matte],
-		[-0.075, 0.05, 2.6, 0.2, 12.0, accent, paint],
-		[-0.04, 0.1, 2.45, 0.16, 22.0, base, paint],
-		[0.0, 0.15, 2.32, 0.13, 32.0, base, paint],
-	]
-	var first := true
-	for e in elems:
-		var col: Color = e[5]
-		for sx in [-1.0, 1.0]:
-			var secs: Array = []
-			var x0 := 0.0 if first else 0.09
-			for k in 6:
-				var u := float(k) / 5.0
-				var x: float = lerpf(x0, 0.97, u) * sx
-				# The flaps rise towards the nose and fall to meet the endplate.
-				var rise := float(e[1]) * (1.0 - smoothstep(0.15, 0.95, absf(x)))
-				var sweep := 0.06 * u * u
-				secs.append([x, float(e[0]) + rise, float(e[2]) - sweep, float(e[3]), float(e[4]) + 6.0 * (1.0 - u)])
-			MeshKit.wing(e[6], secs, 0.1, 0.06, func(_x, upper): return col if upper else col.darkened(0.25))
-		first = false
-	# Endplates: low at the front, rising to the rear, carbon with the
-	# livery colour along the top.
-	var outline := [Vector2(2.98, -0.13), Vector2(2.96, -0.06), Vector2(2.82, 0.0), Vector2(2.6, 0.05), Vector2(2.38, 0.13),
-		Vector2(2.24, 0.15), Vector2(2.2, 0.08), Vector2(2.22, -0.13)]
-	for sx in [-1.0, 1.0]:
-		MeshKit.plate(matte, outline, 0.985 * sx, 0.016, carbon)
-		MeshKit.strip(paint, [Vector2(2.96, -0.06), Vector2(2.82, 0.0), Vector2(2.6, 0.05), Vector2(2.38, 0.13), Vector2(2.24, 0.15)], 0.05, 0.985 * sx, 0.02, base)
-		MeshKit.box(fine, Vector3(0.09, 0.015, 0.7), Vector3(0.95 * sx, -0.135, 2.6), carbon)
-	# Pylons from the nose to the wing.
-	for sx in [-1.0, 1.0]:
-		MeshKit.plate(fine, [Vector2(2.78, -0.09), Vector2(2.7, 0.0), Vector2(2.52, 0.02), Vector2(2.52, -0.09)], 0.06 * sx, 0.016, carbon)
-
-
-## Rear wing: shaped endplates (carbon, the livery colour at the top), a
-## main plane and the DRS flap in the livery, a two-element beam wing low
-## down, and twin swan-neck pylons; the rain light on the crash structure.
-func _gp_rear_wing(paint: SurfaceTool, matte: SurfaceTool, fine: SurfaceTool, base: Color, accent: Color, stripe: Color, carbon: Color) -> void:
-	var half := 0.5
-	# Main plane: dips slightly in the middle (a "spoon").
-	var main: Array = []
-	var flap: Array = []
-	for k in 7:
-		var x := lerpf(-half, half, float(k) / 6.0)
-		var dip := 0.025 * (1.0 - pow(absf(x) / half, 2.0))
-		main.append([x, 0.8 - dip, -2.1, 0.3, 9.0])
-		flap.append([x, 0.9 - dip * 0.6, -2.36, 0.22, 28.0])
-	MeshKit.wing(paint, main, 0.12, 0.06, func(_x, upper): return base if upper else carbon)
-	MeshKit.wing(paint, flap, 0.1, 0.06, func(_x, upper): return accent if upper else base.darkened(0.2))
-	# Beam wing: two small elements below, between the endplates' feet.
-	MeshKit.airfoil(fine, -0.42, 0.42, 0.36, -2.12, 0.16, 0.12, 0.05, 10.0, carbon)
-	MeshKit.airfoil(fine, -0.42, 0.42, 0.42, -2.28, 0.13, 0.12, 0.05, 24.0, carbon)
-	var outline := [Vector2(-1.98, 0.3), Vector2(-2.0, 0.62), Vector2(-2.04, 0.86), Vector2(-2.13, 1.0), Vector2(-2.3, 1.04),
-		Vector2(-2.55, 1.02), Vector2(-2.62, 0.94), Vector2(-2.6, 0.55), Vector2(-2.48, 0.3)]
-	for sx in [-1.0, 1.0]:
-		var x: float = (half + 0.012) * sx
-		MeshKit.plate(matte, outline, x, 0.018, carbon)
-		var top := [Vector2(-2.02, 0.8), Vector2(-2.04, 0.86), Vector2(-2.13, 1.0), Vector2(-2.3, 1.04), Vector2(-2.55, 1.02), Vector2(-2.62, 0.94)]
-		MeshKit.strip(paint, top, 0.1, x, 0.022, base)
-		var under: Array = []
-		for p in top:
-			under.append(p - Vector2(0, 0.1))
-		MeshKit.strip(paint, under, 0.035, x, 0.022, stripe)
-		# The DRS actuator pod in the middle, and the pylons.
-		MeshKit.plate(matte, [Vector2(-1.95, 0.22), Vector2(-2.05, 0.5), Vector2(-2.16, 0.8), Vector2(-2.26, 0.8), Vector2(-2.14, 0.22)], 0.07 * sx, 0.014, carbon)
-	MeshKit.ellipsoid(fine, Vector3(0, 0.88, -2.25), Vector3(0.035, 0.05, 0.1), 8, carbon)
-	# Crash structure with the rain light.
-	MeshKit.box(matte, Vector3(0.16, 0.12, 0.3), Vector3(0, 0.2, -2.36), carbon)
-	MeshKit.box(_st("tail"), Vector3(0.12, 0.07, 0.02), Vector3(0, 0.21, -2.515), Color.WHITE)
 
 
 # ------------------------------------------------------------ road cars
@@ -1089,6 +1208,27 @@ func _attach_wheel(w: CarWheel) -> void:
 	var cal_col: Color = spec.get("caliper", Color(0.85, 0.08, 0.06) if not gp else Color(0.08, 0.08, 0.09))
 	var cx := (hw - 0.09) * side
 	MeshKit.box(cst, Vector3(0.06, rim_r * 0.42, rim_r * 0.3), Vector3(cx, rim_r * 0.55, -rim_r * 0.2), cal_col, Vector3(-25, 0, 0))
+	if gp and front:
+		# The wake winglet arching over the front of the tyre from the inboard
+		# brake duct, and the duct's inlet.
+		var inward := -side
+		var x0: float = inward * (hw + 0.008)
+		var x1: float = inward * (hw * 0.05)
+		var rr := r + 0.028
+		var a0 := -0.15
+		var a1 := 1.05
+		for k in 8:
+			var t0 := lerpf(a0, a1, k / 8.0)
+			var t1 := lerpf(a0, a1, (k + 1) / 8.0)
+			var p00 := Vector3(x0, cos(t0) * rr, sin(t0) * rr)
+			var p01 := Vector3(x1, cos(t0) * rr, sin(t0) * rr)
+			var p10 := Vector3(x0, cos(t1) * rr, sin(t1) * rr)
+			var p11 := Vector3(x1, cos(t1) * rr, sin(t1) * rr)
+			for q in [[p00, p01, p11], [p00, p11, p10]]:
+				for v in q:
+					cst.set_color(CARBON)
+					cst.add_vertex(v)
+		MeshKit.box(cst, Vector3(0.05, 0.12, 0.1), Vector3(inward * (hw + 0.03), -0.03, 0.15), CARBON)
 	var cm := MeshKit.finish(cst)
 	cm.surface_set_material(0, _material("paint"))
 	var cmi := MeshInstance3D.new()

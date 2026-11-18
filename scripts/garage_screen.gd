@@ -82,14 +82,28 @@ func _refresh() -> void:
 		return
 	var ids: Array = Array(CarSpecs.CATALOG).duplicate()
 	ids.sort_custom(func(x, y): return Garage.pr(CarSpecs.get_spec(x)) < Garage.pr(CarSpecs.get_spec(y)))
+	var team := int(save.get_setting("team"))
 	for id in ids:
 		var spec: Dictionary = save.car_spec(id)
-		var sub := "PR %.1f" % Garage.pr(spec)
+		# The class first (the ladder: Karting, F4, F3, F2, Grand Prix), the
+		# car under it; edged in your team's colour in that class.
+		var si := Career.series_for_car(id)
+		var title: String = String(Career.SERIES[si]["name"]) if si >= 0 else String(spec["name"])
+		var sub := "%s, PR %.1f" % [spec["name"], Garage.pr(spec)]
 		if String(save.get_setting("garage_car")) == id:
 			sub += ", home car"
-		var b := UIStyle.tile(String(spec["name"]), sub, func(): _select(id), id == car_id, 30)
+		var b := UIStyle.tile(title, sub, func(): _select(id), id == car_id, 30)
 		b.custom_minimum_size = Vector2(0, 66)
 		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		if CarSpecs.has_teams(id):
+			var tc: Color = CarSpecs.team(team, id)["base"]
+			for st in ["normal", "hover", "pressed", "focus"]:
+				var sb0 := b.get_theme_stylebox(st)
+				if sb0 is StyleBoxFlat:
+					var sbx := (sb0 as StyleBoxFlat).duplicate() as StyleBoxFlat
+					sbx.border_color = tc
+					sbx.border_width_left = 8
+					b.add_theme_stylebox_override(st, sbx)
 		_list.add_child(b)
 	_build_panel()
 
@@ -126,6 +140,46 @@ func _team_list() -> void:
 		grid.add_child(b)
 
 
+## The team you race for in this class: its name, and the ten teams as
+## colour swatches (their livery: base, a stripe of the accent); tap one.
+func _team_swatches() -> void:
+	var cur := posmod(int(save.get_setting("team")), CarSpecs.teams_for(car_id).size())
+	var teams: Array = CarSpecs.teams_for(car_id)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	_panel.add_child(head)
+	head.add_child(UIStyle.label("Team", 19, UIStyle.FOG, "bold"))
+	head.add_child(UIStyle.label(String(teams[cur]["name"]), 21, UIStyle.PAPER, "bold"))
+	var grid := GridContainer.new()
+	grid.columns = 5
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	_panel.add_child(grid)
+	for i in teams.size():
+		var t: Dictionary = teams[i]
+		var k: int = i
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(0, 40)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.tooltip_text = String(t["name"])
+		b.focus_mode = Control.FOCUS_NONE
+		for st in ["normal", "hover", "pressed", "focus", "disabled"]:
+			var sb := StyleBoxFlat.new()
+			sb.bg_color = t["base"]
+			sb.border_color = t["accent"]
+			sb.border_width_bottom = 8
+			if k == cur:
+				sb.border_color = UIStyle.PAPER
+				sb.set_border_width_all(4)
+				sb.border_width_bottom = 8
+			sb.set_corner_radius_all(3)
+			b.add_theme_stylebox_override(st, sb)
+		b.pressed.connect(func():
+			save.set_setting("team", k)
+			_select(car_id))
+		grid.add_child(b)
+
+
 func _build_panel() -> void:
 	var spec: Dictionary = save.car_spec(car_id)
 	var top := HBoxContainer.new()
@@ -157,10 +211,17 @@ func _build_panel() -> void:
 	for se in Career.SERIES:
 		if (se["cars"] as Array).has(car_id):
 			series.append(String(se["name"]))
-	if not series.is_empty():
+	var si := Career.series_for_car(car_id)
+	if si >= 0:
+		var l := UIStyle.label(String(Career.SERIES[si].get("blurb", "")), 19, UIStyle.FOG, "semibold")
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_panel.add_child(l)
+	elif not series.is_empty():
 		var l := UIStyle.label("Races in: " + ", ".join(series), 19, UIStyle.FOG, "semibold")
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_panel.add_child(l)
+	if CarSpecs.has_teams(car_id):
+		_team_swatches()
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_panel.add_child(sp)

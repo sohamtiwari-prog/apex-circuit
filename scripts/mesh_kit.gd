@@ -17,6 +17,45 @@ static func station(z: float, y: float, a: float, b: float, n := 2.6, x := 0.0) 
 	return {"z": z, "x": x, "y": y, "a": a, "b": b, "n": n}
 
 
+## A cross-section from y0 (bottom) to y1 (top) whose half-width changes
+## with height: wb at the bottom, wm half way up, wt at the top (a flat-topped
+## tub, a sidepod with an undercut). n: squareness of the corners.
+static func section(z: float, y0: float, y1: float, wb: float, wm: float, wt: float, n := 3.0, x := 0.0) -> Dictionary:
+	return {"z": z, "x": x, "y": (y0 + y1) * 0.5, "a": wm, "b": (y1 - y0) * 0.5, "n": n, "wb": wb, "wm": wm, "wt": wt}
+
+
+static func _section_pt(s: Dictionary, th: float) -> Vector2:
+	if not s.has("wb"):
+		return _se(th, s["a"], s["b"], s["n"])
+	var u := _se(th, 1.0, 1.0, s["n"])
+	var t := (u.y + 1.0) * 0.5
+	var w: float = float(s["wb"]) * (2.0 * t - 1.0) * (t - 1.0) + float(s["wm"]) * 4.0 * t * (1.0 - t) + float(s["wt"]) * t * (2.0 * t - 1.0)
+	return Vector2(u.x * w, u.y * float(s["b"]))
+
+
+## A flat horizontal panel (a floor): the outline (Vector2(x, z), going
+## round, any simple shape) at height y, `thick` deep.
+static func hplate(st: SurfaceTool, outline: Array, y: float, thick: float, color: Color, xform := Transform3D.IDENTITY) -> void:
+	var poly := PackedVector2Array(outline)
+	var idx := Geometry2D.triangulate_polygon(poly)
+	var n := poly.size()
+	for side in [-1.0, 1.0]:
+		var yy: float = y + side * thick * 0.5
+		for i in range(0, idx.size(), 3):
+			var a := poly[idx[i]]
+			var b := poly[idx[i + 1]]
+			var c := poly[idx[i + 2]]
+			if side > 0.0:
+				_tri(st, xform * Vector3(a.x, yy, a.y), xform * Vector3(b.x, yy, b.y), xform * Vector3(c.x, yy, c.y), color)
+			else:
+				_tri(st, xform * Vector3(a.x, yy, a.y), xform * Vector3(c.x, yy, c.y), xform * Vector3(b.x, yy, b.y), color)
+	for i in n:
+		var a := poly[i]
+		var b := poly[(i + 1) % n]
+		_quad(st, xform * Vector3(a.x, y - thick * 0.5, a.y), xform * Vector3(b.x, y - thick * 0.5, b.y),
+			xform * Vector3(b.x, y + thick * 0.5, b.y), xform * Vector3(a.x, y + thick * 0.5, a.y), color)
+
+
 static func _se(theta: float, a: float, b: float, n: float) -> Vector2:
 	var c := cos(theta)
 	var s := sin(theta)
@@ -33,7 +72,7 @@ static func loft(st: SurfaceTool, stations: Array, seg: int, color_fn: Callable,
 	for s in stations:
 		var ring := PackedVector3Array()
 		for th in thetas:
-			var p := _se(th, s["a"], s["b"], s["n"])
+			var p := _section_pt(s, th)
 			ring.append(Vector3(s["x"] + p.x, s["y"] + p.y, s["z"]))
 		rings.append(ring)
 	for r in range(rings.size() - 1):
@@ -272,3 +311,72 @@ static func new_tool() -> SurfaceTool:
 static func finish(st: SurfaceTool, mesh: ArrayMesh = null) -> ArrayMesh:
 	st.generate_normals()
 	return st.commit(mesh)
+
+
+static var _crisp_cache := {}
+
+## Finishes a SurfaceTool into a mesh whose normals are smooth across gentle
+## curves but crisp where faces meet at more than `crease` degrees: wing
+## plates, endplates and panel edges catch a sharp highlight, bodywork
+## stays smooth (generate_normals smooths everything, so a thin plate reads
+## as a soft blob). The normals for a given `key` are worked out once and
+## reused (every car of a model shares its shape; only colours differ).
+static func finish_crisp(st: SurfaceTool, mesh: ArrayMesh = null, key := "", crease := 38.0) -> ArrayMesh:
+	var arrays := st.commit_to_arrays()
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var n := verts.size()
+	if n == 0:
+		return mesh if mesh != null else ArrayMesh.new()
+	var normals: PackedVector3Array
+	if key != "" and _crisp_cache.has(key) and (_crisp_cache[key] as PackedVector3Array).size() == n:
+		normals = _crisp_cache[key]
+	else:
+		normals = crisp_normals(verts, crease)
+		if key != "":
+			_crisp_cache[key] = normals
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	if mesh == null:
+		mesh = ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+## Per-vertex normals for a triangle list: each corner averages the
+## (area-weighted) normals of the triangles meeting at that point whose
+## faces are within `crease` degrees of its own. Same orientation as
+## SurfaceTool.generate_normals.
+static func crisp_normals(verts: PackedVector3Array, crease: float) -> PackedVector3Array:
+	var n := verts.size()
+	var tris := n / 3
+	var fn := PackedVector3Array()
+	fn.resize(tris)
+	var fu := PackedVector3Array()
+	fu.resize(tris)
+	for t in tris:
+		var a := verts[t * 3]
+		var nn := (a - verts[t * 3 + 2]).cross(a - verts[t * 3 + 1])
+		fn[t] = nn
+		fu[t] = nn.normalized()
+	# Corners at the same point (to a tenth of a millimetre).
+	var groups := {}
+	for i in n:
+		var p := verts[i]
+		var k := Vector3i(roundi(p.x * 10000.0), roundi(p.y * 10000.0), roundi(p.z * 10000.0))
+		if groups.has(k):
+			(groups[k] as Array).append(i)
+		else:
+			groups[k] = [i]
+	var lim := cos(deg_to_rad(crease))
+	var out := PackedVector3Array()
+	out.resize(n)
+	for k in groups:
+		var g: Array = groups[k]
+		for i in g:
+			var own := fu[i / 3]
+			var sum := Vector3.ZERO
+			for j in g:
+				var f := fu[j / 3]
+				if own.dot(f) >= lim:
+					sum += fn[j / 3]
+			out[i] = sum.normalized() if sum.length_squared() > 0.0 else own
+	return out
