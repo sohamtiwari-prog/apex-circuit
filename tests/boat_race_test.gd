@@ -62,5 +62,5 @@ func _run() -> void:
 		race.queue_free()
 		await process_frame
 		await process_frame
-	print("FAILURES: %d" % fails)
+	print("ALL CHECKS PASSED" if fails == 0 else "%d check(s) failed" % fails)
 	quit(1 if fails > 0 else 0)
