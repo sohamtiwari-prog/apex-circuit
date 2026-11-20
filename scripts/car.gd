@@ -108,6 +108,8 @@ var _on_wall := false
 
 static var _cal_data := {}
 static var _cal_loaded := false
+## A boat (spec body "boat"): its hull does the physics (scripts/boat_hull.gd).
+var hull: BoatHull
 
 
 static func steer_calibration(id: String) -> Dictionary:
@@ -128,6 +130,9 @@ func setup(car_spec: Dictionary) -> void:
 func _ready() -> void:
 	if spec.is_empty():
 		spec = CarSpecs.get_spec("gp26")
+	if String(spec.get("body", "")) == "boat":
+		_ready_boat()
+		return
 	_steer_low = spec["steer_low"]
 	_max_force = spec["max_drive_force"]
 	_drag = spec["drag"]
@@ -218,6 +223,61 @@ func _ready() -> void:
 	body.build(spec, self)
 
 
+## A powerboat: floats and drives on the water (no wheels); the hull's
+## physics in scripts/boat_hull.gd. The steering keeps the car's meaning
+## (the input is the share of the hull's cornering grip), so the computer
+## drivers steer boats exactly as they steer cars.
+func _ready_boat() -> void:
+	_steer_low = spec["steer_low"]
+	_drag = spec["drag"]
+	_downforce = 0.0
+	_idle = spec["idle_rpm"]
+	_redline = spec["redline"]
+	_peak = spec["peak_rpm"]
+	_power = spec["power"]
+	_gears = PackedFloat32Array([1.0])
+	_mu_f = spec["mu_front"]
+	_mu_r = spec["mu_rear"]
+	_alpha_peak_f = deg_to_rad(float(spec["slip_peak_front"]))
+	_b_f = tan(PI / (2.0 * SLIP_SHAPE)) / _alpha_peak_f
+	mass = spec["mass"]
+	_wheelbase = float(spec["wheel_front_z"]) - float(spec["wheel_rear_z"])
+	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
+	center_of_mass = spec["com"]
+	var len_h := float(spec["length"]) * 0.5
+	var beam := float(spec["beam"]) * 0.5
+	inertia = Vector3(mass * len_h * len_h * 0.3, mass * len_h * len_h * 0.33, mass * beam * beam * 0.45)
+	can_sleep = false
+	continuous_cd = false
+	contact_monitor = true
+	max_contacts_reported = 4
+	collision_layer = 2
+	collision_mask = 1
+	var pm := PhysicsMaterial.new()
+	pm.friction = 0.1
+	pm.bounce = 0.1
+	physics_material_override = pm
+	linear_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
+	linear_damp = 0.0
+	angular_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
+	angular_damp = 0.3
+	for col in spec["collision"]:
+		var cs := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = col[0]
+		cs.shape = box
+		cs.position = col[1]
+		add_child(cs)
+	hull = BoatHull.new()
+	hull.setup(spec)
+	body = CarBody.new()
+	add_child(body)
+	body.build(spec, self)
+	var fx := BoatFX.new()
+	add_child(fx)
+	fx.attach(self)
+
+
 ## A ghost car can't be hit by (or hit) other cars; the track still holds it.
 var is_ghost := false              # passes through other cars (after a reset)
 
@@ -275,6 +335,8 @@ func reset_controls() -> void:
 
 ## Seat height above the road for spawning.
 func spawn_height() -> float:
+	if String(spec.get("body", "")) == "boat":
+		return float(spec["float_height"])
 	return float(spec["rest_length"]) + float(spec["radius_rear"]) - float(spec["wheel_y"]) + 0.05
 
 
@@ -379,6 +441,12 @@ func _physics_process(delta: float) -> void:
 		return
 	_wall_guard()
 	var v := forward_speed()
+	if hull != null:
+		var rate_b := lerpf(STEER_SPEED, STEER_SPEED * 0.55, clampf(absf(v) / 70.0, 0.0, 1.0))
+		_steer = move_toward(_steer, clampf(steer_input if controls_enabled else 0.0, -1.0, 1.0), rate_b * delta)
+		steering = -steer_angle(_steer, v) if fixed_steer == INF else fixed_steer
+		hull.step(self, delta, steering)
+		return
 	var thr := throttle if controls_enabled else 0.0
 	var brk := brake_input if controls_enabled else 0.0
 	var str_in := steer_input if controls_enabled else 0.0

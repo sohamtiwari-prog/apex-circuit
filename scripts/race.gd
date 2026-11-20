@@ -436,6 +436,14 @@ func _spawn_opponents(player_team: int) -> void:
 		entrants.append(e)
 
 
+## The gantry's lights (a road circuit's, or a powerboat course's floating one).
+func _start_lights(n: int) -> void:
+	if track.trackside != null:
+		track.trackside.set_lights(n)
+	elif track.course != null:
+		track.course.set_lights(n)
+
+
 ## A car's race number: team-mates get neighbouring numbers.
 static func _race_number(i: int, team: int) -> int:
 	return [4, 7, 11, 16, 22, 27, 31, 44, 55, 63, 77, 81, 3, 10, 14, 18, 23, 38, 50, 88][(team * 2 + i % 2) % 20]
@@ -1160,10 +1168,10 @@ func _update_lights(delta: float) -> void:
 	var lit := clampi(int(lights_time), 0, 5)
 	if lights_time < lights_out_at:
 		hud.show_lights(lit, false)
-		track.trackside.set_lights(lit)
+		_start_lights(lit)
 	else:
 		hud.show_lights(0, true)
-		track.trackside.set_lights(0)
+		_start_lights(0)
 		state = State.RACING
 		race_time = 0.0
 		for e in entrants:

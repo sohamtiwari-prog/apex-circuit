@@ -10,6 +10,8 @@ extends RefCounted
 ## (scripts/safety_car.gd) is the one other car, a road car.
 
 const CATALOG := ["kart", "f4", "f3", "f2", "gp26"]
+## The powerboats (their own section of the game, racing on the water).
+const BOATS := ["h1"]
 const SAFETY_CAR := "vanta_gt"
 
 ## Grand Prix teams (fictional) and their liveries: base, accent, stripe, helmet.
@@ -33,7 +35,21 @@ static func team(index: int, car_id := "gp26") -> Dictionary:
 
 ## Every class in the catalog races as teams (the safety car doesn't).
 static func has_teams(car_id: String) -> bool:
-	return CATALOG.has(car_id)
+	return CATALOG.has(car_id) or BOATS.has(car_id)
+
+
+static func is_boat(car_id: String) -> bool:
+	return BOATS.has(car_id)
+
+
+## A car (or boat) this version has.
+static func is_known(car_id: String) -> bool:
+	return CATALOG.has(car_id) or BOATS.has(car_id)
+
+
+## Everything you can drive: the car classes, then the boats.
+static func everything() -> Array:
+	return Array(CATALOG) + Array(BOATS)
 
 
 ## Whether a car has a drag-reduction flap (F4 and karts don't).
@@ -52,6 +68,8 @@ static func teams_for(car_id: String) -> Array:
 			return F4_TEAMS
 		"kart":
 			return KART_TEAMS
+		"h1":
+			return BOAT_TEAMS
 	return TEAMS
 
 
@@ -91,6 +109,19 @@ const F4_TEAMS := [
 	{"id": "pinewood", "name": "Pinewood Racing", "base": Color(0.05, 0.35, 0.18), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(0.95, 0.95, 0.97), "helmet": Color(0.05, 0.35, 0.18)},
 	{"id": "quicksilver", "name": "Quicksilver Junior", "base": Color(0.78, 0.8, 0.84), "accent": Color(0.1, 0.25, 0.8), "stripe": Color(0.1, 0.25, 0.8), "helmet": Color(0.1, 0.25, 0.8)},
 ]
+## Powerboat teams.
+const BOAT_TEAMS := [
+	{"id": "tidal", "name": "Tidal Force Racing", "base": Color(0.05, 0.25, 0.7), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(1.0, 0.8, 0.0), "helmet": Color(0.95, 0.95, 0.97)},
+	{"id": "riptide", "name": "Riptide Powerboats", "base": Color(0.9, 0.08, 0.1), "accent": Color(0.06, 0.06, 0.07), "stripe": Color(0.95, 0.95, 0.97), "helmet": Color(0.9, 0.08, 0.1)},
+	{"id": "coral", "name": "Coral Bay Team", "base": Color(1.0, 0.45, 0.35), "accent": Color(0.05, 0.2, 0.35), "stripe": Color(0.95, 0.95, 0.97), "helmet": Color(1.0, 0.45, 0.35)},
+	{"id": "abyss", "name": "Abyss Racing", "base": Color(0.05, 0.05, 0.06), "accent": Color(0.0, 0.85, 0.75), "stripe": Color(0.0, 0.85, 0.75), "helmet": Color(0.0, 0.85, 0.75)},
+	{"id": "sunwake", "name": "Sunwake", "base": Color(1.0, 0.78, 0.0), "accent": Color(0.06, 0.06, 0.07), "stripe": Color(0.06, 0.06, 0.07), "helmet": Color(1.0, 0.78, 0.0)},
+	{"id": "lagoon", "name": "Lagoon Motorsport", "base": Color(0.0, 0.62, 0.55), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(1.0, 0.5, 0.1), "helmet": Color(0.95, 0.95, 0.97)},
+	{"id": "frost", "name": "Frostline", "base": Color(0.93, 0.95, 0.98), "accent": Color(0.1, 0.35, 0.85), "stripe": Color(0.1, 0.35, 0.85), "helmet": Color(0.1, 0.35, 0.85)},
+	{"id": "marlin", "name": "Marlin Racing", "base": Color(0.35, 0.15, 0.6), "accent": Color(1.0, 0.85, 0.2), "stripe": Color(1.0, 0.85, 0.2), "helmet": Color(1.0, 0.85, 0.2)},
+	{"id": "harbourmaster", "name": "Harbourmaster", "base": Color(0.1, 0.12, 0.2), "accent": Color(0.95, 0.3, 0.1), "stripe": Color(0.95, 0.95, 0.97), "helmet": Color(0.95, 0.3, 0.1)},
+	{"id": "seaglass", "name": "Seaglass Team", "base": Color(0.55, 0.85, 0.75), "accent": Color(0.05, 0.25, 0.25), "stripe": Color(0.05, 0.25, 0.25), "helmet": Color(0.05, 0.25, 0.25)},
+]
 const KART_TEAMS := [
 	{"id": "bolt", "name": "Bolt Kart", "base": Color(1.0, 0.82, 0.0), "accent": Color(0.06, 0.06, 0.07), "stripe": Color(0.06, 0.06, 0.07), "helmet": Color(1.0, 0.82, 0.0)},
 	{"id": "torque", "name": "Torque Kart", "base": Color(0.9, 0.08, 0.08), "accent": Color(0.95, 0.95, 0.97), "stripe": Color(0.95, 0.95, 0.97), "helmet": Color(0.95, 0.95, 0.97)},
@@ -121,9 +152,11 @@ static func get_spec(id: String, team_index := 0) -> Dictionary:
 			s = f4()
 		"kart":
 			s = kart()
+		"h1":
+			s = h1()
 		_:
 			s = gp26()
-	if s["body"] in ["gp", "kart"]:
+	if s["body"] in ["gp", "kart", "boat"]:
 		var t := team(team_index, String(s["id"]))
 		s["livery"] = t
 		s["team_name"] = t["name"]
@@ -511,6 +544,98 @@ static func kart() -> Dictionary:
 		"chase_dist": 3.2,
 		"chase_height": 1.15,
 		"chase_look": 3.0,
+	}
+
+
+# ------------------------------------------------------------ the powerboat
+
+## Circuit powerboat (scripts/boat_hull.gd): a tunnel-hull catamaran with a
+## racing outboard, modelled on the top single-seat class: ~400 hp from a
+## two-stroke V6, ~520 kg with driver, past 200 km/h, corners at ~2 g on
+## the edges of its sponsons, the driver in an enclosed safety cell.
+## Forward is +Z; the transom (back) at z -2.9, the bow +3.1.
+static func h1() -> Dictionary:
+	var pts: Array = []
+	# Along each sponson's bottom: the bow rises out of the water.
+	for x in [0.8, -0.8]:
+		for st in [[-2.7, 0.0], [-1.7, 0.0], [-0.6, 0.012], [0.5, 0.04], [1.6, 0.11], [2.6, 0.27]]:
+			pts.append(Vector3(x, st[1], st[0]))
+	return {
+		"id": "h1",
+		"name": "Apex Tunnel H1",
+		"series": "Powerboat H1",
+		"desc": "Tunnel-hull powerboat · 400 hp · 520 kg · 215 km/h",
+		"body": "boat",
+		"color": Color(0.05, 0.25, 0.7),
+		"accent": Color(0.95, 0.95, 0.97),
+
+		"mass": 520.0,
+		"length": 6.0,
+		"beam": 2.1,
+		"com": Vector3(0, 0.28, -0.9),
+		"hull_points": pts,
+		"hull_area": 4.8,
+		"prop": Vector3(0, -0.28, -3.15),
+		"float_height": 0.05,
+		"power": 300000.0,
+		"max_drive_force": 6200.0,
+		"drag": 0.5,
+		"aero_lift": 0.45,
+		"downforce": 0.0,
+		"downforce_balance": 0.0,
+		"brake_base": 7.0,
+		"brake_aero": 0.0,
+		"brake_max": 8.0,
+		"steer_low": 0.5,
+		"steer_high": 0.08,
+		"steer_full_speed": 60.0,
+		"steer_rate": 2.6,
+		"top_kmh": 215.0,
+
+		# (A virtual wheelbase: the steering means the same as a car's.)
+		"wheel_front_z": 1.5,
+		"wheel_rear_z": -1.5,
+		"track_front": 0.8,
+		"track_rear": 0.8,
+		"wheel_y": 0.0,
+		"radius_front": 0.3,
+		"radius_rear": 0.3,
+		"rest_length": 0.1,
+		"travel": 0.1,
+		"mu_front": 2.0,
+		"mu_rear": 2.2,
+		"slip_peak_front": 6.0,
+		"slip_peak_rear": 5.0,
+		"susp_hz": 3.0,
+		"susp_damping": 0.7,
+		"arb_front": 0.5,
+		"arb_rear": 0.5,
+		"brake_bias": 0.5,
+		"wear_mul": 0.0,
+		"no_steer_cal": true,
+		"collision": [
+			[Vector3(2.0, 0.55, 5.6), Vector3(0, 0.3, 0.1)],
+			[Vector3(0.55, 1.0, 0.55), Vector3(0, 0.6, -2.85)],
+		],
+
+		"gears": [1.0],
+		"idle_rpm": 1800.0,
+		"redline": 10500.0,
+		"upshift_rpm": 99999.0,
+		"downshift_rpm": 0.0,
+		"peak_rpm": 9800.0,
+		"shift_time": 0.04,
+		"cylinders": 6,
+		"engine_base_hz": 140.0,
+		"engine_tone": "outboard",
+
+		"cams": [
+			{"name": "Cockpit", "pos": Vector3(0, 0.78, 0.55), "pitch": -3.0, "cockpit": true},
+			{"name": "Engine", "pos": Vector3(0, 1.45, -2.6), "pitch": -6.0},
+		],
+		"chase_dist": 7.5,
+		"chase_height": 2.2,
+		"chase_look": 6.0,
 	}
 
 

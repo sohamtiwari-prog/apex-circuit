@@ -19,7 +19,7 @@ func _ready() -> void:
 	add_child(room)
 	room.build(Vector3(5.2, 1.7, 6.0), Vector3(0.2, 0.25, -0.4), 38.0)
 	car_id = String(save.get_setting("garage_car"))
-	if not CarSpecs.CATALOG.has(car_id):
+	if not CarSpecs.is_known(car_id):
 		car_id = Garage.STARTER
 	_build_ui()
 	UIStyle.reveal_boards.call_deferred(self)
@@ -82,13 +82,14 @@ func _refresh() -> void:
 		return
 	var ids: Array = Array(CarSpecs.CATALOG).duplicate()
 	ids.sort_custom(func(x, y): return Garage.pr(CarSpecs.get_spec(x)) < Garage.pr(CarSpecs.get_spec(y)))
+	ids.append_array(CarSpecs.BOATS)
 	var team := int(save.get_setting("team"))
 	for id in ids:
 		var spec: Dictionary = save.car_spec(id)
 		# The class first (the ladder: Karting, F4, F3, F2, Grand Prix), the
 		# car under it; edged in your team's colour in that class.
 		var si := Career.series_for_car(id)
-		var title: String = String(Career.SERIES[si]["name"]) if si >= 0 else String(spec["name"])
+		var title: String = String(Career.SERIES[si]["name"]) if si >= 0 else String(spec.get("series", spec["name"]))
 		var sub := "%s, PR %.1f" % [spec["name"], Garage.pr(spec)]
 		if String(save.get_setting("garage_car")) == id:
 			sub += ", home car"
@@ -244,7 +245,10 @@ func _build_panel() -> void:
 	var mods := HBoxContainer.new()
 	mods.add_theme_constant_override("separation", 10)
 	_panel.add_child(mods)
-	for m in [["Paint", "res://scenes/paint.tscn"], ["Setup", "res://scenes/setup.tscn"]]:
+	var mod_list: Array = [["Paint", "res://scenes/paint.tscn"]]
+	if not CarSpecs.is_boat(car_id):
+		mod_list.append(["Setup", "res://scenes/setup.tscn"])          # (boats: no setup to change)
+	for m in mod_list:
 		var scene: String = m[1]
 		var mb := UIStyle.button(String(m[0]), func():
 			save.set_setting("paint_car", car_id)

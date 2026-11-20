@@ -56,6 +56,8 @@ const HORIZONS := {
 	"gulf": [3, 0.03, Color(0.3, 0.3, 0.32), 0.0, 17.0],
 	"marina": [3, 0.06, Color(0.3, 0.32, 0.36), 0.0, 18.0],
 	"red_sea": [3, 0.035, Color(0.34, 0.33, 0.32), 0.0, 19.0],
+	"lago_brisa": [1, 0.075, Color(0.27, 0.34, 0.33), 0.45, 20.0],
+	"porto_solmar": [3, 0.05, Color(0.4, 0.42, 0.46), 0.0, 21.0],
 }
 
 
@@ -184,8 +186,12 @@ static func build(parent: Node, style: String, time_of_day := "day", track_id :=
 	env.glow_bloom = 0.04
 	env.glow_hdr_threshold = 1.1
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.1
+	env.adjustment_contrast = 1.06
 	env.adjustment_saturation = 1.0
+	if not style in ["studio", "garage"]:
+		# A broadcast-style grade: cool, clean shadows, warm highlights, a
+		# gentle S-curve and a touch more colour in the mid-tones.
+		env.adjustment_color_correction = grade(night, sunset)
 	if night:
 		env.glow_intensity = 0.8
 		env.glow_bloom = 0.08
@@ -210,6 +216,42 @@ static func build(parent: Node, style: String, time_of_day := "day", track_id :=
 	sun.directional_shadow_split_1 = 0.25
 	parent.add_child(sun)
 	return sun
+
+
+static var _grades := {}
+
+
+## The colour grade (a 3D lookup table over the tone-mapped picture).
+static func grade(night := false, sunset := false) -> Texture3D:
+	var key := "%s%s" % [night, sunset]
+	if _grades.has(key):
+		return _grades[key]
+	const N := 17
+	var cool := Color(0.93, 0.99, 1.07) if not night else Color(0.9, 0.97, 1.1)
+	var warm := Color(1.06, 1.0, 0.92) if not sunset else Color(1.08, 0.98, 0.88)
+	var images: Array[Image] = []
+	for b in N:
+		var img := Image.create(N, N, false, Image.FORMAT_RGB8)
+		for g in N:
+			for r in N:
+				var c := Color(float(r) / (N - 1), float(g) / (N - 1), float(b) / (N - 1))
+				var l := c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722
+				# S-curve on each channel.
+				var o := Color(lerpf(c.r, smoothstep(0.0, 1.0, c.r), 0.22), lerpf(c.g, smoothstep(0.0, 1.0, c.g), 0.22), lerpf(c.b, smoothstep(0.0, 1.0, c.b), 0.22))
+				# Split toning: shadows cool, highlights warm.
+				var sh := pow(1.0 - l, 2.0) * 0.55
+				var hi := pow(l, 2.0) * 0.5
+				o = Color(o.r * lerpf(1.0, cool.r, sh) * lerpf(1.0, warm.r, hi), o.g * lerpf(1.0, cool.g, sh) * lerpf(1.0, warm.g, hi), o.b * lerpf(1.0, cool.b, sh) * lerpf(1.0, warm.b, hi))
+				# More colour in the mid-tones, less in the extremes.
+				var ol := o.r * 0.2126 + o.g * 0.7152 + o.b * 0.0722
+				var sat := 1.0 + 0.12 * (1.0 - absf(ol - 0.5) * 2.0)
+				o = Color(ol + (o.r - ol) * sat, ol + (o.g - ol) * sat, ol + (o.b - ol) * sat)
+				img.set_pixel(r, g, Color(clampf(o.r, 0.0, 1.0), clampf(o.g, 0.0, 1.0), clampf(o.b, 0.0, 1.0)))
+		images.append(img)
+	var t := ImageTexture3D.new()
+	t.create(Image.FORMAT_RGB8, N, N, N, false, images)
+	_grades[key] = t
+	return t
 
 
 ## High: shadows and glow. Battery saver: neither, and shorter draw distance

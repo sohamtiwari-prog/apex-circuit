@@ -48,6 +48,15 @@ func _run() -> void:
 	save.data["settings"]["car"] = "f3"
 	await _open("res://scenes/menu.tscn")
 	await _shot(out + "/g7b_quick_f3.png")
+	save.data["settings"]["car"] = "h1"
+	save.data["settings"]["track"] = "lago_brisa"
+	await _open("res://scenes/menu.tscn")
+	await _shot(out + "/g7c_quick_boats.png")
+	garage = await _open("res://scenes/garage.tscn")
+	garage._select("h1")
+	await _shot(out + "/g7d_garage_boat.png")
+	save.data["settings"]["car"] = "gp26"
+	save.data["settings"]["track"] = "silvermoor"
 	save.data["trophies"] = [{"series": "Sports Car Cup", "position": 1, "date": "2026-10-28"}, {"series": "Muscle Car Series", "position": 3, "date": "2026-10-20"}]
 	save.data["best_laps"] = {"silvermoor|gp26": 102345, "marina|gp26": 101020, "styria|gp26": 71640}
 	await _open("res://scenes/profile.tscn")

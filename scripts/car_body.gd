@@ -47,6 +47,8 @@ func build(car_spec: Dictionary, car: RaceCar) -> void:
 		_build_gp()
 	elif spec["body"] == "kart":
 		_build_kart()
+	elif spec["body"] == "boat":
+		_build_boat()
 	else:
 		_build_road()
 	var mesh := ArrayMesh.new()
@@ -78,8 +80,12 @@ func build(car_spec: Dictionary, car: RaceCar) -> void:
 		mi.set_surface_override_material(tail_surface, _tail_mat)
 	for w in car.wheels:
 		_attach_wheel(w)
-	_blob_shadow()
-	if spec["body"] == "gp":
+	if spec["body"] != "boat":
+		_blob_shadow()
+	if spec["body"] == "boat":
+		_sponsor_decals(mesh, BOAT_DECALS)
+		set_number(int(spec.get("number", 26)))
+	elif spec["body"] == "gp":
 		_sponsor_decals(mesh, GP_DECALS)
 		set_number(int(spec.get("number", 26)))
 	elif spec["body"] == "kart":
@@ -258,6 +264,23 @@ const KART_DECALS := [
 	{"at": Vector3(0.5, 0.18, -0.05), "n": Vector3(0, 1, 0), "up": Vector3(-1, 0, 0), "w": 0.3, "who": 1},
 	{"at": Vector3(0.0, 0.2, 0.86), "n": Vector3(0, 1, 0.3), "up": Vector3(0, 0, -1), "w": 0.4, "who": 0},
 	{"at": Vector3(0.0, 0.1, -0.99), "n": Vector3(0, 0, -1), "up": Vector3(0, 1, 0), "w": 0.28, "who": 2, "sticker": true},
+]
+
+
+## A powerboat's: down both sponsons, across the deck behind the cockpit
+## and the rear wing, on the cockpit cell and the engine's cowling.
+const BOAT_DECALS := [
+	{"at": Vector3(0.985, 0.33, -0.5), "n": Vector3(1, 0, 0), "up": Vector3(0, 1, 0), "w": 1.3, "who": 0},
+	{"at": Vector3(0.0, 0.985, -2.56), "n": Vector3(0, 1, 0.05), "up": Vector3(0, 0, 1), "w": 1.2, "who": 0},
+	{"at": Vector3(0.23, 0.98, -3.3), "n": Vector3(1, 0, 0), "up": Vector3(0, 1, 0), "w": 0.46, "who": 0},
+	{"at": Vector3(0.0, 0.63, -1.75), "n": Vector3(0, 1, 0), "up": Vector3(0, 0, 1), "w": 1.0, "who": 1},
+	{"at": Vector3(0.0, 1.1, -3.72), "n": Vector3(0, 0, -1), "up": Vector3(0, 1, 0), "w": 0.3, "who": 1},
+	{"at": Vector3(0.985, 0.36, 1.45), "n": Vector3(1, 0, 0), "up": Vector3(0, 1, 0), "w": 0.62, "who": 2},
+	{"at": Vector3(0.43, 0.76, 0.2), "n": Vector3(1, 0, 0), "up": Vector3(0, 1, 0), "w": 0.5, "who": 3},
+	{"at": Vector3(0.82, 0.57, 0.35), "n": Vector3(0, 1, 0), "up": Vector3(-1, 0, 0), "w": 0.9, "who": 4},
+	{"at": Vector3(0.82, 0.57, -1.9), "n": Vector3(0, 1, 0), "up": Vector3(-1, 0, 0), "w": 0.8, "who": 5, "sticker": true},
+	{"at": Vector3(0.0, 0.69, 1.55), "n": Vector3(0, 1, 0.3), "up": Vector3(0, 0, -1), "w": 0.3, "who": "apex"},
+	{"at": Vector3(0.0, 0.8, -0.97), "n": Vector3(0, 0.3, -1), "up": Vector3(0, 1, 0), "w": 0.36, "who": "aurum"},
 ]
 
 
@@ -523,13 +546,20 @@ func _decal(text: String, pos: Vector3, rot: Vector3, px: float, col: Color, siz
 
 ## Race number on the nose and the engine cover.
 func set_number(n: int) -> void:
-	if spec["body"] != "gp" and spec["body"] != "kart":
+	if spec["body"] != "gp" and spec["body"] != "kart" and spec["body"] != "boat":
 		return
 	for l in _numbers:
 		l.queue_free()
 	_numbers.clear()
 	var lv: Dictionary = spec["livery"]
 	var ink: Color = Color(0.97, 0.97, 0.98) if Color(lv["base"]).get_luminance() < 0.6 else Color(0.06, 0.06, 0.08)
+	if spec["body"] == "boat":
+		# On the front of the deck and both sides of the engine's cowling.
+		_numbers.append(_decal(str(n), Vector3(0, 0.615, 2.08), Vector3(-PI / 2 + 0.12, 0, 0), 0.0034, ink, 64))
+		var cowl_ink: Color = Color(0.97, 0.97, 0.98) if Color(lv["accent"]).get_luminance() < 0.6 else Color(0.06, 0.06, 0.08)
+		for sx in [-1.0, 1.0]:
+			_numbers.append(_decal(str(n), Vector3(0.217 * sx, 1.26, -3.3), Vector3(0, PI / 2 * sx, 0), 0.0026, cowl_ink, 64))
+		return
 	if spec["body"] == "kart":
 		# On the front panel and both side pods.
 		_numbers.append(_decal(str(n), Vector3(0, 0.27, 0.535), Vector3(-0.42, 0, 0), 0.0024, ink, 64))
@@ -1053,6 +1083,140 @@ func _build_kart() -> void:
 		var a := lerpf(-1.2, 1.35, k / 8.0)
 		crown.append(hc + Vector3(0, cos(a) * 0.136, sin(a) * 0.146))
 	MeshKit.tube(hst, crown, 0.015, 5, stripe)
+	var hmesh := MeshKit.finish(hst)
+	hmesh.surface_set_material(0, _material("paint"))
+	helmet = MeshInstance3D.new()
+	helmet.mesh = hmesh
+	add_child(helmet)
+
+
+# ------------------------------------------------------------ powerboat
+
+## A circuit powerboat: a tunnel-hull catamaran. Two slim sponsons ride the
+## water, joined by a wide deck whose underside (the tunnel) traps air that
+## lifts the boat at speed; the driver sits in an enclosed safety cell
+## under a canopy; the outboard hangs off the transom, its leg and
+## propeller in the water; a small wing between the sponsons' tails.
+## Waterline about 0.1 m up; forward +Z, the transom at z -2.9.
+func _build_boat() -> void:
+	_g = 0.0
+	var lv: Dictionary = spec["livery"]
+	_base = lv["base"]
+	_accent = lv["accent"]
+	_stripe = lv["stripe"]
+	var paint := _st("satin")
+	var matte := _st("matte")
+	var metal := _st("metal")
+	var bottom := Color(0.92, 0.93, 0.95) if _base.get_luminance() < 0.75 else Color(0.12, 0.13, 0.15)
+	# The sponsons: deep at the back, the bottom sweeping up to a fine bow.
+	for sx in [-1.0, 1.0]:
+		var rows := [
+			[-2.9, 0.0, 0.56, 0.1, 0.17, 0.16],
+			[-1.4, 0.0, 0.57, 0.1, 0.17, 0.16],
+			[0.0, 0.012, 0.575, 0.095, 0.17, 0.16],
+			[1.3, 0.05, 0.575, 0.08, 0.16, 0.15],
+			[2.25, 0.14, 0.565, 0.05, 0.125, 0.115],
+			[2.85, 0.26, 0.53, 0.022, 0.07, 0.06],
+			[3.1, 0.37, 0.47, 0.004, 0.018, 0.016],
+		]
+		var sts: Array = []
+		for r in rows:
+			sts.append(MeshKit.section(r[0], r[1], r[2], r[3], r[4], r[5], 3.4, 0.82 * sx))
+		MeshKit.loft(paint, sts, 20, func(p: Vector3, th: float) -> Color:
+			var hh := p.y
+			# A white (or dark) bottom, the team's accent along the chine, a
+			# pinstripe, the base colour above.
+			var sweep := 0.17 + 0.06 * clampf((p.z + 1.0) / 3.0, 0.0, 1.0)
+			if hh < sweep - 0.08:
+				return bottom
+			if hh < sweep:
+				return _accent
+			if hh < sweep + 0.025:
+				return _stripe
+			return _base)
+	# The deck over the tunnel, from the transom to a sharp lip at the front.
+	var deck_rows := [
+		[-2.9, 0.36, 0.6, 0.9, 0.93, 0.9],
+		[-1.0, 0.36, 0.62, 0.9, 0.93, 0.9],
+		[1.0, 0.37, 0.61, 0.9, 0.93, 0.89],
+		[1.9, 0.4, 0.57, 0.86, 0.87, 0.82],
+		[2.4, 0.45, 0.515, 0.72, 0.72, 0.68],
+		[2.6, 0.475, 0.49, 0.5, 0.5, 0.48],
+	]
+	var deck: Array = []
+	for r in deck_rows:
+		deck.append(MeshKit.section(r[0], r[1], r[2], r[3], r[4], r[5], 8.0))
+	MeshKit.loft(paint, deck, 24, func(p: Vector3, th: float) -> Color:
+		if th < -0.3:
+			return bottom.darkened(0.25)                 # the tunnel's roof
+		# A stripe of the accent down the middle of the deck.
+		if absf(p.x) < 0.07 and p.z > -2.8:
+			return _accent
+		return _base)
+	# The driver's cell: a rounded capsule, a canopy over the cockpit.
+	var cell_rows := [
+		[-1.0, 0.56, 0.8, 0.32, 0.34, 0.28],
+		[-0.3, 0.56, 0.97, 0.4, 0.42, 0.34],
+		[0.5, 0.56, 1.0, 0.41, 0.43, 0.34],
+		[1.25, 0.57, 0.86, 0.36, 0.36, 0.28],
+		[1.8, 0.58, 0.68, 0.2, 0.2, 0.15],
+	]
+	var cell: Array = []
+	for r in cell_rows:
+		cell.append(MeshKit.section(r[0], r[1], r[2], r[3], r[4], r[5], 2.8))
+	MeshKit.loft(paint, cell, 22, func(p: Vector3, th: float) -> Color:
+		if p.y > 0.86 and p.z > -0.1 and p.z < 1.35:
+			return Color(0.03, 0.03, 0.035)                 # (under the canopy)
+		return _accent if p.y < 0.66 else _base)
+	MeshKit.ellipsoid(_st("glass"), Vector3(0, 0.9, 0.62), Vector3(0.33, 0.15, 0.68), 16, Color(0.08, 0.1, 0.12, 1.0))
+	# The canopy's frame.
+	var frame: Array = []
+	for k in 13:
+		var a := lerpf(-PI * 0.5, PI * 0.5, k / 12.0)
+		frame.append(Vector3(sin(a) * 0.335, 0.9, 0.62 + cos(a) * 0.69))
+	MeshKit.tube(paint, frame, 0.022, 6, _accent)
+	MeshKit.tube(paint, [Vector3(0, 0.9, 1.3), Vector3(0, 1.05, 0.62), Vector3(0, 0.98, -0.1)], 0.02, 6, _accent)
+	# Lifting eye behind the cell.
+	MeshKit.tube(metal, [Vector3(0, 0.8, -0.95), Vector3(0, 1.02, -0.88), Vector3(0, 1.02, -0.72), Vector3(0, 0.84, -0.65)], 0.02, 6, Color(0.7, 0.72, 0.75))
+	# Rear wing between the sponsons' tails, on two fins.
+	MeshKit.airfoil(paint, -0.98, 0.98, 0.95, -2.38, 0.36, 0.12, 0.05, -4.0, _base)
+	for sx in [-1.0, 1.0]:
+		MeshKit.plate(matte, [Vector2(-2.3, 0.56), Vector2(-2.75, 0.56), Vector2(-2.8, 1.02), Vector2(-2.45, 1.02)], 0.82 * sx, 0.03, CARBON)
+		# Sponson tail: a flat transom face.
+		MeshKit.box(matte, Vector3(0.3, 0.5, 0.02), Vector3(0.82 * sx, 0.3, -2.905), CARBON)
+	# The outboard: a clamp on the transom, the tall cowling, the leg down
+	# into the water, the gearcase and propeller.
+	MeshKit.box(metal, Vector3(0.42, 0.34, 0.24), Vector3(0, 0.55, -3.02), Color(0.2, 0.21, 0.23))
+	var cowl_rows := [
+		[-2.95, 0.74, 1.3, 0.16, 0.19, 0.15],
+		[-3.12, 0.68, 1.5, 0.19, 0.21, 0.17],
+		[-3.45, 0.68, 1.52, 0.19, 0.21, 0.16],
+		[-3.68, 0.74, 1.38, 0.15, 0.16, 0.12],
+		[-3.8, 0.84, 1.2, 0.07, 0.08, 0.05],
+	]
+	var cowl: Array = []
+	for r in cowl_rows:
+		cowl.append(MeshKit.section(r[0], r[1], r[2], r[3], r[4], r[5], 3.0))
+	MeshKit.loft(paint, cowl, 18, func(p: Vector3, th: float) -> Color:
+		if p.y > 1.36:
+			return _stripe
+		return _accent if p.y < 0.86 else _accent.lerp(_base, 0.0))
+	MeshKit.box(matte, Vector3(0.11, 0.98, 0.34), Vector3(0, 0.19, -3.3), Color(0.08, 0.08, 0.09))
+	MeshKit.ellipsoid(metal, Vector3(0, -0.28, -3.3), Vector3(0.075, 0.075, 0.27), 10, Color(0.25, 0.26, 0.28))
+	MeshKit.box(matte, Vector3(0.025, 0.2, 0.22), Vector3(0, -0.42, -3.36), Color(0.08, 0.08, 0.09))
+	MeshKit.box(matte, Vector3(0.5, 0.025, 0.24), Vector3(0, 0.0, -3.28), Color(0.08, 0.08, 0.09))   # cavitation plate
+	for k in 3:
+		var a := TAU * k / 3.0
+		MeshKit.box(metal, Vector3(0.1, 0.2, 0.012), Vector3(sin(a) * 0.1, -0.28 + cos(a) * 0.1, -3.58), Color(0.62, 0.63, 0.66), Vector3(0, 0, rad_to_deg(-a)))
+	# The driver.
+	var hst := MeshKit.new_tool()
+	var hc := Vector3(0, 0.86, 0.48)
+	MeshKit.ellipsoid(hst, hc, Vector3(0.12, 0.13, 0.14), 14, lv["helmet"])
+	var visor: Array = []
+	for k in 9:
+		var a := lerpf(-1.05, 1.05, k / 8.0)
+		visor.append(hc + Vector3(sin(a) * 0.116, 0.03, cos(a) * 0.132))
+	MeshKit.tube(hst, visor, 0.026, 6, Color(0.02, 0.02, 0.03))
 	var hmesh := MeshKit.finish(hst)
 	hmesh.surface_set_material(0, _material("paint"))
 	helmet = MeshInstance3D.new()

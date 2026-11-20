@@ -338,6 +338,11 @@ func _engine_wave(tone: String, on_load: bool) -> AudioStreamWAV:
 			# with a long tail of odd harmonics.
 			harmonics = [1.0, 2.0, 3.0, 4.0, 5.0, 7.0, 9.0]
 			gains = [1.0, 0.55, 0.6, 0.3, 0.35, 0.22, 0.14]
+		"outboard":
+			# Racing outboard (a two-stroke V6, the powerboat): a hard, buzzing
+			# rasp with strong half orders and a high whine from the gears.
+			harmonics = [0.5, 1.0, 1.5, 2.0, 3.0, 4.5, 6.0, 9.0]
+			gains = [0.35, 1.0, 0.5, 0.65, 0.5, 0.3, 0.2, 0.1]
 		"v12":
 			# V12: smooth and pure, almost no sub-harmonics.
 			harmonics = [1.0, 2.0, 3.0, 4.0, 6.0]

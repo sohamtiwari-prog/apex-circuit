@@ -254,6 +254,30 @@ func show_spec(spec: Dictionary) -> void:
 	car.freeze = true
 	showcase.add_child(car)
 	car.position.y = car.spawn_height() - 0.05
+	on_stand(car)
+
+
+## A boat on show stands on a cradle (its outboard's leg hangs below the hull).
+static func on_stand(c: RaceCar) -> void:
+	if c.hull == null:
+		return
+	c.position.y += 0.62
+	var st := MeshKit.new_tool()
+	var grey := Color(0.2, 0.21, 0.23)
+	for sx in [-0.82, 0.82]:
+		MeshKit.box(st, Vector3(0.22, 0.12, 4.6), Vector3(sx, -0.06, -0.2), Color(0.12, 0.12, 0.13))
+		for z in [-1.9, 1.4]:
+			MeshKit.box(st, Vector3(0.12, 0.6, 0.12), Vector3(sx, -0.38, z), grey)
+	MeshKit.box(st, Vector3(1.9, 0.1, 0.14), Vector3(0, -0.62, -1.9), grey)
+	MeshKit.box(st, Vector3(1.9, 0.1, 0.14), Vector3(0, -0.62, 1.4), grey)
+	var mi := MeshInstance3D.new()
+	mi.mesh = MeshKit.finish(st)
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.metallic = 0.5
+	m.roughness = 0.4
+	mi.material_override = m
+	c.add_child(mi)
 
 
 func _process(delta: float) -> void:

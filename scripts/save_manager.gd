@@ -87,6 +87,8 @@ const _DEFAULTS := {
 		"car": "gp26",
 		"team": 0,
 		"track": "silvermoor",
+		"land_car": "",             # (the car to go back to from the powerboats)
+		"land_track": "",
 		"mode": "race",             # "race" or "time_trial"
 		"race_type": "race",        # quick race: race, eliminator, duel, overtake, checkpoint
 		"laps": 3,
@@ -286,7 +288,7 @@ func _migrate(profile: Dictionary) -> void:
 	# v8: Grand Prix only. Cars that have gone are the GP car; a season in
 	# a class that has gone is over (its trophies stay in the cabinet).
 	for key in ["car", "garage_car", "paint_car"]:
-		if String(st.get(key, "")) != "" and not CarSpecs.CATALOG.has(String(st.get(key, ""))):
+		if String(st.get(key, "")) != "" and not CarSpecs.is_known(String(st.get(key, ""))):
 			st[key] = "gp26"
 	var cs: Dictionary = profile.get("championship", {})
 	if cs.has("class") and Championship.class_info(String(cs["class"]))["id"] != String(cs["class"]):
@@ -310,6 +312,8 @@ func _migrate(profile: Dictionary) -> void:
 ## A car's spec (every car races as it comes).
 ## Your car: its spec, in your own paint if you've made one for it.
 func car_spec(car_id: String, team := 0) -> Dictionary:
+	if CarSpecs.is_boat(car_id):
+		return CarSpecs.apply_paint(CarSpecs.get_spec(car_id, team), my_paint(car_id))
 	return CarSpecs.apply_setup(CarSpecs.apply_paint(CarSpecs.get_spec(car_id, team), my_paint(car_id)), my_setup(car_id))
 
 

@@ -59,7 +59,7 @@ func _ready() -> void:
 ## The car shown at home: the one picked in the Garage.
 func home_car() -> String:
 	var c := String(save.get_setting("garage_car"))
-	return c if CarSpecs.CATALOG.has(c) else Garage.STARTER
+	return c if CarSpecs.is_known(c) else Garage.STARTER
 
 
 func _build_ui() -> void:
@@ -132,6 +132,9 @@ func _build_ui() -> void:
 	var records := _icon_button("trophy", func(): get_tree().change_scene_to_file("res://scenes/profile.tscn"), "Records")
 	top.add_child(records)
 	_tiles["profile"] = records
+	var garage_b := _icon_button("spanner", func(): get_tree().change_scene_to_file("res://scenes/garage.tscn"), "Garage")
+	top.add_child(garage_b)
+	_tiles["garage"] = garage_b
 	var stars := PanelContainer.new()
 	var ssb := UIStyle.panel(UIStyle.BLACK, false)
 	ssb.content_margin_left = 14
@@ -174,13 +177,36 @@ func _build_ui() -> void:
 	_tile(grid, "championship", "podium", "Championship", Championship.summary(save), func(): get_tree().change_scene_to_file("res://scenes/championship.tscn"))
 	_tile(grid, "career", "trophy", "Career", "Karts to Grand Prix: you're in %s" % String(Career.SERIES[Career.reached(save)]["name"]), func(): get_tree().change_scene_to_file("res://scenes/career.tscn"),
 		"%d of %d stars" % [Career.total_stars(save), Career.SERIES.size() * 18])
-	_tile(grid, "quick", "flag", "Quick race", "Any track, any rules", func(): get_tree().change_scene_to_file("res://scenes/menu.tscn"))
+	_tile(grid, "boats", "boat", "Powerboats", "Race 400 hp catamarans round the buoys", _open_boats)
+	_tile(grid, "quick", "flag", "Quick race", "Any track, any rules", _open_quick)
 	_tile(grid, "friends", "friends", "Friends", "Race on the same Wi-Fi or online", func(): get_tree().change_scene_to_file("res://scenes/lobby.tscn"))
-	_tile(grid, "garage", "spanner", "Garage", "Your team, paint and setup", func(): get_tree().change_scene_to_file("res://scenes/garage.tscn"),
-		"%d classes" % CarSpecs.CATALOG.size())
-	for k in ["daily", "championship", "career", "quick", "friends", "garage"]:
+	for k in ["daily", "championship", "career", "boats", "quick", "friends"]:
 		boards.append(_tiles[k])
 	UIStyle.reveal(boards)
+
+
+## Powerboats: quick races on the water (the picker shows the boats and
+## the courses). The car you'd picked is kept for when you come back.
+func _open_boats() -> void:
+	var cur := String(save.get_setting("car"))
+	if not CarSpecs.is_boat(cur):
+		save.set_setting("land_car", cur)
+		save.set_setting("car", CarSpecs.BOATS[0])
+	if not Track.is_boat_course(String(save.get_setting("track"))):
+		save.set_setting("land_track", String(save.get_setting("track")))
+		save.set_setting("track", Track.ids_for(CarSpecs.BOATS[0])[0])
+	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+
+
+## Quick race with cars (back from the boats, if that's where you were).
+func _open_quick() -> void:
+	if CarSpecs.is_boat(String(save.get_setting("car"))):
+		var land := String(save.get_setting("land_car"))
+		save.set_setting("car", land if CarSpecs.CATALOG.has(land) else (home_car() if CarSpecs.CATALOG.has(home_car()) else Garage.STARTER))
+		var lt := String(save.get_setting("land_track"))
+		var ids := Track.ids_for(String(save.get_setting("car")))
+		save.set_setting("track", lt if ids.has(lt) else ids[0])
+	get_tree().change_scene_to_file("res://scenes/menu.tscn")
 
 
 ## A board you can tap: lifted off the room, yellow under your thumb.

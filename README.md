@@ -77,6 +77,48 @@ touching between levels, no resets.
 light on the horizon); any track can be raced by day, at sunset or at night
 ("Track's own time" picks the venue's usual one).
 
+## Powerboats
+
+Its own section of the game (**Powerboats** on the home screen): circuit
+powerboat racing on open water, laps round buoys.
+
+| Boat | Class | Power, weight | Top speed |
+|---|---|---|---|
+| **Apex Tunnel H1** | tunnel-hull catamaran, racing outboard (two-stroke V6) | 400 hp, 520 kg | 215 km/h |
+
+Ten fictional teams, each with its liveries and sponsors (down the
+sponsons, across the deck and the rear wing, on the cockpit cell and the
+engine's cowling). Two courses: **Lago Brisa**, a lake in the hills (long
+straights, buoy hairpins), and **Porto Solmar Harbour**, a city harbour
+(tight and twisty by the quays).
+
+**The water** (`scripts/water.gd`, `shaders/open_water.gdshader`) is a sum
+of travelling waves: the same sum is the surface you see and the height
+the boats float on, so a boat rides exactly the swell under it. Fine
+ripples, sky reflections, sun glints and whitecaps are drawn on top. The
+coastal circuits' sea uses it too.
+
+**The boat's physics** (`scripts/boat_hull.gd`): points along the bottoms of
+both sponsons each find the water under them every step. Buoyancy holds
+the hull up (it bobs, pitches and rolls over the swell); water striking the
+hull at speed lifts it onto the plane, until only the back of the sponsons
+skims and the drag falls away; the tunnel's air cushion lifts it more; the
+propeller pushes at the stern and loses its bite when the boat leaves the
+water (the engine over-revs, the boat coasts). It turns by the outboard
+swinging the stern and the sponsons' edges gripping: about 2 g, sliding wide
+past it, scrubbing speed, leaning into the turn. The steering means the same
+as a car's (a share of the hull's grip), so the computer drivers race boats
+with the same code.
+
+**Round the course** (`scripts/water_course.gd`): lines of buoys on both
+sides that ride the swell, big inflatable sponsored buoys at every turn, a
+floating start gantry with lights, sponsors' pontoons along the straights,
+moored yachts, a grandstand on the shore, and the shore itself (beaches and
+wooded hills, or quays and a city) that a boat can run aground on. Every
+boat throws a white wake (the churned trail behind the propeller and the
+two arms of the V), a rooster tail of spray and sheets of spray off the
+outside sponson in hard turns (`scripts/boat_fx.gd`).
+
 ## Install on your phone
 
 1. Open the [latest release](../../releases/latest) on your Android phone
@@ -620,6 +662,11 @@ crack, the overrun crackles. Road cars keep their synthesized engines.
 
 ## Look
 
+**Colour grade.** Every circuit's picture goes through a broadcast-style
+grade (a 3D lookup table, `Look.grade`): cool, clean shadows, warm
+highlights, a gentle S-curve and a touch more colour in the mid-tones,
+tuned for day, sunset and night.
+
 **Cars:** road cars have real wheel arches (the sides rise over each tyre,
 with the fenders standing proud), a shoulder line, a glass greenhouse with
 a painted roof and pillars, door mirrors, splitter, side skirts, number
@@ -738,6 +785,10 @@ scripts/
   ai_driver.gd       pure-pursuit steering + curvature speed planner
   trackside.gd       barriers, fencing, ads, gantry, pits, grandstands, hills
   sponsors.gd        the made-up sponsors: brands, logo textures, teams' deals
+  water.gd           open water: waves (height for physics, the drawn surface)
+  boat_hull.gd       powerboat physics: buoyancy, planing, outboard, turning
+  boat_fx.gd         wakes and spray
+  water_course.gd    powerboat courses: buoys, start gantry, shore, scenery
   look.gd            sky, lighting, post-processing per venue
   tyre_fx.gd         skid marks and tyre smoke
   line_guide.gd      racing-line guide

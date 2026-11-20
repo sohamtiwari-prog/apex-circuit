@@ -43,6 +43,9 @@ const CATALOG := [
 	{"id": "pinecrest", "name": "Pinecrest Kart Circuit", "desc": "Kart circuit · 1.19 km · hairpins in the pines", "style": "forest", "kart": true},
 	{"id": "harbourline", "name": "Harbourline Karting", "desc": "Kart circuit · 1.57 km · two hairpins by the water", "style": "city", "kart": true},
 	{"id": "redrock", "name": "Red Rock Raceway", "desc": "Kart circuit · 1.28 km · fast sweepers in the canyon", "style": "desert", "kart": true},
+	# Powerboat courses: laps round buoys on open water (only boats race here).
+	{"id": "lago_brisa", "name": "Lago Brisa", "desc": "Powerboat course · lake in the hills · long straights, buoy hairpins", "style": "park", "water": "lake"},
+	{"id": "porto_solmar", "name": "Porto Solmar Harbour", "desc": "Powerboat course · city harbour · tight and twisty by the quays", "style": "city", "water": "harbour"},
 ]
 
 # Original club circuit, defined by control points (x, z) in metres.
@@ -133,6 +136,9 @@ var tree_tops := {}
 ## Tunnels (sample index ranges, end may run past the lap), for sight lines.
 const TUNNEL_H := 6.6
 var tunnels: Array = []
+## Powerboat courses: the water, buoys and shore (scripts/water_course.gd).
+var boat_course := false
+var course: WaterCourse
 
 
 func add_tunnel(i0: int, i1: int) -> void:
@@ -185,6 +191,11 @@ static func catalog_entry(id: String) -> Dictionary:
 	return CATALOG[0]
 
 
+## A powerboat course (open water, buoys) rather than a road circuit.
+static func is_boat_course(id: String) -> bool:
+	return String(catalog_entry(id).get("water", "")) != ""
+
+
 static func is_kart_track(id: String) -> bool:
 	return bool(catalog_entry(id).get("kart", false))
 
@@ -193,9 +204,13 @@ static func is_kart_track(id: String) -> bool:
 ## on the full-size ones.
 static func ids_for(car_id: String) -> Array:
 	var kart := car_id == "kart"
+	var boat := CarSpecs.is_boat(car_id)
 	var out := []
 	for t in CATALOG:
-		if bool(t.get("kart", false)) == kart:
+		if String(t.get("water", "")) != "":
+			if boat:
+				out.append(String(t["id"]))
+		elif not boat and bool(t.get("kart", false)) == kart:
 			out.append(String(t["id"]))
 	return out
 
@@ -217,6 +232,19 @@ func build(id: String = "kestrel_park") -> void:
 		detail = minf(detail, 0.35)
 	style = catalog_entry(id)["style"]
 	kart = bool(catalog_entry(id).get("kart", false))
+	boat_course = is_boat_course(id)
+	if boat_course:
+		_load_file("res://tracks/%s.json" % id, false)
+		_derive()
+		_derive_line()
+		_derive_runoff()
+		_derive_drs()
+		_build_grid()
+		_derive_walls()
+		course = WaterCourse.new()
+		add_child(course)
+		course.build(self, String(catalog_entry(id)["water"]))
+		return
 	if id == "kestrel_park" and not FileAccess.file_exists("res://tracks/kestrel_park.json"):
 		road_half = 6.5
 		wall_offset = 19.0
@@ -399,6 +427,13 @@ func _load_file(path: String, with_terrain := false) -> void:
 	road_half = float(data.get("half_width", 7.0))
 	wall_offset = float(data.get("wall_offset", 24.0))
 	points = PackedVector3Array()
+	if data.has("control"):
+		# (Laid out by control points: a powerboat course.)
+		var layout: Array = []
+		for c in data["control"]:
+			layout.append(Vector2(float(c[0]), float(c[1])))
+		_sample_control(layout)
+		return
 	var elev: Array = data.get("elev", [])
 	var pts: Array = data["points"]
 	for k in pts.size():
@@ -736,18 +771,8 @@ func _build_ground() -> void:
 
 ## Sea for coastal tracks: one big water plane (the terrain has a sea bed).
 func _build_water() -> void:
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(8000, 8000)
-	plane.subdivide_width = 0
-	var mat := ShaderMaterial.new()
-	mat.shader = load("res://shaders/water.gdshader")
-	mat.set_shader_parameter("ripples", _noise_texture(0.05, Color(0, 0, 0), Color(1, 1, 1)))
-	var mi := MeshInstance3D.new()
-	mi.mesh = plane
-	mi.material_override = mat
-	mi.position = Vector3(_tx0 + _tstep * _tw * 0.5, sea_level, _tz0 + _tstep * _th * 0.5)
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mi)
+	# The sea: real swell, sky reflections (scripts/water.gd).
+	Water.create(self, "sea", sea_level, 0.55)
 
 
 ## 0 on the mown shelf by the track .. 1 on open land (from the terrain file;
@@ -1326,6 +1351,9 @@ func _build_road() -> void:
 ## Grid slot k: how far back from the line (m) and how far across. Karts
 ## line up half as far apart as single-seaters.
 func grid_slot(k: int) -> Vector2:
+	if boat_course:
+		# Boats: two abreast, well apart, a boat and a half between rows.
+		return Vector2(10.0 + (k / 2) * 11.0 + (k % 2) * 5.5, (-1.0 if k % 2 == 0 else 1.0) * 5.0)
 	var row := 4.0 if kart else 8.0
 	var back := row * 0.75 + (k / 2) * row + (k % 2) * row * 0.5
 	return Vector2(back, (-1.0 if k % 2 == 0 else 1.0) * minf(road_half * 0.45, 3.2 if not kart else 1.6))

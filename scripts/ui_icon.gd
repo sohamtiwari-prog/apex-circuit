@@ -2,7 +2,7 @@ class_name UIIcon
 extends Control
 ## Small drawn icons for the menus, all on one 48-unit grid with the same
 ## heavy, square-ended strokes, so they read as one set: trophy, calendar,
-## podium, flag, friends, spanner, sun, moon, copy, plus, ghost, people.
+## podium, flag, friends, spanner, sun, moon, copy, plus, ghost, people, boat.
 
 @export var kind := "trophy"
 @export var colour := Color.BLACK
@@ -92,6 +92,16 @@ func _draw() -> void:
 			_helmet_shape(20, 18, 0.62, acc)
 		"helmet":
 			_helmet_shape(5, 6, 0.8, colour)
+		"boat":
+			# A powerboat side on: the long low hull, the canopy, the engine's
+			# cowling at the back; a wave under it.
+			_poly([[3, 27], [40, 27], [44, 22], [12, 21], [6, 23]])
+			_poly([[16, 21], [20, 15], [30, 15], [34, 21]])
+			_poly([[4, 13], [11, 13], [11, 27], [5, 27], [3, 20]])
+			var wave: Array = []
+			for k in 13:
+				wave.append([2 + k * 3.7, 36 + sin(k * 1.3) * 2.5])
+			_line(wave, acc, 3.8)
 		"spanner":
 			_line([[10, 38], [29, 19]], colour, 7.0)
 			draw_arc(_p(34, 14), 8.0 * _s(), deg_to_rad(80), deg_to_rad(370), 24, colour, 5.0 * _s(), true)

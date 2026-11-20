@@ -553,7 +553,7 @@ func _refresh_lobby() -> void:
 
 
 func _step_car(d: int) -> void:
-	var ids: Array = Array(CarSpecs.CATALOG)
+	var ids: Array = CarSpecs.everything()
 	var cur := ids.find(String(save.get_setting("car")))
 	var id: String = ids[posmod(cur + d, ids.size())]
 	save.set_setting("car", id)

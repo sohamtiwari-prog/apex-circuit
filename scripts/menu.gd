@@ -33,7 +33,8 @@ func _ready() -> void:
 	UIStyle.use_menus()
 	save = get_node("/root/Save")
 	DisplayServer.screen_set_keep_on(true)
-	car_ids = Array(CarSpecs.CATALOG)
+	# The cars, or the boats when a boat's picked (Powerboats on the home screen).
+	car_ids = Array(CarSpecs.BOATS) if CarSpecs.is_boat(String(save.get_setting("car"))) else Array(CarSpecs.CATALOG)
 	track_ids = Track.ids_for(String(save.get_setting("car")))
 	_build_stage()
 	_build_ui()
@@ -65,6 +66,7 @@ func _show_car(id: String) -> void:
 	preview.freeze = true
 	showcase.add_child(preview)
 	preview.position.y = preview.spawn_height() - 0.05
+	Showroom.on_stand(preview)
 
 
 
@@ -381,6 +383,12 @@ func _refresh_mode() -> void:
 		"eliminator": ["qualifying"],
 		"overtake": ["qualifying"],
 	}
+	# Boats have no tyres to choose and no pit lane.
+	if CarSpecs.is_boat(String(save.get_setting("car"))):
+		for k in off:
+			off[k] = (off[k] as Array) + ["tyres", "pit_mode"]
+		if not off.has(rt):
+			off[rt] = ["tyres", "pit_mode"]
 	for key in _chips:
 		if key == "go":
 			continue
@@ -421,7 +429,7 @@ func _step_track(d: int) -> void:
 
 func _select_car(id: String, persist: bool) -> void:
 	if not car_ids.has(id):
-		id = "gp26"
+		id = car_ids[0] if not car_ids.is_empty() else "gp26"
 	if persist:
 		save.set_setting("car", id)
 		# Karts race on the kart circuits, everything else on the full-size
@@ -554,7 +562,7 @@ func _fetch_ghost() -> void:
 			_ghost_status.text = String(res)
 			return
 		var ch: Dictionary = res
-		if String(Track.catalog_entry(String(ch.get("track", "")))["id"]) != String(ch.get("track", "")) or not CarSpecs.CATALOG.has(String(ch.get("car", ""))):
+		if String(Track.catalog_entry(String(ch.get("track", "")))["id"]) != String(ch.get("track", "")) or not CarSpecs.is_known(String(ch.get("car", ""))):
 			_ghost_status.text = "That lap is on a track or car this version doesn't have: update the game."
 			return
 		save.challenge = ch

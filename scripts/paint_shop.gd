@@ -28,9 +28,9 @@ func _ready() -> void:
 	add_child(room)
 	room.build(Vector3(5.2, 1.7, 6.0), Vector3(0.2, 0.25, -0.4), 38.0)
 	car_id = String(save.get_setting("paint_car"))
-	if not CarSpecs.CATALOG.has(car_id):
+	if not CarSpecs.is_known(car_id):
 		car_id = String(save.get_setting("garage_car"))
-	if not CarSpecs.CATALOG.has(car_id):
+	if not CarSpecs.is_known(car_id):
 		car_id = Garage.STARTER
 	_build_ui()
 	UIStyle.reveal_boards.call_deferred(self)
@@ -124,7 +124,7 @@ func _build_ui() -> void:
 
 
 func _step_car(d: int) -> void:
-	var ids: Array = Array(CarSpecs.CATALOG)
+	var ids: Array = CarSpecs.everything()
 	_select(ids[posmod(ids.find(car_id) + d, ids.size())])
 
 
