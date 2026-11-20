@@ -12,6 +12,8 @@ func _check(ok: bool, msg: String) -> void:
 func _run() -> void:
 	var margin := float(OS.get_cmdline_user_args()[0]) if OS.get_cmdline_user_args().size() > 0 else 0.25
 	for t in Track.CATALOG:
+		if Track.is_boat_course(t["id"]):
+			continue                       # (on the water: no road, no landscape to sink through)
 		var tr := Track.new()
 		root.add_child(tr)
 		tr.build(t["id"])
