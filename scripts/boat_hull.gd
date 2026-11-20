@@ -15,7 +15,8 @@ extends RefCounted
 ##     bow wave at low speed, before it's up on the plane;
 ## the tunnel's air cushion lifts it more at speed; the outboard pushes at
 ## the stern, below the water, and loses its bite when the boat leaves the
-## water (the engine screams, the boat coasts). It turns by the outboard
+## water (the engine screams, the boat coasts). Other boats' wakes are
+## bumps in the water (scripts/water.gd): cross one and the hull hops. It turns by the outboard
 ## swinging the stern round and the sponsons' edges gripping the water: a
 ## turn asks for a yaw rate, the hull's grip (it carries ~2 g, more than a
 ## car on road tyres) bends the path to follow, and past it the boat slides
@@ -46,6 +47,13 @@ var airborne := false
 var prop_bite := 1.0
 var contact := 1.0                  # smoothed share of the boat's weight the water carries
 var dbg_r_want := 0.0
+var slam := 0.0                     # how hard the bow last hit the water (m/s): spray
+var over_wake := false              # crossing another boat's wake
+var _tick := 0
+var _surf := PackedFloat32Array()   # water height under each point (refreshed in turn)
+var _rise := PackedFloat32Array()
+var _near: Array = []               # other boats' wake points nearby
+var _near_owner := 0
 var slide := 0.0                    # sideways slide, 0..1 (spray)
 
 
@@ -71,18 +79,41 @@ func step(car: RaceCar, delta: float, steer_angle: float) -> void:
 	var right_h := Vector3(b.x.x, 0.0, b.x.z).normalized()       # (the car's +x: its left)
 	var v := vel.dot(fwd_h)
 
-	# --- the hull in the water
+	# --- the hull in the water (and over other boats' wakes)
+	# The water under each point is looked up every other step, half the
+	# points at a time (a phone does eight boats' sums at 120 a second; the
+	# water under a point barely changes in one step).
+	_tick += 1
+	if _tick % 4 == 1 or _near_owner != car.get_instance_id():
+		_near = Water.wakes_near(origin, car.get_instance_id())
+		_near_owner = car.get_instance_id()
 	var load := 0.0
 	var wetted := 0.0
-	for p in points:
+	var hit := 0.0
+	if _surf.size() != points.size():
+		_surf.resize(points.size())
+		_rise.resize(points.size())
+		_surf.fill(INF)
+	for pi in points.size():
+		var p: Vector3 = points[pi]
 		var wp := origin + b * p
-		var depth := Water.height(wp.x, wp.z) - wp.y
+		if (pi + _tick) % 2 == 0 or _surf[pi] == INF:
+			var surf := Water.height(wp.x, wp.z)
+			if not _near.is_empty():
+				surf += Water.wake_height(wp.x, wp.z, _near)
+			_surf[pi] = surf
+			_rise[pi] = Water.rise_rate(wp.x, wp.z)
+		var depth := _surf[pi] - wp.y
 		if depth <= 0.0:
 			continue
+		var rise := _rise[pi]
 		var pv := vel + w.cross(wp - com)
 		var wet := clampf(depth / WET_DEPTH, 0.0, 1.0)
+		# (How hard the bow comes down into the water: spray.)
+		if p.z > 1.0:
+			hit = maxf(hit, -(pv.y - rise))
 		var up := RHO * G * area * minf(depth, DEPTH_CAP)
-		up -= HEAVE_DAMP * area * (pv.y - Water.rise_rate(wp.x, wp.z)) * clampf(depth / 0.03, 0.0, 1.0)
+		up -= HEAVE_DAMP * area * (pv.y - rise) * clampf(depth / 0.03, 0.0, 1.0)
 		# (The planing surfaces are the flat aft two thirds of the sponsons;
 		# the fine bow just parts the water.)
 		var along := maxf(pv.dot(fwd_h), 0.0)
@@ -102,6 +133,8 @@ func step(car: RaceCar, delta: float, steer_angle: float) -> void:
 		else:
 			car.apply_force(Vector3.UP * up, wp - origin)
 	wet_frac = clampf(wetted / maxf(area * points.size(), 0.001), 0.0, 1.0)
+	slam = maxf(slam - delta * 6.0, hit)
+	over_wake = not _near.is_empty()
 	airborne = load <= 0.0
 	# How firmly the hull is on the water, smoothed over the skips from crest
 	# to crest (a planing hull is in the air half the time at speed).

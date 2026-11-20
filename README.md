@@ -92,11 +92,23 @@ engine's cowling). Two courses: **Lago Brisa**, a lake in the hills (long
 straights, buoy hairpins), and **Porto Solmar Harbour**, a city harbour
 (tight and twisty by the quays).
 
-**The water** (`scripts/water.gd`, `shaders/open_water.gdshader`) is a sum
-of travelling waves: the same sum is the surface you see and the height
-the boats float on, so a boat rides exactly the swell under it. Fine
-ripples, sky reflections, sun glints and whitecaps are drawn on top. The
-coastal circuits' sea uses it too.
+**The water** (`scripts/water.gd`, `shaders/open_water.gdshader`) is six
+trochoidal (Gerstner) waves: the water moves in circles as each passes, so
+crests come up sharp and troughs stay broad and flat. The same waves are the
+surface you see and the height the boats float on (the boats feel the four
+longest; the two shortest are ripples only drawn), so a boat rides exactly
+the swell under it. On top: drifting ripples, sky and sun reflections, light
+glowing through crests when you look towards the sun, whitecaps on the
+steepest crests (more when it's rough), glancing reflections of the hills
+or the town round the shore, and, where the bed shoals, water turning clear
+and green and breaking into foam along the water's edge. In the wet the
+wind gets up and the chop roughly doubles. The coastal circuits' sea uses it
+too, shallows and surf included.
+
+**Wakes are in the water.** Every boat leaves wake points behind it; another
+boat crossing them rides over the two ridges of the V and the churned trail
+between, and hops (`Water.wake_height`). The bow slamming into a wave or a
+wake throws up a burst of spray.
 
 **The boat's physics** (`scripts/boat_hull.gd`): points along the bottoms of
 both sponsons each find the water under them every step. Buoyancy holds
@@ -115,9 +127,10 @@ sides that ride the swell, big inflatable sponsored buoys at every turn, a
 floating start gantry with lights, sponsors' pontoons along the straights,
 moored yachts, a grandstand on the shore, and the shore itself (beaches and
 wooded hills, or quays and a city) that a boat can run aground on. Every
-boat throws a white wake (the churned trail behind the propeller and the
-two arms of the V), a rooster tail of spray and sheets of spray off the
-outside sponson in hard turns (`scripts/boat_fx.gd`).
+boat throws a white, lacy wake (the churned trail behind the propeller and
+the two arms of the V), a rooster tail of spray and sheets of spray off the
+outside sponson in hard turns (`scripts/boat_fx.gd`). Buoys and turn marks
+rise, fall and sway with the water they sit on.
 
 ## Install on your phone
 

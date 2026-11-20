@@ -558,7 +558,7 @@ static func h1() -> Dictionary:
 	var pts: Array = []
 	# Along each sponson's bottom: the bow rises out of the water.
 	for x in [0.8, -0.8]:
-		for st in [[-2.7, 0.0], [-1.7, 0.0], [-0.6, 0.012], [0.5, 0.04], [1.6, 0.11], [2.6, 0.27]]:
+		for st in [[-2.7, 0.0], [-1.5, 0.0], [-0.2, 0.015], [1.1, 0.06], [2.5, 0.24]]:
 			pts.append(Vector3(x, st[1], st[0]))
 	return {
 		"id": "h1",

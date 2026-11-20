@@ -772,7 +772,10 @@ func _build_ground() -> void:
 ## Sea for coastal tracks: one big water plane (the terrain has a sea bed).
 func _build_water() -> void:
 	# The sea: real swell, sky reflections (scripts/water.gd).
-	Water.create(self, "sea", sea_level, 0.55)
+	var w := Water.create(self, "sea", sea_level, 0.55)
+	# (The seabed, from the landscape: shallows and surf at the shore.)
+	if not terrain_h.is_empty():
+		w.set_ground(terrain_h, _tw, _th, _tx0, _tz0, _tstep)
 
 
 ## 0 on the mown shelf by the track .. 1 on open land (from the terrain file;

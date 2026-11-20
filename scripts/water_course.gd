@@ -35,8 +35,14 @@ func build(t: Track, water_kind: String) -> void:
 	_noise.frequency = 0.004
 	_noise.fractal_octaves = 3
 	shore_at = t.road_half + (70.0 if kind == "lake" else 38.0)
-	water = Water.create(self, "lake" if kind == "lake" else "harbour", 0.0, 0.7 if kind == "lake" else 0.5)
+	# Calm on a fine day; in the wet the wind gets up and so does the chop.
+	var rough := 0.7 if kind == "lake" else 0.5
+	var sv := get_node_or_null("/root/Save")
+	if sv != null and String(sv.get_setting("weather")) == "wet":
+		rough *= 1.8
+	water = Water.create(self, "lake" if kind == "lake" else "harbour", 0.0, rough)
 	_distance_field()
+	_bed_heights()
 	_shore()
 	_buoys()
 	_turn_marks()
@@ -160,6 +166,19 @@ func ground_height(x: float, z: float) -> float:
 	return -1.2 + minf(e, 22.0) * 0.12 + maxf(e - 22.0, 0.0) * (0.06 + 0.22 * hills) + maxf(e - 250.0, 0.0) * 0.15 * hills
 
 
+var _bed := PackedFloat32Array()
+
+
+## The land's (and lake bed's) height at every cell, for the shore and the
+## water's shallows.
+func _bed_heights() -> void:
+	_bed.resize(_nx * _nz)
+	for iz in _nz:
+		for ix in _nx:
+			_bed[iz * _nx + ix] = ground_height(_x0 + ix * CELL, _z0 + iz * CELL)
+	water.set_ground(_bed, _nx, _nz, _x0, _z0, CELL)
+
+
 func _shore() -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -172,7 +191,7 @@ func _shore() -> void:
 		for ix in nx + 1:
 			var x := _x0 + ix * step * CELL
 			var z := _z0 + iz * step * CELL
-			h[iz * (nx + 1) + ix] = ground_height(x, z)
+			h[iz * (nx + 1) + ix] = _bed[(iz * step) * _nx + ix * step]
 	var sand := Color(0.78, 0.7, 0.53) if kind == "lake" else Color(0.55, 0.54, 0.52)
 	var grass := Color(0.28, 0.42, 0.18) if kind == "lake" else Color(0.5, 0.49, 0.47)
 	var rock := Color(0.42, 0.4, 0.37)
@@ -255,18 +274,7 @@ func _buoys() -> void:
 	mesh.rings = 6
 	_buoy_mat = ShaderMaterial.new()
 	_buoy_mat.shader = _bob_shader()
-	var waves: Array = []
-	for k in Water.MAX_WAVES:
-		if k * 5 + 4 < Water._k.size():
-			waves.append(Vector4(Water._k[k * 5], Water._k[k * 5 + 1], Water._k[k * 5 + 2], Water._k[k * 5 + 3]))
-		else:
-			waves.append(Vector4.ZERO)
-	_buoy_mat.set_shader_parameter("waves", waves)
-	var phases := Vector4.ZERO
-	for k in Water.MAX_WAVES:
-		if k * 5 + 4 < Water._k.size():
-			phases[k] = Water._k[k * 5 + 4]
-	_buoy_mat.set_shader_parameter("phases", phases)
+	Water.shader_waves(_buoy_mat)
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
@@ -286,19 +294,24 @@ static func _bob_shader() -> Shader:
 	var sh := Shader.new()
 	sh.code = """
 shader_type spatial;
-// Floating things ride the swell: the same waves as scripts/water.gd.
-uniform vec4 waves[4];
-uniform vec4 phases;
+// Floating things ride the swell: the same waves as scripts/water.gd
+// (each rises, falls and sways with the water it sits on).
+uniform vec4 waves[6];
+uniform vec4 wave_params[6];
 uniform float wave_time;
 varying vec3 col;
 void vertex() {
 	vec3 at = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-	float h = 0.0;
-	for (int i = 0; i < 4; i++) {
+	vec3 o = vec3(0.0);
+	for (int i = 0; i < 6; i++) {
 		vec4 w = waves[i];
-		h += w.z * sin(w.x * at.x + w.y * at.z - w.w * wave_time + phases[i]);
+		vec4 pr = wave_params[i];
+		float th = w.z * dot(w.xy, at.xz) - pr.x * wave_time + pr.y;
+		o.x -= pr.z * w.w * w.x * sin(th);
+		o.z -= pr.z * w.w * w.y * sin(th);
+		o.y += w.w * cos(th);
 	}
-	VERTEX.y += h;
+	VERTEX += o;
 	col = COLOR.rgb;
 }
 void fragment() {
