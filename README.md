@@ -625,10 +625,30 @@ with the fenders standing proud), a shoulder line, a glass greenhouse with
 a painted roof and pillars, door mirrors, splitter, side skirts, number
 plates, headlights set into the nose, multi-spoke rims with brake discs
 and painted calipers (which don't spin with the wheel). GP cars carry
-fictional sponsors and race numbers, a T-cam, carbon-fibre weave on the
+sponsors (below) and race numbers, a T-cam, carbon-fibre weave on the
 bare carbon parts, wheel covers, and tyre sidewall bands in the colour of
 the compound they're on. Every car has a soft contact shadow, so it sits
 on the track at any distance.
+
+**Sponsors, like a real Grand Prix weekend.** 26 made-up brands (an oil
+company, an energy drink, an airline, a bank, a logistics firm, a
+timekeeper, a tyre maker and so on), each with its own logo, listed in
+`data/sponsors.json` and drawn by `tools/make_sponsors.py` into
+`textures/`. Every Grand Prix team has a title sponsor and a main partner
+picked to suit its colours, and seven smaller partners. On the car: the title sponsor on the sidepods and both faces of the rear
+wing, the partner on the engine cover, front wing and rear endplates, and
+the rest on the nose, the chassis, the sidepod tops, the fin, the halo and
+the endplates, with the championship's badge on the nose, the tyre maker
+on the front endplates, the timekeeper on the mirrors and the tyre maker's
+name round every sidewall. Each logo is shaped to the bodywork under it, in white or the
+team's dark colour, whichever stands out on that paint. F2, F3, F4 and
+karts carry their own sponsors. Garage shows each team's two
+biggest backers. Round the tracks: boards on the walls, printed
+covers on the tyre-block barriers, boards on the armco, logos painted on
+the asphalt run-off, two-deck billboards at the big braking zones, the
+race's title partner across the bridges, sponsors on the grandstand roofs,
+the pit building and the start gantry, and the timekeeper's clock by the
+line. Every circuit has its own mix.
 
 **Tracks:** kerbs stand proud of the road (drawn raised, driven flat),
 rubber streaks are laid down in every braking zone along the racing line,
@@ -717,6 +737,7 @@ scripts/
   car_audio.gd       engine/tyre/wind sound synthesized in code
   ai_driver.gd       pure-pursuit steering + curvature speed planner
   trackside.gd       barriers, fencing, ads, gantry, pits, grandstands, hills
+  sponsors.gd        the made-up sponsors: brands, logo textures, teams' deals
   look.gd            sky, lighting, post-processing per venue
   tyre_fx.gd         skid marks and tyre smoke
   line_guide.gd      racing-line guide

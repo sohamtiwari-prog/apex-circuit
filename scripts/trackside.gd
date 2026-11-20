@@ -6,31 +6,21 @@ extends Node3D
 ## hills. All static geometry is merged into a few meshes per material so a
 ## phone draws it in a handful of calls.
 
-const BRANDS := [
-	["APEX", Color(0.95, 0.4, 0.05), Color(1, 1, 1)],
-	["VOLTRA", Color(0.08, 0.1, 0.14), Color(0.3, 0.9, 1.0)],
-	["NORTHWIND AIR", Color(0.1, 0.25, 0.6), Color(1, 1, 1)],
-	["KESTREL OIL", Color(0.9, 0.82, 0.1), Color(0.1, 0.1, 0.1)],
-	["AURUM WATCHES", Color(0.06, 0.06, 0.06), Color(0.95, 0.78, 0.35)],
-	["FALCO TYRES", Color(0.85, 0.1, 0.1), Color(1, 1, 1)],
-	["BLUEPEAK", Color(1, 1, 1), Color(0.1, 0.35, 0.8)],
-	["ORBIS TELECOM", Color(0.45, 0.1, 0.6), Color(1, 1, 1)],
-]
-const AD_ROWS := 8
-
 var track: Track
 var _geo := {}                 # material key -> SurfaceTool
 var _lamps: Array[MeshInstance3D] = []
 var _lamp_on: StandardMaterial3D
 var _lamp_off: StandardMaterial3D
-var _ad_viewport: SubViewport
+var _mix: Array = []                 # this circuit's boards, in the order they come round
+var event_partner := ""              # the race's title partner (on bridges, billboards)
 var _board_viewport: SubViewport
 var board_spots: Array = []          # sample index of each 300 m board (tests, previews)
+var sponsor_spots := {}              # where each kind of sponsor sign is (tests, previews): name -> position
 
 
 func build(t: Track) -> void:
 	track = t
-	_make_ad_atlas()
+	_make_mix()
 	_barriers()
 	_gantry()
 	_pits_and_stands()
@@ -43,6 +33,8 @@ func build(t: Track) -> void:
 	_marshal_posts()
 	_tv_towers()
 	_flagpoles()
+	_runoff_logos()
+	_timing_clock()
 	if track.night:
 		_floodlights()
 	_commit()
@@ -148,9 +140,16 @@ func _material(key: String) -> Material:
 			m.roughness = 0.5
 			m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		"ads":
-			m.albedo_texture = _ad_viewport.get_texture()
+			m.albedo_texture = Sponsors.boards()
 			m.vertex_color_use_as_albedo = false
 			m.roughness = 0.6
+			m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		"paint":
+			# Logos painted on the run-off: the white-on-clear logo texture.
+			m.albedo_texture = Sponsors.logos()
+			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			m.roughness = 0.75
+			m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 		"boards":
 			m.albedo_texture = _board_viewport.get_texture()
 			m.vertex_color_use_as_albedo = false
@@ -284,43 +283,56 @@ func _crowd_texture() -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
-## Advertising boards for fictional brands, drawn once into a texture atlas
-## (one 8:1 board per row).
-func _make_ad_atlas() -> void:
-	_ad_viewport = SubViewport.new()
-	_ad_viewport.size = Vector2i(1024, 128 * AD_ROWS)
-	_ad_viewport.transparent_bg = false
-	_ad_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
-	_ad_viewport.disable_3d = true
-	add_child(_ad_viewport)
-	for k in range(AD_ROWS):
-		var brand: Array = BRANDS[k % BRANDS.size()]
-		var bg := ColorRect.new()
-		bg.color = brand[1]
-		bg.position = Vector2(0, k * 128)
-		bg.size = Vector2(1024, 128)
-		_ad_viewport.add_child(bg)
-		var stripe := ColorRect.new()
-		stripe.color = Color(brand[2]).lerp(brand[1], 0.6)
-		stripe.position = Vector2(0, k * 128 + 112)
-		stripe.size = Vector2(1024, 16)
-		_ad_viewport.add_child(stripe)
-		var label := Label.new()
-		label.text = brand[0]
-		label.position = Vector2(0, k * 128)
-		label.size = Vector2(1024, 116)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.add_theme_font_size_override("font_size", 84)
-		label.add_theme_color_override("font_color", brand[2])
-		_ad_viewport.add_child(label)
+## Which boards go round this circuit: the series' own partners (the
+## championship, its tyre maker and timekeeper) most often, this race's
+## title partner next, and a run of the other brands; some boards in
+## reversed colours. (Brands: data/sponsors.json, art: Sponsors.)
+func _make_mix() -> void:
+	var others: Array = []
+	for b in Sponsors.brands():
+		var id := String(b["id"])
+		if not Sponsors.SERIES.has(id):
+			others.append(id)
+	var h := 0
+	for ch in track.track_id:
+		h = (h * 31 + ch.unicode_at(0)) % 100003
+	event_partner = others[h % others.size()]
+	_mix.clear()
+	var o := h * 7
+	for k in 24:
+		match k % 4:
+			0:
+				var sid: String = Sponsors.SERIES[(k / 4) % 3]
+				_mix.append(Sponsors.board_of(sid, (k / 4) % 2 == 1))
+			2:
+				_mix.append(Sponsors.board_of(event_partner))
+			_:
+				_mix.append(Sponsors.board_of(others[(o + k * 5) % others.size()]))
 
 
-## UVs of ad row k, repeated `reps` times along a board.
-func _ad_uv(k: int, reps: float) -> Array:
-	var v0 := float(posmod(k, AD_ROWS)) / AD_ROWS
-	var v1 := v0 + 1.0 / AD_ROWS
-	return [Vector2(0, v1), Vector2(reps, v1), Vector2(reps, v0), Vector2(0, v0)]
+## The k-th board of this circuit's mix.
+func _board(k: int) -> int:
+	return _mix[posmod(k, _mix.size())]
+
+
+## An advertising board from l to r (bottom corners), `h` tall, facing
+## `face`; the lettering reads left to right from that side.
+func _ad_panel(l: Vector3, r: Vector3, h: float, board: int, face: Vector3) -> void:
+	var rv := (-face).cross(Vector3.UP)
+	if (r - l).dot(rv) < 0.0:
+		var t := l
+		l = r
+		r = t
+	var uv := Sponsors.board_uv(board)
+	var up := Vector3(0, h, 0)
+	_quad("ads", l, r, r + up, l + up, Color.WHITE,
+		[Vector2(uv.position.x, uv.end.y), Vector2(uv.end.x, uv.end.y), Vector2(uv.end.x, uv.position.y), uv.position])
+
+
+## `reps` boards side by side from l to r.
+func _ad_run(l: Vector3, r: Vector3, h: float, board: int, face: Vector3, reps: int) -> void:
+	for k in reps:
+		_ad_panel(l.lerp(r, float(k) / reps), l.lerp(r, float(k + 1) / reps), h, board, face)
 
 
 # ------------------------------------------------------------ barriers
@@ -384,14 +396,7 @@ func _barriers() -> void:
 						_quad("concrete", b + f + Vector3(0, y0 + top, 0), a + f + Vector3(0, y0 + top, 0), a - f + Vector3(0, y0 + top, 0), b - f + Vector3(0, y0 + top, 0), concrete.darkened(0.1))
 					if run % 4 == 0:
 						ad_index += 1
-					var ad := _ad_uv(ad_index, 1.0)
-					ad = [ad[1], ad[0], ad[3], ad[2]]          # read correctly from the track
-					var lo := Vector3(0, y0 + 0.12, 0) + f * 1.02
-					var hi := Vector3(0, y0 + 0.92, 0) + f * 1.02
-					if side > 0:
-						_quad("ads", a + lo, b + lo, b + hi, a + hi, Color.WHITE, ad)
-					else:
-						_quad("ads", b + lo, a + lo, a + hi, b + hi, Color.WHITE, ad)
+					_ad_panel(a + f * 1.02 + Vector3(0, y0 + 0.12, 0), b + f * 1.02 + Vector3(0, y0 + 0.12, 0), 0.8, _board(ad_index), inward)
 				"tecpro":
 					# Block barrier: alternating red and white blocks.
 					var col := Color(0.85, 0.12, 0.1) if run % 2 == 0 else Color(0.92, 0.92, 0.92)
@@ -402,6 +407,13 @@ func _barriers() -> void:
 					# The black straps that tie the blocks together.
 					for sy in [0.28, 0.72]:
 						_box("concrete", Transform3D(basis, mid + inward * 0.5 + Vector3(0, y0 + sy, 0)), Vector3(1.23, 0.07, dir.length() - 0.04), Color(0.06, 0.06, 0.07))
+					# Most of the blocks wear a sponsor's printed cover on the
+					# side facing the track.
+					if run % 4 == 0:
+						ad_index += 1
+					if run % 8 != 7:
+						var cl := inward * 1.125 + Vector3(0, y0 + 0.08, 0)
+						_ad_panel(a + cl, b + cl, 0.86, _board(ad_index), inward)
 				"armco":
 					# Two steel rails on posts.
 					for rail_y in [0.45, 0.8]:
@@ -413,6 +425,12 @@ func _barriers() -> void:
 							_quad("metal", b + lo, a + lo, a + hi, b + hi, Color(0.74, 0.76, 0.78))
 					_box("metal", Transform3D(Basis.looking_at(-(b - a).normalized(), Vector3.UP), a + inward * 0.05 + Vector3(0, y0 + 0.5, 0)), Vector3(0.12, 1.0, 0.12), Color(0.5, 0.52, 0.55))
 					top = 0.95
+					# Boards bolted to the rails along two segments in three.
+					if run % 4 == 0:
+						ad_index += 1
+					if run % 3 != 2:
+						var bl := inward * 0.3 + Vector3(0, y0 + 0.28, 0)
+						_ad_panel(a + bl, b + bl, 0.72, _board(ad_index), inward)
 			# Catch fence above every barrier.
 			var fb := Vector3(0, y0 + top, 0)
 			var ft := Vector3(0, y0 + top + 3.2, 0)
@@ -474,13 +492,12 @@ func _gantry() -> void:
 		add_child(mi2)
 		_lamps.append(mi)
 		_lamp_pairs.append(mi2)
-	# Ad banner on the beam.
-	var ad := _ad_uv(0, 3.0)
+	# The series' banner across the beam, both faces.
 	var fwd: Vector3 = -track.htangents[i]
-	var b0 := p - r * span + Vector3(0, y - 0.35, 0) + fwd * 0.36
-	var b1 := p + r * span + Vector3(0, y - 0.35, 0) + fwd * 0.36
-	_quad("ads", b0, b1, b1 + Vector3(0, 0.7, 0), b0 + Vector3(0, 0.7, 0), Color.WHITE, ad)
-	_quad("ads", b1 - fwd * 0.72, b0 - fwd * 0.72, b0 - fwd * 0.72 + Vector3(0, 0.7, 0), b1 - fwd * 0.72 + Vector3(0, 0.7, 0), Color.WHITE, ad)
+	var b0 := p - r * span + Vector3(0, y - 0.35, 0)
+	var b1 := p + r * span + Vector3(0, y - 0.35, 0)
+	_ad_run(b0 + fwd * 0.36, b1 + fwd * 0.36, 0.7, Sponsors.board_of("apex"), fwd, 3)
+	_ad_run(b0 - fwd * 0.36, b1 - fwd * 0.36, 0.7, Sponsors.board_of("aurum", true), -fwd, 3)
 
 
 var _lamp_pairs: Array[MeshInstance3D] = []
@@ -628,6 +645,9 @@ func _pit_complex() -> void:
 		# Glass floor and roof.
 		_box("glass", Transform3D(basis, mid + out * (depth * 0.5 + 1.0) + Vector3(0, 7.0, 0)), Vector3(depth - 2.0, 4.0, seg_len), Color(0.2, 0.32, 0.42))
 		_box("concrete", Transform3D(basis, mid + out * (depth * 0.5 - 1.0) + Vector3(0, 9.2, 0)), Vector3(depth + 2.0, 0.4, seg_len), Color(0.93, 0.93, 0.95))
+		# A sponsors' band along the roof's edge, facing the lane.
+		var band := mid - out * 2.05 + Vector3(0, 9.4, 0)
+		_ad_panel(band - dir * 0.5, band + dir * 0.5, 1.0, _board(garage * 3 + 1), -out)
 		_reserve(Transform3D(basis, mid + out * (depth * 0.5)), Vector3(depth + 2.0, 10.0, seg_len), false, true)
 		garage += 1
 
@@ -734,6 +754,7 @@ func _grandstand_run(start_s: float, length: float, side: float) -> bool:
 		# The roof's front edge: a deep fascia in the circuit's colours, a
 		# light strip under it.
 		var dn2 := Vector3(0, -0.9, 0)
+		_ad_panel(fa + dn2 - ri * 0.02, fb2 + dn2 - rj * 0.02, 0.9, _board(k / step + int(start_s)), -ri)
 		var fascia := Color(0.1, 0.16, 0.32)
 		if side > 0:
 			_quad("concrete", fa + dn2, fb2 + dn2, fb2, fa, fascia)
@@ -786,13 +807,15 @@ func _bridges() -> void:
 		for side in [-1.0, 1.0]:
 			_box("concrete", Transform3D(basis, p + r * span * side + Vector3(0, y * 0.5, 0)), Vector3(3.0, y, 3.0), col)
 		_box("concrete", Transform3D(basis, p + Vector3(0, y + 0.6, 0)), Vector3(span * 2.0 + 3.0, 1.2, 3.2), col)
+		# The race's title partner across both faces (the bridge's deck
+		# sides carry the banner, its underside stays concrete).
 		var fwd: Vector3 = track.htangents[i]
-		var ad := _ad_uv(i, 4.0)
-		var l0 := p - r * (span + 1.5) + Vector3(0, y + 1.2, 0)
-		var l1 := p + r * (span + 1.5) + Vector3(0, y + 1.2, 0)
-		var h := Vector3(0, 1.6, 0)
-		_quad("ads", l1 - fwd * 1.62, l0 - fwd * 1.62, l0 - fwd * 1.62 + h, l1 - fwd * 1.62 + h, Color.WHITE, ad)
-		_quad("ads", l0 + fwd * 1.62, l1 + fwd * 1.62, l1 + fwd * 1.62 + h, l0 + fwd * 1.62 + h, Color.WHITE, ad)
+		var l0 := p - r * (span + 1.5) + Vector3(0, y - 0.05, 0)
+		var l1 := p + r * (span + 1.5) + Vector3(0, y - 0.05, 0)
+		var reps := maxi(2, int((span * 2.0 + 3.0) / 10.0))
+		var board := Sponsors.board_of(event_partner) if frac < 0.5 else _board(7)
+		_ad_run(l0 - fwd * 1.62, l1 - fwd * 1.62, 1.3, board, -fwd, reps)
+		_ad_run(l0 + fwd * 1.62, l1 + fwd * 1.62, 1.3, board, fwd, reps)
 
 
 # ------------------------------------------------------------ distant hills
@@ -1049,6 +1072,195 @@ func _board_set(corner: int) -> void:
 		var back := fwd * 0.03
 		_quad("concrete", r0 + back, l0 + back, l0 + back + Vector3(0, h, 0), r0 + back + Vector3(0, h, 0), Color(0.55, 0.56, 0.58))
 		_box("metal", Transform3D(Basis(), base + Vector3(0, 0.5, 0) + fwd * 0.06), Vector3(0.12, 1.0, 0.12), Color(0.5, 0.52, 0.55))
+	_billboard(corner)
+
+
+## A big two-deck billboard on legs on the outside of a heavy braking zone,
+## turned towards the cars coming down the straight.
+func _billboard(corner: int) -> void:
+	var n := track.size()
+	var i := posmod(corner - 25, n)
+	if _in_pit_straight(i, 1.0) or _in_pit_straight(i, -1.0):
+		return
+	var outside := 1.0 if track.curv[corner] > 0.0 else -1.0
+	var p: Vector3 = track.points[i] + track.rights[i] * outside * (track.wall_at(i, outside) + 7.0)
+	p.y = track.points[i].y + Track.GROUND_Y
+	var face: Vector3 = (-track.htangents[i] * 0.75 - track.rights[i] * outside * 0.65).normalized()
+	face.y = 0.0
+	face = face.normalized()
+	var lateral := face.cross(Vector3.UP).normalized()
+	var w := 12.0
+	var xf := Transform3D(Basis.looking_at(-face, Vector3.UP), p)
+	if not track.footprint_clear(xf, Vector3(w + 2.0, 6.0, 3.0), 2.0):
+		return
+	var legs := 2.6
+	var deck := 1.5
+	var l := p - lateral * w * 0.5
+	var r := p + lateral * w * 0.5
+	var k := board_spots.size()
+	_ad_panel(l + Vector3(0, legs, 0), r + Vector3(0, legs, 0), deck, _board(k * 4 + 1), face)
+	_ad_panel(l + Vector3(0, legs + deck, 0), r + Vector3(0, legs + deck, 0), deck, Sponsors.board_of(event_partner, k % 2 == 1), face)
+	# Frame and back, legs.
+	var back := -face * 0.12
+	var grey := Color(0.45, 0.46, 0.5)
+	_quad("concrete", r + back + Vector3(0, legs, 0), l + back + Vector3(0, legs, 0), l + back + Vector3(0, legs + deck * 2.0, 0), r + back + Vector3(0, legs + deck * 2.0, 0), grey)
+	_box("metal", Transform3D(xf.basis, p - face * 0.06 + Vector3(0, legs + deck * 2.0 + 0.06, 0)), Vector3(w + 0.2, 0.12, 0.2), grey.darkened(0.3))
+	_box("metal", Transform3D(xf.basis, p - face * 0.06 + Vector3(0, legs - 0.06, 0)), Vector3(w + 0.2, 0.12, 0.2), grey.darkened(0.3))
+	for sx in [-0.33, 0.33]:
+		_box("metal", Transform3D(xf.basis, p + lateral * w * sx - face * 0.3 + Vector3(0, (legs + deck) * 0.5, 0)), Vector3(0.3, legs + deck, 0.3), grey.darkened(0.2))
+	_reserve(xf, Vector3(w + 2.0, 6.0, 3.0))
+	if not sponsor_spots.has("billboard"):
+		sponsor_spots["billboard"] = p + Vector3(0, legs + deck, 0)
+
+
+# ------------------------------------------------------------ painted logos
+
+## Sponsors' logos painted big on the asphalt run-off at the corners, read
+## from the track, with the series' partners among them.
+func _runoff_logos() -> void:
+	var n := track.size()
+	if track.runoff_type[0].size() != n:
+		return
+	var outer := track.road_half + Track.KERB_W
+	var lat0 := outer + 1.0 + 1.8 + 0.5          # past the painted strip by the kerb
+	var avail := track.runoff_width - 1.8 - 1.0
+	if avail < 2.0:
+		return
+	var h := minf(avail, 3.2)
+	var cols := int(round(h * 4.0 / Track.SPACING))
+	var brands := ["apex", event_partner, "aurum", "falco"]
+	var count := 0
+	var y := Track.GROUND_Y + 0.012 + 0.025
+	for side_i in 2:
+		var side := -1.0 if side_i == 0 else 1.0
+		var i := 0
+		var run := 0
+		while i < n:
+			if track.runoff_type[side_i][i] != Track.RUNOFF_ASPHALT:
+				run = 0
+				i += 1
+				continue
+			run += 1
+			# One every ~70 m of run-off, once the run-off has started, and
+			# only where it carries on for the logo's whole length.
+			if run % 35 != 8:
+				i += 1
+				continue
+			var fits := true
+			for c in cols + 1:
+				if track.runoff_type[side_i][posmod(i + c, n)] != Track.RUNOFF_ASPHALT:
+					fits = false
+					break
+			if not fits:
+				i += 1
+				continue
+			var id: String = brands[count % brands.size()] if count % 3 != 2 else \
+				String(Sponsors.brands()[(count * 7 + 3) % Sponsors.brands().size()]["id"])
+			var uv := Sponsors.logo_uv(id)
+			var ink := Color.WHITE
+			var bg := Sponsors.color(id, "bg")
+			if count % 2 == 1 and bg.s > 0.4 and bg.v > 0.55:
+				ink = Color(bg.r, bg.g, bg.b)
+			# Letters' tops away from the track; left to right as seen from it.
+			var out_dir: Vector3 = track.rights[i] * side
+			var forward := out_dir.cross(Vector3.UP).dot(track.tangents[i]) > 0.0
+			for c in cols:
+				var ia := posmod(i + c, n)
+				var ib := posmod(i + c + 1, n)
+				var u0 := float(c) / cols
+				var u1 := float(c + 1) / cols
+				if not forward:
+					u0 = 1.0 - u0
+					u1 = 1.0 - u1
+				var lift := Vector3(0, y, 0)
+				var a_in: Vector3 = track.points[ia] + track.rights[ia] * side * lat0 + lift
+				var b_in: Vector3 = track.points[ib] + track.rights[ib] * side * lat0 + lift
+				var a_out: Vector3 = track.points[ia] + track.rights[ia] * side * (lat0 + h) + lift
+				var b_out: Vector3 = track.points[ib] + track.rights[ib] * side * (lat0 + h) + lift
+				var v_in := uv.end.y
+				var v_out := uv.position.y
+				var ua := uv.position.x + uv.size.x * u0
+				var ub := uv.position.x + uv.size.x * u1
+				# (Wound to face up.)
+				if (a_out - a_in).cross(b_out - a_in).y > 0.0:
+					_quad("paint", a_in, a_out, b_out, b_in, ink, [Vector2(ua, v_in), Vector2(ua, v_out), Vector2(ub, v_out), Vector2(ub, v_in)])
+				else:
+					_quad("paint", a_in, b_in, b_out, a_out, ink, [Vector2(ua, v_in), Vector2(ub, v_in), Vector2(ub, v_out), Vector2(ua, v_out)])
+			if not sponsor_spots.has("runoff"):
+				sponsor_spots["runoff"] = track.points[posmod(i + cols / 2, n)] + track.rights[posmod(i + cols / 2, n)] * side * (lat0 + h * 0.5)
+			count += 1
+			i += cols + 1
+
+
+# ------------------------------------------------------------ timing clock
+
+## The official timekeeper's clock on a column beside the start straight,
+## turned towards the cars coming to the line.
+func _timing_clock() -> void:
+	var n := track.size()
+	if track.style == "city" and not track.has_pit_lane:
+		return
+	var i := posmod(-14, n)
+	var side := -track.pit_side if track.has_pit_lane else -1.0
+	var out: Vector3 = track.rights[i] * side
+	var p: Vector3 = track.points[i] + out * (track.wall_at(i, side) + 2.6)
+	p.y = track.points[i].y + Track.GROUND_Y
+	var face: Vector3 = (-out * 0.8 - track.htangents[i] * 0.6).normalized()
+	var xf := Transform3D(Basis.looking_at(-face, Vector3.UP), p)
+	if not track.footprint_clear(xf, Vector3(3.0, 9.0, 2.0), 1.0):
+		return
+	var lateral := face.cross(Vector3.UP).normalized()
+	var black := Color(0.05, 0.05, 0.05)
+	var gold := Sponsors.color("aurum", "fg")
+	_box("metal", Transform3D(xf.basis, p + Vector3(0, 2.9, 0)), Vector3(0.45, 5.8, 0.45), black)
+	_box("concrete", Transform3D(xf.basis, p + Vector3(0, 7.0, 0)), Vector3(2.7, 3.0, 0.5), black)
+	_box("concrete", Transform3D(xf.basis, p + Vector3(0, 8.53, 0)), Vector3(2.75, 0.08, 0.55), gold)
+	# The brand's board along the bottom of the head.
+	var bl := p + face * 0.26 + Vector3(0, 5.62, 0)
+	_ad_panel(bl - lateral * 1.32, bl + lateral * 1.32, 0.33, Sponsors.board_of("aurum"), face)
+	# The clock: gold bezel, white dial, hour marks and hands.
+	var c := p + face * 0.27 + Vector3(0, 7.25, 0)
+	_disc(c, face, lateral, 1.02, gold)
+	_disc(c + face * 0.005, face, lateral, 0.92, Color(0.97, 0.97, 0.95))
+	for k in 12:
+		var a := TAU * k / 12.0
+		var d := (lateral * sin(a) + Vector3.UP * cos(a))
+		var t := lateral * cos(a) - Vector3.UP * sin(a)
+		var w := 0.05 if k % 3 == 0 else 0.03
+		var q0 := c + face * 0.01 + d * 0.72
+		var q1 := c + face * 0.01 + d * 0.86
+		_flat_bar(q0, q1, t * w, face, black)
+	# Ten past ten, as clocks are shown.
+	for hand in [[TAU * (10.17 / 12.0), 0.48, 0.045], [TAU * (2.0 / 12.0), 0.74, 0.03]]:
+		var a: float = hand[0]
+		var d := lateral * sin(a) + Vector3.UP * cos(a)
+		var t := lateral * cos(a) - Vector3.UP * sin(a)
+		_flat_bar(c + face * 0.015 - d * 0.08, c + face * 0.015 + d * float(hand[1]), t * float(hand[2]), face, black)
+	_reserve(xf, Vector3(3.0, 9.0, 2.0))
+	sponsor_spots["clock"] = c
+
+
+## A flat disc facing `face`.
+func _disc(c: Vector3, face: Vector3, lateral: Vector3, r: float, col: Color) -> void:
+	var seg := 28
+	for k in seg:
+		var a0 := TAU * k / seg
+		var a1 := TAU * (k + 1) / seg
+		var p0 := c + (lateral * sin(a0) + Vector3.UP * cos(a0)) * r
+		var p1 := c + (lateral * sin(a1) + Vector3.UP * cos(a1)) * r
+		if (p0 - c).cross(p1 - c).dot(face) > 0.0:
+			_quad("concrete", c, p0, p1, p1, col)
+		else:
+			_quad("concrete", c, p1, p0, p0, col)
+
+
+## A flat bar from a to b, `half` to either side, facing `face`.
+func _flat_bar(a: Vector3, b: Vector3, half: Vector3, face: Vector3, col: Color) -> void:
+	var q := [a - half, b - half, b + half, a + half]
+	if (q[1] - q[0]).cross(q[2] - q[0]).dot(face) > 0.0:
+		_quad("concrete", q[0], q[1], q[2], q[3], col)
+	else:
+		_quad("concrete", q[0], q[3], q[2], q[1], col)
 
 
 # ------------------------------------------------------------ marshal posts

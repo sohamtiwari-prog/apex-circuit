@@ -1,0 +1,31 @@
+{
+  "_about": "Fictional sponsors seen on the cars and round the tracks. The art is drawn by tools/make_sponsors.py into textures/sponsors_*.png; the game reads this list for the brands' order (atlas cells) and colours. Every name here is made up.",
+  "brands": [
+    {"id": "apex",      "name": "APEX",      "sub": "GRAND PRIX",   "bg": "#d7141a", "fg": "#ffffff", "mark": "chevrons", "font": "saira",  "italic": true},
+    {"id": "kestrel",   "name": "KESTREL",   "sub": "OIL",          "bg": "#ffcc0d", "fg": "#111111", "mark": "wing",     "font": "wide",   "italic": true},
+    {"id": "voltra",    "name": "VOLTRA",    "sub": "",             "bg": "#0c0f16", "fg": "#3fe6ff", "mark": "bolt",     "font": "wide",   "italic": true},
+    {"id": "northwind", "name": "NORTHWIND", "sub": "AIR",          "bg": "#123b8f", "fg": "#ffffff", "mark": "swoosh",   "font": "barlow", "italic": false},
+    {"id": "aurum",     "name": "AURUM",     "sub": "CHRONOMETRES", "bg": "#0b0b0c", "fg": "#e6c065", "mark": "crown",    "font": "wide",   "italic": false},
+    {"id": "falco",     "name": "FALCO",     "sub": "",             "bg": "#121212", "fg": "#ffd21a", "mark": "slash",    "font": "wide",   "italic": true},
+    {"id": "orbis",     "name": "ORBIS",     "sub": "",             "bg": "#5b1f8c", "fg": "#ffffff", "mark": "orbit",    "font": "barlow", "italic": false},
+    {"id": "bluepeak",  "name": "BLUEPEAK",  "sub": "",             "bg": "#ffffff", "fg": "#1557c2", "mark": "peaks",    "font": "saira",  "italic": false},
+    {"id": "trident",   "name": "TRIDENT",   "sub": "BANK",         "bg": "#0d1d45", "fg": "#ffffff", "mark": "trident",  "font": "barlow", "italic": false},
+    {"id": "cargova",   "name": "CARGOVA",   "sub": "",             "bg": "#0f5a3a", "fg": "#ffffff", "mark": "arrow",    "font": "wide",   "italic": true},
+    {"id": "halcyon",   "name": "HALCYON",   "sub": "CLOUD",        "bg": "#078a8c", "fg": "#ffffff", "mark": "hexagon",  "font": "barlow", "italic": false},
+    {"id": "solace",    "name": "SOLACE",    "sub": "",             "bg": "#e8558f", "fg": "#ffffff", "mark": "petals",   "font": "saira",  "italic": false},
+    {"id": "korvex",    "name": "KORVEX",    "sub": "",             "bg": "#0d0d0d", "fg": "#b5f22a", "mark": "diamond",  "font": "wide",   "italic": false},
+    {"id": "zentrix",   "name": "ZENTRIX",   "sub": "",             "bg": "#ff6a13", "fg": "#ffffff", "mark": "square",   "font": "wide",   "italic": false},
+    {"id": "caldera",   "name": "CALDERA",   "sub": "COFFEE",       "bg": "#7a1420", "fg": "#f6e7cf", "mark": "bean",     "font": "saira",  "italic": false},
+    {"id": "velor",     "name": "VELOR",     "sub": "",             "bg": "#f4f4f4", "fg": "#101010", "mark": "",         "font": "wide",   "italic": true},
+    {"id": "strata",    "name": "STRATA",    "sub": "",             "bg": "#2c3036", "fg": "#ffffff", "mark": "bars",     "font": "barlow", "italic": false},
+    {"id": "okavo",     "name": "OKAVO",     "sub": "PAY",          "bg": "#7fd3ff", "fg": "#0b2350", "mark": "ring",     "font": "wide",   "italic": false},
+    {"id": "bravik",    "name": "BRAVIK",    "sub": "TOOLS",        "bg": "#c8141e", "fg": "#ffffff", "mark": "gear",     "font": "saira",  "italic": true},
+    {"id": "quella",    "name": "QUELLA",    "sub": "",             "bg": "#ffffff", "fg": "#d3121c", "mark": "drop",     "font": "saira",  "italic": true},
+    {"id": "corvane",   "name": "CORVANE",   "sub": "",             "bg": "#b9bec6", "fg": "#121316", "mark": "beak",     "font": "wide",   "italic": false},
+    {"id": "argent",    "name": "ARGENT",    "sub": "SECURE",       "bg": "#1e2a36", "fg": "#d6dde5", "mark": "shield",   "font": "barlow", "italic": false},
+    {"id": "pellara",   "name": "PELLARA",   "sub": "HOTELS",       "bg": "#0e3b2c", "fg": "#e1c06a", "mark": "star",     "font": "saira",  "italic": false},
+    {"id": "sonara",    "name": "SONARA",    "sub": "",             "bg": "#c2187a", "fg": "#ffffff", "mark": "waves",    "font": "wide",   "italic": false},
+    {"id": "mareo",     "name": "MAREO",     "sub": "CRUISES",      "bg": "#bfeaf0", "fg": "#0a2c57", "mark": "wave",     "font": "barlow", "italic": true},
+    {"id": "tessela",   "name": "TESSELA",   "sub": "",             "bg": "#101010", "fg": "#ffffff", "mark": "gem",      "font": "wide",   "italic": false}
+  ]
+}

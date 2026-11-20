@@ -65,6 +65,8 @@ func build(car_spec: Dictionary, car: RaceCar) -> void:
 	for key in _tools:
 		MeshKit.finish_crisp(_tools[key], mesh, _shape_key(key))
 		mesh.surface_set_material(mesh.get_surface_count() - 1, _material(key))
+		if key == "satin" or key == "matte" or key == "paint":
+			_paint_surfaces.append(mesh.get_surface_count() - 1)
 		if key == "tail":
 			tail_surface = mesh.get_surface_count() - 1
 	var mi := MeshInstance3D.new()
@@ -78,9 +80,10 @@ func build(car_spec: Dictionary, car: RaceCar) -> void:
 		_attach_wheel(w)
 	_blob_shadow()
 	if spec["body"] == "gp":
-		_gp_decals()
+		_sponsor_decals(mesh, GP_DECALS)
 		set_number(int(spec.get("number", 26)))
 	elif spec["body"] == "kart":
+		_sponsor_decals(mesh, KART_DECALS)
 		set_number(int(spec.get("number", 26)))
 	# The junior single-seaters: the GP car's body, drawn smaller (wheels
 	# stay where the spec puts them).
@@ -124,7 +127,7 @@ func build_far_lod() -> void:
 	var inv := global_transform.affine_inverse()
 	var parts: Array[MeshInstance3D] = []
 	for n in find_children("*", "MeshInstance3D", true, false):
-		if n != _blob and n != _fine:
+		if n != _blob and n != _fine and n != _decals:
 			parts.append(n as MeshInstance3D)
 	for mi in _wheel_mis:
 		if is_instance_valid(mi):
@@ -209,24 +212,263 @@ static func _shadow_mat() -> StandardMaterial3D:
 	return m
 
 
-const SPONSORS := ["KESTREL OIL", "VOLTRA", "ORBIS TELECOM", "AURUM", "NORTHWIND", "FALCO", "MERIDIAN", "HALCYON", "TRIDENT BANK", "SOLACE"]
-
 var _numbers: Array = []
+var _decals: MeshInstance3D
+var _paint_surfaces: Array = []          # surfaces of the body mesh that decals can sit on
+static var _decal_geo := {}
 
-## Sponsor names on the sidepods, engine cover and rear wing (GP liveries).
-func _gp_decals() -> void:
+
+## Where the sponsors go on a GP car (the right-hand side; the ones off the
+## centreline are mirrored onto the left). Each: a point on the bodywork
+## (height above the ground), the way the surface faces, which way is up for
+## the lettering, its width, and whose logo it carries: 0 the title sponsor,
+## 1 the second, 2.. partners; or a series partner by name. Stickers carry
+## the brand's own colours, the rest are lettering in a colour that stands
+## out on the paint underneath.
+const GP_DECALS := [
+	# Sidepod flanks, and the rear wing (behind the flap, on top of the main plane).
+	{"at": Vector3(0.74, 0.47, 0.04), "n": Vector3(1, 0, 0), "up": Vector3(0, 1, 0), "w": 0.72, "who": 0},
+	{"at": Vector3(0.0, 0.85, -2.46), "n": Vector3(0, -0.866, -0.5), "up": Vector3(0, 0.5, -0.866), "w": 0.6, "who": 0},
+	{"at": Vector3(0.0, 0.74, -2.22), "n": Vector3(0, 1, 0.08), "up": Vector3(0, 0, 1), "w": 0.66, "who": 0},
+	# Engine cover, front wing's top flap, rear wing endplates.
+	{"at": Vector3(0.13, 0.61, -1.0), "n": Vector3(1, 0, 0), "up": Vector3(0, 1, 0), "w": 0.46, "who": 1},
+	{"at": Vector3(0.6, 0.25, 2.43), "n": Vector3(0, 0.815, 0.58), "up": Vector3(0, 0.58, -0.815), "w": 0.34, "who": 1},
+	{"at": Vector3(0.49, 0.67, -2.33), "n": Vector3(1, 0, 0), "up": Vector3(0, 1, 0), "w": 0.34, "who": 1},
+	# Partners: nose, the chassis ahead of the pods, the pods' tops, the fin,
+	# low on the rear endplates.
+	{"at": Vector3(0.13, 0.29, 2.02), "n": Vector3(1, 0, 0), "up": Vector3(0, 1, 0), "w": 0.44, "who": 2},
+	{"at": Vector3(0.22, 0.43, 1.3), "n": Vector3(1, 0, 0), "up": Vector3(0, 1, 0), "w": 0.42, "who": 3},
+	{"at": Vector3(0.53, 0.62, 0.36), "n": Vector3(0, 1, 0), "up": Vector3(-1, 0, 0), "w": 0.32, "who": 4},
+	{"at": Vector3(0.38, 0.4, -0.86), "n": Vector3(0.3, 1, 0), "up": Vector3(-1, 0.3, 0), "w": 0.36, "who": 5},
+	{"at": Vector3(0.005, 0.64, -1.66), "n": Vector3(1, 0, 0), "up": Vector3(0, 1, 0), "w": 0.34, "who": 6},
+	{"at": Vector3(0.49, 0.48, -2.3), "n": Vector3(1, 0, 0), "up": Vector3(0, 1, 0), "w": 0.24, "who": 7, "sticker": true},
+	# Across the top of the halo, read from the onboard camera behind.
+	{"at": Vector3(0.0, 0.925, 0.87), "halo": true, "w": 0.26, "who": 8},
+	# The series' own: its badge on the nose, the tyre maker on the front
+	# wing's endplates, the timekeeper on the mirrors.
+	{"at": Vector3(0.0, 0.33, 2.18), "n": Vector3(0, 1, 0.25), "up": Vector3(0, 0, -1), "w": 0.2, "who": "apex"},
+	{"at": Vector3(0.993, 0.12, 2.72), "n": Vector3(1, 0, 0), "up": Vector3(0, 1, 0), "w": 0.28, "who": "falco", "sticker": true},
+	{"at": Vector3(0.6, 0.762, 0.655), "n": Vector3(0, 0, 1), "up": Vector3(0, 1, 0), "w": 0.13, "who": "aurum"},
+]
+
+
+## A kart's stickers: the side pods, the nose and the rear bumper.
+const KART_DECALS := [
+	{"at": Vector3(0.6, 0.11, -0.02), "n": Vector3(1, 0, 0), "up": Vector3(0, 1, 0), "w": 0.38, "who": 0},
+	{"at": Vector3(0.5, 0.18, -0.05), "n": Vector3(0, 1, 0), "up": Vector3(-1, 0, 0), "w": 0.3, "who": 1},
+	{"at": Vector3(0.0, 0.2, 0.86), "n": Vector3(0, 1, 0.3), "up": Vector3(0, 0, -1), "w": 0.4, "who": 0},
+	{"at": Vector3(0.0, 0.1, -0.99), "n": Vector3(0, 0, -1), "up": Vector3(0, 1, 0), "w": 0.28, "who": 2, "sticker": true},
+]
+
+
+## The sponsors' logos on a car: one mesh, each logo shaped to the
+## bodywork under it (worked out once per model, as only colours differ
+## between its cars).
+func _sponsor_decals(mesh: ArrayMesh, layout: Array) -> void:
+	var slots: Array = []
+	for s in layout:
+		slots.append(s)
+		var at: Vector3 = s["at"]
+		if absf(at.x) > 0.02 and not s.has("halo"):
+			var m: Dictionary = s.duplicate()
+			m["at"] = Vector3(-at.x, at.y, at.z)
+			m["n"] = Vector3(-s["n"].x, s["n"].y, s["n"].z)
+			m["up"] = Vector3(-s["up"].x, s["up"].y, s["up"].z)
+			slots.append(m)
+	# The paintwork the logos sit on, all in one list.
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var cols := PackedColorArray()
+	for si in _paint_surfaces:
+		var arr := mesh.surface_get_arrays(si)
+		verts.append_array(arr[Mesh.ARRAY_VERTEX])
+		norms.append_array(arr[Mesh.ARRAY_NORMAL])
+		cols.append_array(arr[Mesh.ARRAY_COLOR])
+	var key := _shape_key("decals")
+	if not _decal_geo.has(key):
+		_decal_geo[key] = _project_decals(slots, verts, norms)
+	var geo: Array = _decal_geo[key]
 	var lv: Dictionary = spec["livery"]
-	var ti := CarSpecs.teams_for(String(spec.get("id", "gp26"))).find(lv)
-	var main: String = SPONSORS[posmod(ti, SPONSORS.size())]
-	var second: String = SPONSORS[posmod(ti + 3, SPONSORS.size())]
-	var ink: Color = lv["accent"] if Color(lv["base"]).get_luminance() > 0.45 else Color(0.97, 0.97, 0.98)
-	var dark := Color(0.95, 0.95, 0.96)
-	for sx in [-1.0, 1.0]:
-		_decal(main, Vector3(0.765 * sx, _h(0.42), 0.12), Vector3(0, PI / 2 * sx, 0), 0.0019, ink, 52)
-		_decal(second, Vector3(0.146 * sx, _h(0.68), -0.85), Vector3(0, PI / 2 * sx, 0.06 * sx), 0.0015, ink, 40)
-		_decal(second, Vector3(0.505 * sx, _h(0.62), -2.33), Vector3(0, PI / 2 * sx, 0), 0.0013, dark, 40)
-	_decal(main, Vector3(0, _h(0.86), -2.56), Vector3(-0.35, PI, 0), 0.0021, ink, 48)
-	_decal(second, Vector3(0, _h(0.36), 2.22), Vector3(-PI / 2 + 0.27, 0, 0), 0.0012, ink, 40)
+	var teams := CarSpecs.teams_for(String(spec.get("id", "gp26")))
+	var ti := teams.find(lv)
+	var deal := Sponsors.team_deal(String(lv.get("id", "")) if ti >= 0 else "", ti, String(spec.get("id", "gp26")))
+	var accent: Color = lv["accent"]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in slots.size():
+		var g: Dictionary = geo[k]
+		if g.is_empty():
+			continue
+		var s: Dictionary = slots[k]
+		var who: Variant = s["who"]
+		var brand: String = deal[int(who)] if who is int else String(who)
+		var sticker: bool = s.get("sticker", false)
+		var uv := Sponsors.logo_uv(brand, sticker)
+		var ink := Color.WHITE
+		if not sticker:
+			# White lettering, or dark where it sits on light paint all over (the
+			# team's own dark colour where it has one).
+			var dark := accent if accent.get_luminance() < 0.2 else Color(0.05, 0.05, 0.06)
+			var under: Array = []
+			for vi in g["tris"]:
+				if vi >= 0 and vi < cols.size():
+					under.append(cols[vi])
+			if under.is_empty():
+				under.append(_base)                 # (the halo: painted in the base colour)
+			var light := 0
+			for uc in under:
+				if (uc as Color).get_luminance() > 0.45:
+					light += 1
+			if light > under.size() * 0.9:
+				ink = dark
+		var pts: PackedVector3Array = g["pts"]
+		var nrm: PackedVector3Array = g["nrm"]
+		var ok: PackedByteArray = g["ok"]
+		var nc: int = g["cols"]
+		var nr: int = g["rows"]
+		for j in nr:
+			for i in nc:
+				var a := j * (nc + 1) + i
+				var quad := [a, a + 1, a + nc + 2, a + nc + 1]
+				if ok[quad[0]] == 0 or ok[quad[1]] == 0 or ok[quad[2]] == 0 or ok[quad[3]] == 0:
+					continue
+				for t in [[0, 1, 2], [0, 2, 3]]:
+					for q in t:
+						var idx: int = quad[q]
+						var u := float(idx % (nc + 1)) / nc
+						var v := float(idx / (nc + 1)) / nr
+						st.set_color(ink)
+						st.set_normal(nrm[idx])
+						st.set_uv(uv.position + uv.size * Vector2(u, v))
+						st.add_vertex(pts[idx])
+	var dm := st.commit()
+	if dm.get_surface_count() == 0:
+		return
+	_decals = MeshInstance3D.new()
+	_decals.name = "Sponsors"
+	_decals.mesh = dm
+	_decals.material_override = Sponsors.decal_material()
+	_decals.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_decals.visibility_range_end = LOD_DISTANCE
+	_decals.visibility_range_end_margin = LOD_MARGIN
+	add_child(_decals)
+
+
+## A logo wrapped over the top of the halo's hoop at the front, following
+## its curve (the tube as _gp_halo builds it).
+func _halo_decal(s: Dictionary) -> Dictionary:
+	var w: float = s["w"]
+	var h := w * Sponsors.LOGO_CELL.y / Sponsors.LOGO_CELL.x
+	var r := 0.029 + 0.004
+	var half_a := w * 0.5 / 0.3                 # the hoop's front is about 0.3 m from its middle
+	var half_th := h * 0.5 / r
+	var nc := 10
+	var nr := 3
+	var pts := PackedVector3Array()
+	var nrm := PackedVector3Array()
+	var ok := PackedByteArray()
+	var tris := PackedInt32Array()
+	for j in nr + 1:
+		for i in nc + 1:
+			# Left to right as seen from behind: from the right side of the
+			# car across to the left; the tops of the letters forwards.
+			var a := lerpf(half_a, -half_a, float(i) / nc)
+			# (Centred on the hoop's upper back, where the onboard and chase
+			# cameras see it.)
+			var th := lerpf(half_th, -half_th, float(j) / nr) - 0.55
+			var c := Vector3(sin(a) * 0.3, _h(0.925 - 0.05 * (1.0 - cos(a))), 0.4 + cos(a) * 0.47)
+			var out_dir := Vector3(sin(a) / 0.3, 0, cos(a) / 0.47).normalized()
+			var dir := Vector3.UP * cos(th) + out_dir * sin(th)
+			pts.append(c + dir * r)
+			nrm.append(dir)
+			ok.append(1)
+			tris.append(-1)
+	return {"pts": pts, "nrm": nrm, "ok": ok, "cols": nc, "rows": nr, "tris": tris}
+
+
+## Lays a grid over each logo's rectangle and drops every point onto the
+## bodywork along the surface's facing (to the face nearest the rectangle,
+## facing the same way), lifted a few millimetres off it.
+func _project_decals(slots: Array, verts: PackedVector3Array, norms: PackedVector3Array) -> Array:
+	# Triangles bucketed by 0.2 m cells, so each logo looks at its own few.
+	const CS := 0.2
+	var cells := {}
+	for t in verts.size() / 3:
+		var a := verts[t * 3]
+		var b := verts[t * 3 + 1]
+		var c := verts[t * 3 + 2]
+		var lo := Vector3i(((a.min(b).min(c)) / CS).floor())
+		var hi := Vector3i(((a.max(b).max(c)) / CS).floor())
+		for x in range(lo.x, hi.x + 1):
+			for y in range(lo.y, hi.y + 1):
+				for z in range(lo.z, hi.z + 1):
+					var ck := Vector3i(x, y, z)
+					if not cells.has(ck):
+						cells[ck] = []
+					cells[ck].append(t)
+	var out: Array = []
+	for s in slots:
+		if s.has("halo"):
+			out.append(_halo_decal(s))
+			continue
+		var n: Vector3 = (s["n"] as Vector3).normalized()
+		var up: Vector3 = (s["up"] as Vector3)
+		up = (up - n * up.dot(n)).normalized()
+		var right := up.cross(n)
+		var w: float = s["w"]
+		var h := w * Sponsors.LOGO_CELL.y / Sponsors.LOGO_CELL.x
+		var at: Vector3 = s["at"]
+		var c0 := Vector3(at.x, _h(at.y), at.z)
+		# The triangles near this logo.
+		var e := w * 0.5 + 0.3
+		var lo := Vector3i(((c0 - Vector3(e, e, e)) / CS).floor())
+		var hi := Vector3i(((c0 + Vector3(e, e, e)) / CS).floor())
+		var seen := {}
+		var cand: Array = []
+		for x in range(lo.x, hi.x + 1):
+			for y in range(lo.y, hi.y + 1):
+				for z in range(lo.z, hi.z + 1):
+					for t in cells.get(Vector3i(x, y, z), []):
+						if not seen.has(t):
+							seen[t] = true
+							cand.append(t)
+		var nc := clampi(roundi(w / 0.04), 3, 18)
+		var nr := clampi(roundi(h / 0.03), 3, 6)
+		var pts := PackedVector3Array()
+		var nrm := PackedVector3Array()
+		var ok := PackedByteArray()
+		var tris := PackedInt32Array()
+		for j in nr + 1:
+			for i in nc + 1:
+				var p := c0 + right * (float(i) / nc - 0.5) * w + up * (0.5 - float(j) / nr) * h
+				var from := p + n * 0.25
+				var best := 1e9
+				var hit_p := p
+				var hit_n := n
+				var hit_t := -1
+				# The outermost surface within reach of the rectangle's plane
+				# (not a part standing well off it, like a mirror).
+				for t in cand:
+					var vi: int = t * 3
+					if absf(norms[vi].dot(n)) < 0.1:
+						continue                    # edge-on to this side
+					var hit: Variant = Geometry3D.ray_intersects_triangle(from, -n, verts[vi], verts[vi + 1], verts[vi + 2])
+					if hit == null:
+						continue
+					var d: float = ((hit as Vector3) - from).dot(-n)
+					if absf(d - 0.25) < 0.12 and d < best:
+						best = d
+						hit_p = hit
+						hit_n = (norms[vi] + norms[vi + 1] + norms[vi + 2]).normalized()
+						if hit_n.dot(n) < 0.0:
+							hit_n = -hit_n
+						hit_t = vi
+				ok.append(1 if hit_t >= 0 else 0)
+				pts.append(hit_p + n * 0.007)
+				nrm.append(hit_n)
+				tris.append(hit_t)
+		out.append({"pts": pts, "nrm": nrm, "ok": ok, "cols": nc, "rows": nr, "tris": tris})
+	return out
 
 
 ## Lettering in the browser: flat text meshes, one per word and size shared
@@ -731,6 +973,7 @@ func _gp_rear_wing(paint: SurfaceTool, matte: SurfaceTool, fine: SurfaceTool) ->
 ## pods in the team's colours, the seat, the engine and exhaust on the right,
 ## and the driver sitting in it all (body, arms on the wheel, helmet).
 func _build_kart() -> void:
+	_g = 0.0                                   # (the kart's heights are its own)
 	var lv: Dictionary = spec["livery"]
 	var base: Color = lv["base"]
 	var accent: Color = lv["accent"]
@@ -1266,14 +1509,15 @@ static func _band_mat(c: Color) -> StandardMaterial3D:
 static var _tyre_mats := {}
 
 ## Rubber with the maker's name round the sidewall (light lettering on the
-## racing slicks, below the compound band; dark grey on road tyres).
+## racing slicks, below the compound band; dark grey on road tyres): the
+## series' tyre partner (textures/tyre_strip.png).
 static func _tyre_material(rim_r: float, r: float, gp: bool) -> ShaderMaterial:
 	var key := "%.3f|%.3f|%s" % [rim_r, r, gp]
 	if _tyre_mats.has(key):
 		return _tyre_mats[key]
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/tyre.gdshader")
-	m.set_shader_parameter("letters", _letter_strip())
+	m.set_shader_parameter("letters", Sponsors.tyre_strip())
 	m.set_shader_parameter("rim_r", rim_r)
 	m.set_shader_parameter("tyre_r", r)
 	if gp:
@@ -1285,52 +1529,6 @@ static func _tyre_material(rim_r: float, r: float, gp: bool) -> ShaderMaterial:
 		m.set_shader_parameter("letter_color", Color(0.2, 0.2, 0.21))
 	_tyre_mats[key] = m
 	return m
-
-
-const _GLYPHS := {
-	"A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
-	"C": ["01111", "10000", "10000", "10000", "10000", "10000", "01111"],
-	"E": ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
-	"I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"],
-	"K": ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
-	"L": ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
-	"P": ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
-	"R": ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
-	"S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
-	"X": ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
-	"-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
-	" ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
-}
-
-static var _letters: ImageTexture
-
-## "APEX  -  RACE SLICK" twice round the tyre, in blocky lettering drawn
-## here (no font rendering needed).
-static func _letter_strip() -> ImageTexture:
-	if _letters != null:
-		return _letters
-	var w := 2048
-	var h := 64
-	var img := Image.create(w, h, false, Image.FORMAT_L8)
-	img.fill(Color(0, 0, 0))
-	var words := ["APEX", " - ", "RACE SLICK"]
-	var x := 180
-	for rep in 2:
-		for wi in words.size():
-			var big: bool = wi == 0
-			var cell := 8 if big else 6            # pixels per glyph dot
-			var y0 := (h - 7 * cell) / 2
-			for ch in String(words[wi]):
-				var g: Array = _GLYPHS.get(ch, _GLYPHS[" "])
-				for gy in 7:
-					for gx in 5:
-						if String(g[gy])[gx] == "1":
-							img.fill_rect(Rect2i(x + gx * cell, y0 + gy * cell, cell, cell), Color(1, 1, 1))
-				x += cell * 6
-		x = 180 + w / 2
-	img.generate_mipmaps()
-	_letters = ImageTexture.create_from_image(img)
-	return _letters
 
 
 static func _wheel_mesh(r: float, width: float, gp: bool) -> ArrayMesh:

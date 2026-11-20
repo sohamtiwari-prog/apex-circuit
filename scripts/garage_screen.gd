@@ -150,6 +150,20 @@ func _team_swatches() -> void:
 	_panel.add_child(head)
 	head.add_child(UIStyle.label("Team", 19, UIStyle.FOG, "bold"))
 	head.add_child(UIStyle.label(String(teams[cur]["name"]), 21, UIStyle.PAPER, "bold"))
+	# The team's title sponsor and main partner, as they appear on the car.
+	var deal := Sponsors.team_deal(String(teams[cur].get("id", "")), cur, car_id)
+	var backers := HBoxContainer.new()
+	backers.add_theme_constant_override("separation", 8)
+	_panel.add_child(backers)
+	backers.add_child(UIStyle.label("Backed by", 17, UIStyle.FOG, "medium"))
+	for k in 2:
+		var logo := TextureRect.new()
+		logo.texture = Sponsors.sticker(String(deal[k]))
+		logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		logo.custom_minimum_size = Vector2(124, 31)
+		logo.tooltip_text = String(Sponsors.brand(String(deal[k]))["name"]).capitalize()
+		backers.add_child(logo)
 	var grid := GridContainer.new()
 	grid.columns = 5
 	grid.add_theme_constant_override("h_separation", 8)
