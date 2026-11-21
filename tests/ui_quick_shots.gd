@@ -30,7 +30,7 @@ func _run() -> void:
 	var board: Node = root.get_node("Board")
 	board.url = "http://127.0.0.1:3100"
 	board.key = "sb_publishable_test"
-	board.player_id()
+	save.data["settings"]["online_id"] = "00691541-0cce-484c-a776-d730eb7700d3"
 	if only == "" or only.contains("hub"):
 		await _open("res://scenes/hub.tscn")
 		await _shot(out + "/hub.png")

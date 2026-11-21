@@ -176,15 +176,20 @@ func _draw() -> void:
 			accent = UIStyle.GREEN
 		elif key == "brake":
 			accent = UIStyle.RED
-		var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.3 if not on else 0.7), true, Color(0, 0, 0, 0), 8)
-		sb.border_color = Color(accent, 0.9 if on else 0.55)
-		sb.border_width_bottom = 6
-		sb.border_width_left = 2
-		sb.border_width_right = 2
-		sb.border_width_top = 2
-		if on:
-			sb.bg_color = Color(accent, 0.38)
+		# Smoked glass with a hairline, the pedal's colour only as a bar
+		# along its foot (and filling it while it's pressed).
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(accent, 0.32) if on else Color(0.02, 0.025, 0.03, 0.26)
+		sb.set_corner_radius_all(14)
+		sb.anti_aliasing = true
+		sb.border_color = Color(1, 1, 1, 0.3 if on else 0.14)
+		sb.set_border_width_all(2)
 		draw_style_box(sb, r)
+		if key in ["gas", "brake"]:
+			var foot := StyleBoxFlat.new()
+			foot.bg_color = Color(accent, 0.95 if on else 0.7)
+			foot.set_corner_radius_all(3)
+			draw_style_box(foot, Rect2(r.position + Vector2(r.size.x * 0.3, r.size.y - 14.0), Vector2(r.size.x * 0.4, 5.0)))
 		var c := r.get_center()
 		var w := r.size.x * 0.2
 		var ink := Color(UIStyle.PAPER, 0.92 if on else 0.75)

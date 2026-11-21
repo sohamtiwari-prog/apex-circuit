@@ -23,7 +23,7 @@ const DAY := {"floor": Color(0.4, 0.42, 0.44), "plate": Color(0.33, 0.345, 0.36)
 const NIGHT := {"floor": Color(0.018, 0.02, 0.024), "plate": Color(0.03, 0.032, 0.036), "wall": Color(0.07, 0.075, 0.085),
 	"cabinet": Color(0.025, 0.027, 0.03), "top": Color(0.09, 0.095, 0.1), "ceiling": Color(0.02, 0.02, 0.024),
 	"backing": Color(0.015, 0.015, 0.018), "ambient": Color(0.42, 0.48, 0.6), "ambient_energy": 0.22,
-	"sun": 0.55, "door": 0.08, "strip": 1.6, "floor_rough": 0.07}
+	"sun": 0.55, "door": 0.08, "strip": 0.7, "floor_rough": 0.2}
 const PAINT_WHITE := Color(0.95, 0.95, 0.93)
 const PAINT_YELLOW := Color(1.0, 0.8, 0.0)
 
@@ -104,7 +104,7 @@ func build(cam_pos := Vector3(5.6, 1.9, 6.4), look := Vector3(0.9, 0.15, -1.6), 
 			rim.position = r[0]
 			rim.light_color = r[1]
 			rim.light_energy = r[2]
-			rim.omni_range = 7.5
+			rim.omni_range = 4.6
 			rim.omni_attenuation = 1.6
 			add_child(rim)
 	var probe := ReflectionProbe.new()

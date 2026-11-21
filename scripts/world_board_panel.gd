@@ -1,14 +1,22 @@
 class_name WorldBoardPanel
 extends Control
 ## The world leaderboard for a track and a car (scripts/world_board.gd), over
-## whatever screen opened it: the top ten, where you stand among everyone,
-## and a Race button on each lap with a ghost (a time trial against it).
+## whatever screen opened it. Laid out like a timing screen on the pit wall:
+## on the left the circuit and where you stand (your place, big, the one
+## loud thing here); on the right the running order of the world's best
+## laps, a hairline between rows, the fastest in purple, yours marked in
+## your yellow, and a Race button on every lap with a ghost to chase.
 
 var track_id := ""
 var car_id := ""
-var _list: VBoxContainer
-var _you: Label
+var _rows: VBoxContainer
 var _status: Label
+var _place: Label
+var _place_of: Label
+var _best: Label
+var _gap: Label
+var _leader_ms := -1
+var _my_ms := -1
 
 
 static func open(parent: Node, track: String, car: String) -> WorldBoardPanel:
@@ -29,69 +37,136 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.72)
+	dim.color = Color(0, 0, 0, 0.62)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	dim.gui_input.connect(func(ev: InputEvent):
 		if ev is InputEventMouseButton and ev.pressed:
 			queue_free())
 	add_child(dim)
-	var box := PanelContainer.new()
-	box.add_theme_stylebox_override("panel", UIStyle.panel(Color(UIStyle.TARMAC, 0.97), false, UIStyle.LINE))
-	box.custom_minimum_size = Vector2(760, 560)
-	add_child(box)
-	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
-	box.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	box.grow_vertical = Control.GROW_DIRECTION_BOTH
-	var m := MarginContainer.new()
-	for side in ["left", "right", "top", "bottom"]:
-		m.add_theme_constant_override("margin_" + side, 22)
-	box.add_child(m)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 10)
-	m.add_child(v)
 
-	var top := HBoxContainer.new()
-	v.add_child(top)
-	var titles := VBoxContainer.new()
-	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	titles.add_theme_constant_override("separation", 0)
-	top.add_child(titles)
-	titles.add_child(UIStyle.label("World leaderboard", 30, UIStyle.PAPER, "bold"))
+	var sheet := PanelContainer.new()
+	var sb := UIStyle.panel(Color(UIStyle.TARMAC, 0.97), false)
+	sb.bg_color.a = 0.97
+	sb.content_margin_left = 0
+	sb.content_margin_right = 0
+	sb.content_margin_top = 0
+	sb.content_margin_bottom = 0
+	sheet.add_theme_stylebox_override("panel", sb)
+	sheet.custom_minimum_size = Vector2(1040, 600)
+	add_child(sheet)
+	sheet.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+	sheet.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	sheet.grow_vertical = Control.GROW_DIRECTION_BOTH
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 0)
+	sheet.add_child(cols)
+
+	# --- left: the circuit and where you stand
+	var left := PanelContainer.new()
+	var lsb := StyleBoxFlat.new()
+	lsb.bg_color = Color(UIStyle.TARMAC_2, 0.55)
+	lsb.corner_radius_top_left = 6
+	lsb.corner_radius_bottom_left = 6
+	lsb.content_margin_left = 30
+	lsb.content_margin_right = 30
+	lsb.content_margin_top = 28
+	lsb.content_margin_bottom = 28
+	left.add_theme_stylebox_override("panel", lsb)
+	left.custom_minimum_size = Vector2(340, 0)
+	cols.add_child(left)
+	var lv := VBoxContainer.new()
+	lv.add_theme_constant_override("separation", 2)
+	left.add_child(lv)
+	lv.add_child(UIStyle.label("World leaderboard", 19, UIStyle.FOG, "semibold"))
+	var tname := UIStyle.label(String(Track.catalog_entry(track_id)["name"]), 30, UIStyle.PAPER, "display")
+	tname.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lv.add_child(tname)
 	var spec := CarSpecs.get_spec(car_id)
-	titles.add_child(UIStyle.label("%s, %s. Clean time-trial laps." % [String(Track.catalog_entry(track_id)["name"]), String(spec.get("name", car_id))], 18, UIStyle.FOG))
-	var close := UIStyle.button("Close", queue_free, false, 20)
-	close.custom_minimum_size = Vector2(0, 48)
-	close.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	top.add_child(close)
+	lv.add_child(UIStyle.label("%s, clean time-trial laps" % String(spec.get("name", car_id)), 19, UIStyle.FOG))
+	var map := MiniMap.new()
+	map.show_panel = false
+	map.line_width = 4.0
+	map.custom_minimum_size = Vector2(0, 150)
+	map.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	lv.add_child(map)
+	map.set_points(Track.outline(track_id))
+	lv.add_child(UIStyle.label("Your place", 19, UIStyle.FOG, "semibold"))
+	var ph := HBoxContainer.new()
+	ph.add_theme_constant_override("separation", 12)
+	lv.add_child(ph)
+	_place = UIStyle.label("–", 76, UIStyle.APEX if UIStyle.dark_menus() else UIStyle.PAPER, "display")
+	ph.add_child(_place)
+	_place_of = UIStyle.label("", 21, UIStyle.FOG, "semibold")
+	_place_of.size_flags_vertical = Control.SIZE_SHRINK_END
+	_place_of.custom_minimum_size = Vector2(0, 0)
+	ph.add_child(_place_of)
+	_best = UIStyle.label("", 26, UIStyle.PAPER, "bold")
+	lv.add_child(_best)
+	_gap = UIStyle.label("", 19, UIStyle.FOG)
+	_gap.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lv.add_child(_gap)
 
-	var rule := ColorRect.new()
-	rule.color = UIStyle.LINE
-	rule.custom_minimum_size = Vector2(0, 2)
-	v.add_child(rule)
+	# --- right: the running order
+	var right := MarginContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.add_theme_constant_override("margin_left", 30)
+	right.add_theme_constant_override("margin_right", 26)
+	right.add_theme_constant_override("margin_top", 22)
+	right.add_theme_constant_override("margin_bottom", 22)
+	cols.add_child(right)
+	var rv := VBoxContainer.new()
+	rv.add_theme_constant_override("separation", 6)
+	right.add_child(rv)
+	var top := HBoxContainer.new()
+	rv.add_child(top)
+	var cap := UIStyle.label("Top 10 in the world", 24, UIStyle.PAPER, "bold")
+	cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cap.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	top.add_child(cap)
+	var close := UIStyle.button("Close", queue_free, false, 20)
+	close.custom_minimum_size = Vector2(0, 46)
+	top.add_child(close)
+	rv.add_child(_head())
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	v.add_child(scroll)
-	_list = VBoxContainer.new()
-	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list.add_theme_constant_override("separation", 4)
-	scroll.add_child(_list)
-	_status = UIStyle.label("Loading...", 20, UIStyle.FOG)
+	rv.add_child(scroll)
+	_rows = VBoxContainer.new()
+	_rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_rows.add_theme_constant_override("separation", 0)
+	scroll.add_child(_rows)
+	_status = UIStyle.label("Loading the world's laps...", 21, UIStyle.FOG)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_list.add_child(_status)
-	_you = UIStyle.label("", 21, UIStyle.PAPER, "bold")
-	_you.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	v.add_child(_you)
+	_status.custom_minimum_size = Vector2(0, 60)
+	_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_rows.add_child(_status)
 
 	var board := get_node_or_null("/root/Board")
 	if board == null or not board.configured():
-		_status.text = "The online leaderboard isn't switched on in this version yet."
+		_status.text = "The online leaderboard isn't in this version yet."
+		_gap.text = ""
 		return
 	if not board.sharing():
-		_you.text = "Your laps aren't being shared (Settings). Turn sharing on to get on the board."
+		_gap.text = "Sharing your laps is off (Settings): turn it on to get a place here."
 	board.top(track_id, car_id, _show_top)
 	if board.sharing():
 		board.rank(track_id, car_id, _show_rank)
+
+
+## Column titles over the running order.
+func _head() -> Control:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 14)
+	h.modulate.a = 0.9
+	for c in [["Pos", 52, HORIZONTAL_ALIGNMENT_CENTER, false], ["Driver", 0, HORIZONTAL_ALIGNMENT_LEFT, true],
+			["Gap", 92, HORIZONTAL_ALIGNMENT_RIGHT, false], ["Lap", 124, HORIZONTAL_ALIGNMENT_RIGHT, false], ["", 112, HORIZONTAL_ALIGNMENT_RIGHT, false]]:
+		var l := UIStyle.label(c[0], 17, UIStyle.FOG, "semibold")
+		l.custom_minimum_size = Vector2(c[1], 0)
+		l.horizontal_alignment = c[2]
+		if c[3]:
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(l)
+	return h
 
 
 func _show_top(rows: Variant) -> void:
@@ -101,66 +176,99 @@ func _show_top(rows: Variant) -> void:
 		_status.text = "Couldn't reach the leaderboard. Check your connection and try again."
 		return
 	if (rows as Array).is_empty():
-		_status.text = "No laps here yet. Drive a clean time-trial lap and you're first."
+		_status.text = "Nobody's set a lap here yet. Drive a clean lap in Time trial and the top spot is yours."
 		return
 	_status.queue_free()
-	var first := int((rows as Array)[0]["lap_ms"])
+	_leader_ms = int((rows as Array)[0]["lap_ms"])
 	var i := 0
 	for r in rows:
 		i += 1
-		_list.add_child(_row(i, r, first))
+		_rows.add_child(_row(i, r))
+	_update_gap()
 
 
-func _row(pos: int, r: Dictionary, first: int) -> Control:
+func _row(pos: int, r: Dictionary) -> Control:
 	var mine := bool(r.get("mine", false))
 	var row := PanelContainer.new()
-	row.add_theme_stylebox_override("panel", UIStyle.panel(UIStyle.APEX if mine else Color(UIStyle.TARMAC_2, 0.9), false))
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(UIStyle.APEX, 0.12) if mine else Color(0, 0, 0, 0)
+	sb.border_color = UIStyle.LINE
+	sb.border_width_bottom = 1
+	if mine:
+		sb.border_color = UIStyle.APEX
+		sb.border_width_bottom = 0
+		sb.border_width_left = 4
+	sb.content_margin_top = 4
+	sb.content_margin_bottom = 4
+	row.add_theme_stylebox_override("panel", sb)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 14)
 	row.add_child(h)
-	var ink := UIStyle.INK if mine else UIStyle.PAPER
-	var p := UIStyle.label(str(pos), 24, UIStyle.PURPLE if pos == 1 and not mine else ink, "bold")
-	p.custom_minimum_size = Vector2(44, 50)
+	var p := UIStyle.label(str(pos), 26, UIStyle.PURPLE if pos == 1 else UIStyle.PAPER, "display" if pos <= 3 else "bold")
+	if pos <= 3:
+		p.add_theme_font_size_override("font_size", 22)
+	p.custom_minimum_size = Vector2(52, 54)
 	p.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	p.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	h.add_child(p)
-	var n := UIStyle.label(String(r.get("nickname", "Driver")) + ("  (you)" if mine else ""), 22, ink, "bold")
+	var name := String(r.get("nickname", "Driver"))
+	var n := UIStyle.label(name, 24, UIStyle.APEX if mine and UIStyle.dark_menus() else UIStyle.PAPER, "bold")
 	n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	n.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	n.clip_text = true
+	n.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	if mine:
+		n.text += "  (you)"
 	h.add_child(n)
 	var ms := int(r["lap_ms"])
-	var gap := UIStyle.label("" if pos == 1 else "+%.3f" % ((ms - first) / 1000.0), 18, ink if mine else UIStyle.FOG)
-	gap.custom_minimum_size = Vector2(86, 0)
+	var gap := UIStyle.label("Leader" if pos == 1 else "+%.3f" % ((ms - _leader_ms) / 1000.0), 19, UIStyle.FOG, "semibold")
+	gap.custom_minimum_size = Vector2(92, 0)
 	gap.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	gap.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	h.add_child(gap)
-	var t := UIStyle.label(UIStyle.fmt_time(ms / 1000.0), 23, ink, "bold")
-	t.custom_minimum_size = Vector2(118, 0)
+	var t := UIStyle.label(UIStyle.fmt_time(ms / 1000.0), 25, UIStyle.PURPLE if pos == 1 else UIStyle.PAPER, "bold")
+	t.custom_minimum_size = Vector2(124, 0)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	t.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	h.add_child(t)
-	var b := UIStyle.button("Race", func(): pass, false, 19)
-	b.custom_minimum_size = Vector2(96, 46)
-	b.disabled = mine or not bool(r.get("has_ghost", false))
-	b.modulate.a = 0.0 if b.disabled else 1.0
-	b.pressed.connect(func():
-		b.disabled = true
-		b.text = "..."
-		_race(int(r["lap_id"]), b))
-	h.add_child(b)
+	var slot := Control.new()
+	slot.custom_minimum_size = Vector2(112, 46)
+	h.add_child(slot)
+	if not mine and bool(r.get("has_ghost", false)):
+		var b := UIStyle.button("Race", Callable(), false, 19)
+		b.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		# (Quiet until pressed: a hairline outline, not a block on every row.)
+		for st in ["normal", "hover"]:
+			var o := (b.get_theme_stylebox(st) as StyleBoxFlat).duplicate() as StyleBoxFlat
+			o.bg_color = Color(UIStyle.PAPER, 0.04)
+			o.border_color = Color(UIStyle.PAPER, 0.22)
+			o.set_border_width_all(1)
+			b.add_theme_stylebox_override(st, o)
+		b.pressed.connect(func():
+			b.disabled = true
+			b.text = "Loading"
+			_race(int(r["lap_id"]), b))
+		slot.add_child(b)
 	return row
 
 
 func _show_rank(r: Variant) -> void:
-	if not is_inside_tree():
-		return
-	if r == null:
+	if not is_inside_tree() or r == null:
 		return
 	if (r as Dictionary).is_empty():
-		_you.text = "You're not on this board yet: set a clean lap in Time trial."
+		_place.text = "–"
+		_gap.text = "No lap of yours here yet: drive a clean lap in Time trial to get on the board."
 		return
-	_you.text = "You: P%d of %d   %s" % [int(r["rank"]), int(r["total"]), UIStyle.fmt_time(int(r["best_ms"]) / 1000.0)]
+	_place.text = "P%d" % int(r["rank"])
+	_place_of.text = "of %d" % int(r["total"])
+	_my_ms = int(r["best_ms"])
+	_best.text = UIStyle.fmt_time(_my_ms / 1000.0)
+	_update_gap()
+
+
+func _update_gap() -> void:
+	if _my_ms < 0 or _leader_ms < 0:
+		return
+	_gap.text = "You hold the world record here." if _my_ms <= _leader_ms else "%.3f s off the world record" % ((_my_ms - _leader_ms) / 1000.0)
 
 
 ## Fetch a lap's ghost and race it: a time trial on its track in its car.
@@ -172,10 +280,10 @@ func _race(lap_id: int, b: Button) -> void:
 		if ch.is_empty():
 			b.text = "Race"
 			b.disabled = false
-			_you.text = "Couldn't fetch that lap. Try again."
+			_gap.text = "Couldn't fetch that lap. Try again."
 			return
 		if String(Track.catalog_entry(String(ch["track"]))["id"]) != String(ch["track"]) or not CarSpecs.is_known(String(ch["car"])):
-			_you.text = "That lap is on a track or car this version doesn't have: update the game."
+			_gap.text = "That lap is on a track or car this version doesn't have: update the game."
 			return
 		var save := get_node("/root/Save")
 		save.challenge = ch

@@ -348,8 +348,14 @@ func _next_card(parent: Control) -> Control:
 	var p := PanelContainer.new()
 	var sb := UIStyle.lift(UIStyle.panel(UIStyle.TARMAC, false))
 	sb.set_content_margin_all(18)
-	sb.border_color = UIStyle.GO
-	sb.border_width_left = 8
+	if UIStyle.dark_menus():
+		# (Your next race: a bar of your yellow down its side, nothing round it.)
+		sb.set_border_width_all(0)
+		sb.border_color = UIStyle.APEX
+		sb.border_width_left = 5
+	else:
+		sb.border_color = UIStyle.GO
+		sb.border_width_left = 8
 	p.add_theme_stylebox_override("panel", sb)
 	p.custom_minimum_size = Vector2(0, 214)
 	parent.add_child(p)
