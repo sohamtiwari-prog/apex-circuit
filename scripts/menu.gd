@@ -322,7 +322,7 @@ func _build_track_side(cols: Control) -> void:
 	_share_btn.custom_minimum_size = Vector2(0, 52)
 	_share_row.add_child(_share_btn)
 	# ...and everyone's: the world's best laps here in this car.
-	_world_btn = UIStyle.button("World top 10", func():
+	_world_btn = UIStyle.button("World top 50", func():
 		WorldBoardPanel.open(self, String(save.get_setting("track")), String(save.get_setting("car"))), false, 22)
 	_world_btn.custom_minimum_size = Vector2(0, 52)
 	_share_row.add_child(_world_btn)

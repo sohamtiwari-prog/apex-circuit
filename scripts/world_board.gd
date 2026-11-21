@@ -1,7 +1,7 @@
 extends Node
 ## The online leaderboard (autoload "Board"): every lap anyone drives goes to
 ## the game's database (Supabase, server/leaderboard.sql), with the ghost of
-## each new best time-trial lap; the game reads back the world's top ten on a
+## each new best time-trial lap; the game reads back the world's top 50 on a
 ## track in a car, your place among everyone, and any leaderboard lap's ghost
 ## to race.
 ##
@@ -163,10 +163,10 @@ func pending() -> int:
 
 # ------------------------------------------------------------ reading
 
-## The world's top `limit` on a track in a car: done(rows) with rows of
+## The world's top `limit` (up to 50) on a track in a car: done(rows) with rows of
 ## {lap_id, nickname, lap_ms, sectors, weather, set_at, has_ghost, mine},
 ## or done(null) when it can't be reached.
-func top(track_id: String, car_id: String, done: Callable, limit := 10) -> void:
+func top(track_id: String, car_id: String, done: Callable, limit := 50) -> void:
 	_call("leaderboard", {"p_track": track_id, "p_car": car_id, "p_me": player_id(), "p_limit": limit}, func(ok: bool, v: Variant):
 		done.call(v if ok and v is Array else null))
 

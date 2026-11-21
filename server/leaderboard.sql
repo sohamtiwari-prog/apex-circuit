@@ -115,9 +115,9 @@ begin
   return n;
 end $$;
 
--- The top of a leaderboard: each player's best clean time-trial lap with
+-- The top of a leaderboard (up to 50): each player's best clean time-trial lap with
 -- this car on this track. ("mine" marks the asking player's own row.)
-create or replace function public.leaderboard(p_track text, p_car text, p_me uuid default null, p_limit integer default 10)
+create or replace function public.leaderboard(p_track text, p_car text, p_me uuid default null, p_limit integer default 50)
 returns table (lap_id bigint, nickname text, lap_ms integer, sectors integer[], weather text,
                set_at timestamptz, has_ghost boolean, mine boolean)
 language sql stable security definer set search_path = public as $$

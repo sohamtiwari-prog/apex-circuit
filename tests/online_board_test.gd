@@ -1,6 +1,6 @@
 extends SceneTree
 ## The online leaderboard client (scripts/world_board.gd) against a real
-## database: posts laps (one with a ghost), reads the top ten and your rank
+## database: posts laps (one with a ghost), reads the top 50 and your rank
 ## back, and fetches the ghost to race. Needs a server with
 ## server/leaderboard.sql (not run in CI):
 ##   godot --headless --script res://tests/online_board_test.gd -- <url> <key>
@@ -57,7 +57,7 @@ func _run() -> void:
 	_check(board.pending() == 0, "the queue is empty once they're up")
 
 	var rows: Variant = await _wait_for(func(done): board.top("silvermoor", "gp26", done))
-	_check(rows is Array and (rows as Array).size() >= 1, "the top ten comes back")
+	_check(rows is Array and (rows as Array).size() >= 1, "the top 50 comes back")
 	var mine: Dictionary = {}
 	for r in rows:
 		if bool(r["mine"]):

@@ -10,6 +10,7 @@ extends Control
 var track_id := ""
 var car_id := ""
 var _rows: VBoxContainer
+var _scroll: ScrollContainer
 var _status: Label
 var _place: Label
 var _place_of: Label
@@ -119,7 +120,7 @@ func _ready() -> void:
 	right.add_child(rv)
 	var top := HBoxContainer.new()
 	rv.add_child(top)
-	var cap := UIStyle.label("Top 10 in the world", 24, UIStyle.PAPER, "bold")
+	var cap := UIStyle.label("Top 50 in the world", 24, UIStyle.PAPER, "bold")
 	cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cap.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	top.add_child(cap)
@@ -128,6 +129,7 @@ func _ready() -> void:
 	top.add_child(close)
 	rv.add_child(_head())
 	var scroll := ScrollContainer.new()
+	_scroll = scroll
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	rv.add_child(scroll)
@@ -181,10 +183,19 @@ func _show_top(rows: Variant) -> void:
 	_status.queue_free()
 	_leader_ms = int((rows as Array)[0]["lap_ms"])
 	var i := 0
+	var yours: Control = null
 	for r in rows:
 		i += 1
-		_rows.add_child(_row(i, r))
+		var row := _row(i, r)
+		_rows.add_child(row)
+		if bool(r.get("mine", false)):
+			yours = row
 	_update_gap()
+	# (Fifty rows don't fit: open with yours in the middle, wherever it is.)
+	if yours != null:
+		await get_tree().process_frame
+		if is_instance_valid(yours) and is_instance_valid(_scroll):
+			_scroll.scroll_vertical = int(maxf(yours.position.y - (_scroll.size.y - yours.size.y) * 0.5, 0.0))
 
 
 func _row(pos: int, r: Dictionary) -> Control:
