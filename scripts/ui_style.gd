@@ -57,10 +57,13 @@ const THEMES := {
 	"board": {"TARMAC": "000000", "TARMAC_2": "1b1e23", "LINE": "3a3f46", "PAPER": "ffffff",
 		"FOG": "9ba3ad", "APEX": "ffd200", "INK": "000000", "GO": "00b852", "GO_INK": "ffffff",
 		"STOP": "e0281e", "PURPLE": "b45cff", "GREEN": "2fd36f", "YELLOW": "ff9f1a", "RED": "ff4438"},
-	# The garage at night: black boards, white type, the same signal colours.
-	"garage_dark": {"TARMAC": "000000", "TARMAC_2": "202429", "LINE": "363b42", "PAPER": "ffffff",
-		"FOG": "a3abb5", "APEX": "ffd200", "INK": "000000", "GO": "00b852", "GO_INK": "ffffff",
-		"STOP": "ff4a3d", "PURPLE": "b45cff", "GREEN": "2fd36f", "YELLOW": "ff9f1a", "RED": "ff4438"},
+	# The garage at night (the default): smoked-glass boards over a dark
+	# studio, near-white type, one signal colour (yellow: you, your pick).
+	# The button that starts something is the brightest thing on the
+	# screen: white, black type (yellow under your thumb).
+	"garage_dark": {"TARMAC": "0b0d11", "TARMAC_2": "1d2128", "LINE": "2c3139", "PAPER": "f3f4f6",
+		"FOG": "8f97a2", "APEX": "ffd200", "INK": "000000", "GO": "f3f4f6", "GO_INK": "0b0d11",
+		"STOP": "ff4a3d", "PURPLE": "b98cff", "GREEN": "2fd36f", "YELLOW": "ff9f1a", "RED": "ff4438"},
 }
 const ROOMS := {"garage": "d3d7dc", "garage_dark": "15171a", "board": "000000"}
 
@@ -163,10 +166,21 @@ static func outlined(l: Label, px_size := 6) -> Label:
 ## A board that stands off the room: a short hard shadow under it, as a
 ## sign stands off a wall. Only for the top-level boards on a screen.
 static func lift(sb: StyleBoxFlat) -> StyleBoxFlat:
+	if dark_menus():
+		# (Smoked glass over the studio: a soft wide shadow, not a hard one.)
+		sb.shadow_color = Color(0, 0, 0, 0.42)
+		sb.shadow_size = 18
+		sb.shadow_offset = Vector2(0, 8)
+		return sb
 	sb.shadow_color = Color(0, 0, 0, 0.22 if light() else 0.6)
 	sb.shadow_size = 1
 	sb.shadow_offset = Vector2(0, 6)
 	return sb
+
+
+## The menus at night (the default look).
+static func dark_menus() -> bool:
+	return theme == "garage_dark"
 
 
 ## The one moment of motion on a menu screen: its boards come up into
@@ -213,14 +227,24 @@ static func panel(bg := Color(TARMAC, 0.9), _slant := true, edge := Color(0, 0, 
 	if menus() and bg.a > 0.5 and Color(bg, 1.0).is_equal_approx(Color(TARMAC, 1.0)):
 		lift(sb)                              # (a board on the room, not a well inside one)
 	sb.set_corner_radius_all(mini(radius, 3))
+	sb.anti_aliasing = false
+	if dark_menus():
+		# Smoked glass: the studio shows through the boards; a hairline
+		# round each catches the light; corners eased, not cut.
+		if Color(bg, 1.0).is_equal_approx(Color(TARMAC, 1.0)):
+			sb.bg_color.a = minf(sb.bg_color.a, 0.8)
+		sb.set_corner_radius_all(6)
+		sb.anti_aliasing = true
+		sb.border_color = Color(1, 1, 1, 0.075)
+		sb.set_border_width_all(1)
 	if edge.a > 0.0:
 		sb.border_color = edge
-		sb.border_width_left = 6
+		sb.set_border_width_all(0)
+		sb.border_width_left = 4 if dark_menus() else 6
 	sb.content_margin_left = 14
 	sb.content_margin_right = 14
 	sb.content_margin_top = 6
 	sb.content_margin_bottom = 6
-	sb.anti_aliasing = false
 	return sb
 
 
@@ -268,7 +292,7 @@ static func button(text: String, cb: Callable, primary := false, size := 26) -> 
 	if primary:
 		_button_styles(b, APEX, INK, APEX.darkened(0.12), INK)
 	else:
-		_button_styles(b, Color(TARMAC_2, 0.96), PAPER, APEX, INK)
+		_button_styles(b, Color(TARMAC_2, 0.82 if dark_menus() else 0.96), PAPER, APEX, INK)
 	if cb.is_valid():
 		b.pressed.connect(cb)
 	return b
@@ -280,8 +304,15 @@ static func go_button(text: String, cb: Callable, size := 30) -> Button:
 	var b := button(text, cb, false, size)
 	b.add_theme_font_override("font", font("display"))
 	b.add_theme_font_size_override("font_size", int(size * 0.72))
-	_button_styles(b, GO, GO_INK, GO.darkened(0.18), GO_INK)
+	_go_styles(b)
 	return b
+
+
+static func _go_styles(b: Button) -> void:
+	if dark_menus():
+		_button_styles(b, GO, GO_INK, APEX, INK)
+	else:
+		_button_styles(b, GO, GO_INK, GO.darkened(0.18), GO_INK)
 
 
 ## Red: leave, abandon, quit.
@@ -297,7 +328,7 @@ static func stop_button(text: String, cb: Callable, size := 22) -> Button:
 static func make_go(b: Button, size := 30) -> Button:
 	b.add_theme_font_override("font", font("display"))
 	b.add_theme_font_size_override("font_size", int(size * 0.72))
-	_button_styles(b, GO, GO_INK, GO.darkened(0.18), GO_INK)
+	_go_styles(b)
 	return b
 
 
@@ -331,7 +362,10 @@ static func header(title: String, on_back: Callable, pill_text := "") -> Array:
 ## Back: a solid square in the type colour (black in the garage).
 static func back_button(cb: Callable) -> Button:
 	var b := button("‹", cb, false, 50)
-	_button_styles(b, PAPER, TARMAC, APEX, INK)
+	if dark_menus():
+		_button_styles(b, Color(TARMAC, 0.8), PAPER, APEX, INK)
+	else:
+		_button_styles(b, PAPER, TARMAC, APEX, INK)
 	b.custom_minimum_size = Vector2(72, 60)
 	return b
 

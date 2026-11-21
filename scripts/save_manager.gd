@@ -107,7 +107,7 @@ const _DEFAULTS := {
 		"race_control": true,       # flags, penalties, VSC, retirements (scripts/race_control.gd)
 		"pit_mode": "manual",       # manual: you drive the pit lane; auto: the car drives itself
 		"ideal_ghost": false,       # the ideal-lap ghost car (races and time trial)
-		"look": "auto",             # menus: "light", "dark" or "auto" (match the phone)
+		"look": "dark",             # menus: "light", "dark" or "auto" (match the phone)
 		"web_tuned": false,         # (iPhone browser: battery saver set once, on the first visit)
 		"home_tip_seen": false,     # (iPhone browser: the Add to Home Screen tip was dismissed)
 		"share_laps": true,         # your laps go up to the online leaderboard (scripts/world_board.gd)
@@ -264,6 +264,12 @@ func _migrate(profile: Dictionary) -> void:
 	for key in ["brake_assist", "steer_assist"]:
 		if typeof(st.get(key)) == TYPE_BOOL:
 			st[key] = "full" if st[key] else "off"
+	# The night garage became the menus' own look: saves that just matched
+	# the phone move to it once (a look picked on purpose stays).
+	if not bool(st.get("look_dark_default", false)):
+		st["look_dark_default"] = true
+		if String(st.get("look", "auto")) == "auto":
+			st["look"] = "dark"
 	# v6: no money and no upgrades: every car is open to everyone.
 	for key in ["credits", "owned_cars", "upgrades", "upgrade_jobs", "upgrade_refund"]:
 		profile.erase(key)

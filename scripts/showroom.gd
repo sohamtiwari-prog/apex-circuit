@@ -17,10 +17,13 @@ const DAY := {"floor": Color(0.4, 0.42, 0.44), "plate": Color(0.33, 0.345, 0.36)
 	"cabinet": Color(0.28, 0.3, 0.33), "top": Color(0.72, 0.74, 0.76), "ceiling": Color(0.75, 0.77, 0.8),
 	"backing": Color(0.62, 0.64, 0.67), "ambient": Color(0.86, 0.88, 0.92), "ambient_energy": 0.75,
 	"sun": 0.9, "door": 0.45, "strip": 2.2, "floor_rough": 0.32}
-const NIGHT := {"floor": Color(0.075, 0.08, 0.085), "plate": Color(0.05, 0.052, 0.056), "wall": Color(0.16, 0.17, 0.18),
-	"cabinet": Color(0.05, 0.055, 0.06), "top": Color(0.22, 0.23, 0.24), "ceiling": Color(0.04, 0.04, 0.045),
-	"backing": Color(0.03, 0.03, 0.035), "ambient": Color(0.45, 0.5, 0.6), "ambient_energy": 0.35,
-	"sun": 0.75, "door": 0.12, "strip": 4.0, "floor_rough": 0.2}
+## At night it's a studio more than a workshop: a black lacquered floor the
+## car stands reflected in, one pool of light from above, cool rim lights
+## picking out its shape from behind, the garage itself fading into the dark.
+const NIGHT := {"floor": Color(0.018, 0.02, 0.024), "plate": Color(0.03, 0.032, 0.036), "wall": Color(0.07, 0.075, 0.085),
+	"cabinet": Color(0.025, 0.027, 0.03), "top": Color(0.09, 0.095, 0.1), "ceiling": Color(0.02, 0.02, 0.024),
+	"backing": Color(0.015, 0.015, 0.018), "ambient": Color(0.42, 0.48, 0.6), "ambient_energy": 0.22,
+	"sun": 0.55, "door": 0.08, "strip": 1.6, "floor_rough": 0.07}
 const PAINT_WHITE := Color(0.95, 0.95, 0.93)
 const PAINT_YELLOW := Color(1.0, 0.8, 0.0)
 
@@ -52,7 +55,8 @@ func build(cam_pos := Vector3(5.6, 1.9, 6.4), look := Vector3(0.9, 0.15, -1.6), 
 
 	# Floor, the pit-lane line, the turntable.
 	_box(Vector3(0, -0.05, 0), Vector3(40, 0.1, 40), pal["floor"], pal["floor_rough"])
-	_box(Vector3(0, 0.002, 4.3), Vector3(40, 0.004, 0.16), PAINT_YELLOW, 0.5)
+	if pal == DAY:
+		_box(Vector3(0, 0.002, 4.3), Vector3(40, 0.004, 0.16), PAINT_YELLOW, 0.5)
 	var seam := _disc(3.08, Color(0.2, 0.21, 0.23) if pal == DAY else Color(0.0, 0.0, 0.0))
 	seam.position.y = 0.001
 	add_child(seam)
@@ -66,7 +70,7 @@ func build(cam_pos := Vector3(5.6, 1.9, 6.4), look := Vector3(0.9, 0.15, -1.6), 
 	for b in [[Vector3(0, 0, 2.75), Vector3(2.7, 0.004, 0.14)],
 			[Vector3(-1.28, 0, 2.15), Vector3(0.14, 0.004, 1.34)],
 			[Vector3(1.28, 0, 2.15), Vector3(0.14, 0.004, 1.34)]]:
-		var m := _box(b[0] + Vector3(0, 0.006, 0), b[1], PAINT_WHITE, 0.5, showcase)
+		var m := _box(b[0] + Vector3(0, 0.006, 0), b[1], PAINT_WHITE if pal == DAY else Color(0.32, 0.33, 0.35), 0.5, showcase)
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 	# Walls: behind (z = -7) and to the left (x = -8).
@@ -87,10 +91,22 @@ func build(cam_pos := Vector3(5.6, 1.9, 6.4), look := Vector3(0.9, 0.15, -1.6), 
 	key.spot_range = 9.0
 	key.spot_angle = 34.0
 	key.spot_angle_attenuation = 0.6
-	key.light_energy = 2.4 if pal == DAY else 4.5
+	key.light_energy = 2.4 if pal == DAY else 7.0
 	key.light_color = Color(1.0, 0.98, 0.95)
 	key.shadow_enabled = false
 	add_child(key)
+	if pal == NIGHT:
+		key.spot_angle = 28.0
+		key.spot_angle_attenuation = 1.4
+		# Rim lights behind the car, cool, low: its outline against the dark.
+		for r in [[Vector3(-4.5, 1.6, -4.0), Color(0.55, 0.7, 1.0), 9.0], [Vector3(4.8, 2.2, -3.6), Color(1.0, 0.86, 0.7), 6.0]]:
+			var rim := OmniLight3D.new()
+			rim.position = r[0]
+			rim.light_color = r[1]
+			rim.light_energy = r[2]
+			rim.omni_range = 7.5
+			rim.omni_attenuation = 1.6
+			add_child(rim)
 	var probe := ReflectionProbe.new()
 	probe.update_mode = ReflectionProbe.UPDATE_ONCE
 	probe.size = Vector3(16, 6.4, 14)
@@ -101,6 +117,8 @@ func build(cam_pos := Vector3(5.6, 1.9, 6.4), look := Vector3(0.9, 0.15, -1.6), 
 	probe.ambient_mode = ReflectionProbe.AMBIENT_DISABLED
 	add_child(probe)
 
+	if pal == NIGHT:
+		_vignette()
 	cam = Camera3D.new()
 	cam.fov = fov
 	cam.position = cam_pos
@@ -123,7 +141,7 @@ func _wall(origin: Vector3, along: Vector3, length: float, board: bool) -> void:
 		_box(c + Vector3.UP * 0.6 + out * 0.3, Vector3(1.46, 1.2, 0.6), pal["cabinet"], 0.45, self, basis)
 		_box(c + Vector3.UP * 1.17 + out * 0.32, Vector3(1.48, 0.06, 0.66), pal["top"], 0.3, self, basis)
 	_box(origin - out * 0.06 + Vector3.UP * 3.0, Vector3(length, 6.0, 0.05), pal["backing"], 0.9, self, basis)
-	if board:
+	if board and pal == DAY:
 		# The pit-lane yellow carried up the wall at cabinet height.
 		var line := _box(origin + out * 0.62 + Vector3.UP * 1.21, Vector3(length, 0.03, 0.04), PAINT_YELLOW, 0.5, self, basis)
 		line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -174,6 +192,8 @@ func _props() -> void:
 			w.rotation_degrees.z = 90.0
 			w.position = Vector3(x, 0.06, z)
 			chest.add_child(w)
+	if pal == NIGHT:
+		return
 	# The timing screen: the running order in coloured rows.
 	var scr := Node3D.new()
 	scr.position = Vector3(-4.6, 2.35, -6.88)
@@ -283,3 +303,27 @@ static func on_stand(c: RaceCar) -> void:
 func _process(delta: float) -> void:
 	if showcase != null:
 		showcase.rotate_y(delta * spin)
+
+
+## The edges of the picture fall away into the dark (under the menus).
+func _vignette() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = -10
+	add_child(layer)
+	var g := Gradient.new()
+	g.set_color(0, Color(0, 0, 0, 0.0))
+	g.set_color(1, Color(0.0, 0.0, 0.01, 0.78))
+	g.add_point(0.55, Color(0, 0, 0, 0.12))
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.42, 0.5)
+	tex.fill_to = Vector2(1.08, 1.0)
+	tex.width = 256
+	tex.height = 144
+	var r := TextureRect.new()
+	r.texture = tex
+	r.stretch_mode = TextureRect.STRETCH_SCALE
+	r.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(r)
