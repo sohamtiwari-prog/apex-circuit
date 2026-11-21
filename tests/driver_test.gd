@@ -126,7 +126,7 @@ func _run() -> void:
 	# Look: light, dark, or the phone's.
 	save.set_setting("look", "dark")
 	UIStyle.use_menus()
-	_check(UIStyle.theme == "garage_dark" and UIStyle.PAPER.is_equal_approx(Color.WHITE), "Dark: black boards, white type")
+	_check(UIStyle.theme == "garage_dark" and UIStyle.PAPER.get_luminance() > 0.9 and UIStyle.TARMAC.get_luminance() < 0.1, "Dark: near-black boards, near-white type")
 	save.set_setting("look", "light")
 	UIStyle.use_menus()
 	_check(UIStyle.theme == "garage" and UIStyle.PAPER.is_equal_approx(Color.BLACK), "Light: white boards, black type")
