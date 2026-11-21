@@ -66,6 +66,23 @@ jobs:
       - name: Compile-check scripts
         run: bash .github/check_scripts.sh
 
+      - name: The online leaderboard answers (data/online.json)
+        # Reads a board and posts one impossible lap (the database turns it
+        # away, so nothing is added): the address, the key and the
+        # database's functions all work. A leaderboard outage doesn't stop
+        # the build.
+        continue-on-error: true
+        run: |
+          URL=$(python3 -c "import json;print(json.load(open('data/online.json'))['url'])")
+          KEY=$(python3 -c "import json;print(json.load(open('data/online.json'))['key'])")
+          [ -z "$URL" ] && { echo "No leaderboard set up"; exit 0; }
+          H=(-H "apikey: $KEY" -H "Content-Type: application/json")
+          echo "Top of Silvermoor:"; curl -sS --fail-with-body "${H[@]}" -X POST "$URL/rest/v1/rpc/leaderboard" -d '{"p_track":"silvermoor","p_car":"gp26"}'; echo
+          KEPT=$(curl -sS --fail-with-body "${H[@]}" -X POST "$URL/rest/v1/rpc/submit_laps" -d '{"p_laps":[{"player_id":"00000000-0000-4000-8000-000000000000","nickname":"ci","track":"silvermoor","car":"gp26","lap_ms":1000,"ranked":true}]}')
+          echo "Impossible lap kept: $KEPT"
+          [ "$KEPT" = "0" ] || { echo "::warning::The leaderboard kept an impossible lap"; exit 1; }
+          curl -sS -o /dev/null -w "Direct table read (should be refused): %{http_code}\n" "${H[@]}" "$URL/rest/v1/laps?select=*"
+
       - name: Physics tests
         run: bash .github/run_test.sh res://tests/sim_test.gd
 
