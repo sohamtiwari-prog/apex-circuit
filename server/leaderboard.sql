@@ -155,6 +155,8 @@ language sql stable security definer set search_path = public as $$
   select ghost, nickname, lap_ms, track, car from laps where id = p_lap and not hidden and ghost is not null
 $$;
 
+-- (The game's key reaches the functions below and nothing else.)
+grant usage on schema public to anon, authenticated;
 revoke all on function public.submit_laps(jsonb) from public;
 revoke all on function public.leaderboard(text, text, uuid, integer) from public;
 revoke all on function public.my_rank(text, text, uuid) from public;
