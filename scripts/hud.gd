@@ -1495,6 +1495,7 @@ func _build_pause_menu(root: Control) -> void:
 	_setting(v, "vibration", "Vibration", func(): _toggle("vibration"))
 	_setting(v, "speed_blur", "Speed blur", func(): _toggle("speed_blur"))
 	_setting(v, "engineer", "Race engineer radio", func(): _toggle("engineer"))
+	_setting(v, "share_laps", "Online leaderboard: share my laps", func(): _toggle("share_laps"))
 	_setting(v, "graphics", "Graphics", func():
 		save.set_setting("graphics", "saver" if save.get_setting("graphics") != "saver" else "high"))
 	_refresh_menu()
@@ -1570,6 +1571,7 @@ func _refresh_menu() -> void:
 	(_menu_buttons["vibration"] as Label).text = on_off.call("vibration")
 	(_menu_buttons["speed_blur"] as Label).text = on_off.call("speed_blur")
 	(_menu_buttons["engineer"] as Label).text = on_off.call("engineer")
+	(_menu_buttons["share_laps"] as Label).text = on_off.call("share_laps")
 	(_menu_buttons["graphics"] as Label).text = "Battery saver" if save.get_setting("graphics") == "saver" else "High"
 	touch.configure(control, bool(save.get_setting("auto_accelerate")), float(save.get_setting("tilt_sensitivity")))
 	settings_changed.emit()

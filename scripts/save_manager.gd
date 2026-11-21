@@ -110,6 +110,9 @@ const _DEFAULTS := {
 		"look": "auto",             # menus: "light", "dark" or "auto" (match the phone)
 		"web_tuned": false,         # (iPhone browser: battery saver set once, on the first visit)
 		"home_tip_seen": false,     # (iPhone browser: the Add to Home Screen tip was dismissed)
+		"share_laps": true,         # your laps go up to the online leaderboard (scripts/world_board.gd)
+		"online_id": "",            # (this phone's random id on the leaderboard)
+		"online_notice_seen": false,
 	},
 	"best_laps": {},                  # "track|car" -> milliseconds
 	"best_sectors": {},               # "track|car" -> [ms, ms, ms], best of each sector

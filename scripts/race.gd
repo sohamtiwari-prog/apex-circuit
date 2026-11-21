@@ -143,6 +143,8 @@ var _still := 0.0                 # player: seconds stuck with the throttle on
 var recoveries := 0               # automatic car recoveries (stats/tests)
 const STEER_ASSIST_BLEND := 0.35
 var autopilot: AIDriver = null     # when set, the AI drives the player's car (tests/demo)
+var _lap_sectors: Array = []       # this lap's sector times so far (ms): the online leaderboard
+var _rank_wanted := false          # a new best went up: say where it puts you in the world
 var save: Node                     # the Save autoload, looked up at runtime
 var net: NetRace = null            # multiplayer session, if any
 var Net: Node                      # the Net autoload, looked up at runtime
@@ -635,6 +637,7 @@ func _restart() -> void:
 	_my_session_minis.resize(MINIS)
 	_my_session_minis.fill(INF)
 	_ghost_rec = PackedFloat32Array()
+	_lap_sectors = []
 	out_lap = flying_start
 	if ghost_car != null:
 		ghost_car.visible = false
@@ -1365,6 +1368,8 @@ func _complete_sector(e: Entrant, k: int) -> void:
 			session_sectors[k] = minf(session_sectors[k], t)
 			save.submit_sector(lap_key, k, t)
 	hud.show_sector(k, t, (t - pb) if pb > 0.0 else 0.0, colour)
+	if k == _lap_sectors.size():
+		_lap_sectors.append(int(round(t * 1000.0)))
 
 
 ## Minisector lines are equal slices of the lap; the last one is the finish
@@ -1468,6 +1473,7 @@ func _player_lap(lap_time: float) -> void:
 			if challenge.is_empty():
 				_ghost_play = _my_best_ghost      # (racing a friend's ghost: theirs stays)
 			_save_ghost_data(_my_best_ghost)
+		_post_lap(ms, is_best)
 		if not challenge.is_empty() and mode == "time_trial" and lap_valid:
 			var theirs := float(challenge.get("lap_ms", 0)) / 1000.0
 			var who := String(challenge.get("name", "your friend"))
@@ -1490,9 +1496,50 @@ func _player_lap(lap_time: float) -> void:
 	_last_lap_rec = _ghost_rec
 	lap_valid = true
 	_ghost_rec = PackedFloat32Array()
+	_lap_sectors = []
 	if mode == "race" and player.lap == total_laps - 1:
 		hud.show_center("Final lap")
 		get_tree().create_timer(1.5).timeout.connect(func(): hud.show_center(""))
+
+
+## A lap for the online leaderboard (scripts/world_board.gd): every lap you
+## drive, and the ghost with a new best in a time trial. Only clean
+## time-trial laps rank (no slipstream, no traffic, a flying start).
+func _post_lap(ms: int, is_best: bool) -> void:
+	var board := get_node_or_null("/root/Board")
+	if board == null or not board.sharing() or autopilot != null or DisplayServer.get_name() == "headless":
+		return
+	var ranked: bool = mode == "time_trial" and lap_valid and net == null and ev_type in ["", "time_trial"]
+	var lap := {"track": track_id, "car": car_id, "lap_ms": ms, "ranked": ranked,
+		"mode": (ev_type if ev_type != "" else mode) + ("_online" if net != null else ""),
+		"weather": ("wet" if weekend != null and weekend.wetness > 0.3 else "dry"),
+		"assists": {"tc": bool(save.get_setting("traction_control")), "abs": bool(save.get_setting("abs")),
+			"brake": String(save.get_setting("brake_assist")), "steer": String(save.get_setting("steer_assist")),
+			"auto_accel": bool(save.get_setting("auto_accelerate")), "controls": String(save.get_setting("control_mode"))},
+		"setup": save.my_setup(car_id)}
+	if _lap_sectors.size() == 3:
+		lap["sectors"] = _lap_sectors.duplicate()
+	board.post_lap(lap, _my_best_ghost if ranked and is_best else PackedFloat32Array(), GHOST_HZ)
+	if not bool(save.get_setting("online_notice_seen")):
+		save.set_setting("online_notice_seen", true)
+		get_tree().create_timer(3.5).timeout.connect(func():
+			if is_instance_valid(hud):
+				hud.show_banner("Your laps go to the world leaderboard (name and times only). Off in Settings.", UIStyle.PAPER, 5.0))
+	if ranked and is_best:
+		_rank_wanted = true
+		if not board.posted.is_connected(_on_lap_posted):
+			board.posted.connect(_on_lap_posted)
+
+
+## A new best is on the leaderboard: where it puts you.
+func _on_lap_posted(_kept: int) -> void:
+	if not _rank_wanted:
+		return
+	_rank_wanted = false
+	var board := get_node_or_null("/root/Board")
+	board.rank(track_id, car_id, func(r: Variant):
+		if r is Dictionary and not (r as Dictionary).is_empty() and is_instance_valid(hud):
+			hud.show_banner("World P%d of %d" % [int(r["rank"]), int(r["total"])], UIStyle.PURPLE, 4.0))
 
 
 func _player_finished() -> void:

@@ -321,6 +321,11 @@ func _build_track_side(cols: Control) -> void:
 	_share_btn = UIStyle.button("Share my lap", _share_ghost, false, 22)
 	_share_btn.custom_minimum_size = Vector2(0, 52)
 	_share_row.add_child(_share_btn)
+	# ...and everyone's: the world's best laps here in this car.
+	_world_btn = UIStyle.button("World top 10", func():
+		WorldBoardPanel.open(self, String(save.get_setting("track")), String(save.get_setting("car"))), false, 22)
+	_world_btn.custom_minimum_size = Vector2(0, 52)
+	_share_row.add_child(_world_btn)
 	var go := UIStyle.go_button("Race", _start, 46)
 	go.custom_minimum_size = Vector2(0, 76)
 	v.add_child(go)
@@ -520,6 +525,7 @@ var _ghost_code: LineEdit
 var _share_row: HBoxContainer
 var _share_lbl: Label
 var _share_btn: Button
+var _world_btn: Button
 var _ghost_status: Label
 
 

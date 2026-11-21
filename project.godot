@@ -31,6 +31,7 @@ general/ios/mix_with_others=true
 Save="*res://scripts/save_manager.gd"
 Net="*res://scripts/net.gd"
 SafeArea="*res://scripts/safe_area.gd"
+Board="*res://scripts/world_board.gd"
 
 [display]
 
