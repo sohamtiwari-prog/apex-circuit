@@ -193,9 +193,12 @@ func _show_top(rows: Variant) -> void:
 	_update_gap()
 	# (Fifty rows don't fit: open with yours in the middle, wherever it is.)
 	if yours != null:
-		await get_tree().process_frame
-		if is_instance_valid(yours) and is_instance_valid(_scroll):
-			_scroll.scroll_vertical = int(maxf(yours.position.y - (_scroll.size.y - yours.size.y) * 0.5, 0.0))
+		_centre_on.call_deferred(yours)
+
+
+func _centre_on(row: Control) -> void:
+	if is_instance_valid(row) and is_instance_valid(_scroll):
+		_scroll.scroll_vertical = int(maxf(row.position.y - (_scroll.size.y - row.size.y) * 0.5, 0.0))
 
 
 func _row(pos: int, r: Dictionary) -> Control:
@@ -285,19 +288,25 @@ func _update_gap() -> void:
 ## Fetch a lap's ghost and race it: a time trial on its track in its car.
 func _race(lap_id: int, b: Button) -> void:
 	var board := get_node_or_null("/root/Board")
-	board.ghost(lap_id, func(ch: Dictionary):
-		if not is_inside_tree():
-			return
-		if ch.is_empty():
+	# (A method, not a lambda: if this screen is closed before the ghost
+	# arrives, the answer finds nobody and is dropped.)
+	board.ghost(lap_id, _on_ghost.bind(b))
+
+
+func _on_ghost(ch: Dictionary, b: Button) -> void:
+	if not is_inside_tree():
+		return
+	if ch.is_empty():
+		if is_instance_valid(b):
 			b.text = "Race"
 			b.disabled = false
-			_gap.text = "Couldn't fetch that lap. Try again."
-			return
-		if String(Track.catalog_entry(String(ch["track"]))["id"]) != String(ch["track"]) or not CarSpecs.is_known(String(ch["car"])):
-			_gap.text = "That lap is on a track or car this version doesn't have: update the game."
-			return
-		var save := get_node("/root/Save")
-		save.challenge = ch
-		save.pending_event = {}
-		get_tree().paused = false
-		get_tree().change_scene_to_file("res://scenes/race.tscn"))
+		_gap.text = "Couldn't fetch that lap. Try again."
+		return
+	if String(Track.catalog_entry(String(ch["track"]))["id"]) != String(ch["track"]) or not CarSpecs.is_known(String(ch["car"])):
+		_gap.text = "That lap is on a track or car this version doesn't have: update the game."
+		return
+	var save := get_node("/root/Save")
+	save.challenge = ch
+	save.pending_event = {}
+	get_tree().paused = false
+	get_tree().change_scene_to_file("res://scenes/race.tscn")

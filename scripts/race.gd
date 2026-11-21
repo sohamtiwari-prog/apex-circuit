@@ -1522,9 +1522,7 @@ func _post_lap(ms: int, is_best: bool) -> void:
 	board.post_lap(lap, _my_best_ghost if ranked and is_best else PackedFloat32Array(), GHOST_HZ)
 	if not bool(save.get_setting("online_notice_seen")):
 		save.set_setting("online_notice_seen", true)
-		get_tree().create_timer(3.5).timeout.connect(func():
-			if is_instance_valid(hud):
-				hud.show_banner("Your laps go to the world leaderboard (name and times only). Off in Settings.", UIStyle.PAPER, 5.0))
+		get_tree().create_timer(3.5).timeout.connect(_online_notice)
 	if ranked and is_best:
 		_rank_wanted = true
 		if not board.posted.is_connected(_on_lap_posted):
@@ -1537,9 +1535,19 @@ func _on_lap_posted(_kept: int) -> void:
 		return
 	_rank_wanted = false
 	var board := get_node_or_null("/root/Board")
-	board.rank(track_id, car_id, func(r: Variant):
-		if r is Dictionary and not (r as Dictionary).is_empty() and is_instance_valid(hud):
-			hud.show_banner("World P%d of %d" % [int(r["rank"]), int(r["total"])], UIStyle.PURPLE, 4.0))
+	# (A method, not a lambda: if you've left the race before the answer
+	# comes, it finds nobody and is dropped.)
+	board.rank(track_id, car_id, _show_world_rank)
+
+
+func _show_world_rank(r: Variant) -> void:
+	if r is Dictionary and not (r as Dictionary).is_empty() and is_instance_valid(hud):
+		hud.show_banner("World P%d of %d" % [int(r["rank"]), int(r["total"])], UIStyle.PURPLE, 4.0)
+
+
+func _online_notice() -> void:
+	if is_instance_valid(hud):
+		hud.show_banner("Your laps go to the world leaderboard (name and times only). Off in Settings.", UIStyle.PAPER, 5.0)
 
 
 func _player_finished() -> void:

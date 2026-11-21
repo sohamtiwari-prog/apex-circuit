@@ -59,6 +59,16 @@ func _run() -> void:
 	_check(absi(s.size() - lap.size()) <= 7 * 20, "the same length of lap (%d / %d samples)" % [s.size() / 7, lap.size() / 7])
 	_check(worst < 0.6 and rad_to_deg(worst_a) < 2.0, "the path comes back (worst %.2f m, %.2f deg)" % [worst, rad_to_deg(worst_a)])
 	_check(String(back["name"]) == "Ann" and int(back["lap_ms"]) == 80000 and String(back["paint"]["base"]) == "#121c4a", "who, the time and their paint come back")
+	# A damaged or doctored ghost (anyone can put one on the leaderboard) is
+	# turned away, never asks for gigabytes or billions of samples.
+	var huge := var_to_bytes({"path": PackedByteArray([1, 2, 3, 4]), "raw": 2000000000})
+	var lying := StreamPeerBuffer.new()
+	lying.put_u32(4000000000)
+	var lying_raw := lying.data_array
+	var liar := var_to_bytes({"path": lying_raw.compress(FileAccess.COMPRESSION_DEFLATE), "raw": lying_raw.size()})
+	_check(GhostShare.unpack(huge, 20.0).is_empty() and GhostShare.unpack(liar, 20.0).is_empty()
+		and GhostShare.unpack(PackedByteArray([1, 2, 3]), 20.0).is_empty() and GhostShare.unpack(var_to_bytes([1, 2]), 20.0).is_empty(),
+		"a damaged or doctored ghost is turned away")
 	# Through the relay.
 	var up := GhostShare.new()
 	root.add_child(up)

@@ -43,14 +43,28 @@ static func pack(samples: PackedFloat32Array, hz: float, info: Dictionary) -> Pa
 
 
 ## Back to race.gd's form (at hz), and the info. {} if it isn't one.
+## The longest ghost there can be: an hour at SEND_HZ.
+const MAX_SAMPLES := 36000
+
+
 static func unpack(bytes: PackedByteArray, hz: float) -> Dictionary:
-	var meta: Variant = bytes_to_var(bytes)
-	if not (meta is Dictionary) or not (meta as Dictionary).has("path"):
+	# (Ghosts come from anyone on the leaderboard: a damaged or doctored one
+	# is turned away here, never allowed to ask for gigabytes or to run on
+	# for billions of samples.)
+	if bytes.size() < 8 or bytes.size() > 400000:
 		return {}
-	var raw: PackedByteArray = (meta["path"] as PackedByteArray).decompress(int(meta["raw"]), FileAccess.COMPRESSION_DEFLATE)
+	var meta: Variant = bytes_to_var(bytes)
+	if not (meta is Dictionary) or not (meta as Dictionary).has("path") or not (meta["path"] is PackedByteArray):
+		return {}
+	var raw_size := int(meta.get("raw", 0))
+	if raw_size < 4 or raw_size > MAX_SAMPLES * 20 + 4:
+		return {}
+	var raw: PackedByteArray = (meta["path"] as PackedByteArray).decompress(raw_size, FileAccess.COMPRESSION_DEFLATE)
 	var buf := StreamPeerBuffer.new()
 	buf.data_array = raw
 	var count := buf.get_u32()
+	if count < 2 or count > MAX_SAMPLES or raw.size() < 4 + count * 20:
+		return {}
 	var pts: Array = []
 	for k in count:
 		var p := Vector3(buf.get_float(), buf.get_float(), buf.get_float())

@@ -168,7 +168,7 @@ func pending() -> int:
 ## or done(null) when it can't be reached.
 func top(track_id: String, car_id: String, done: Callable, limit := 50) -> void:
 	_call("leaderboard", {"p_track": track_id, "p_car": car_id, "p_me": player_id(), "p_limit": limit}, func(ok: bool, v: Variant):
-		done.call(v if ok and v is Array else null))
+		_reply(done, v if ok and v is Array else null))
 
 
 ## Your place: done({rank, total, best_ms}), done({}) with no time set
@@ -176,11 +176,11 @@ func top(track_id: String, car_id: String, done: Callable, limit := 50) -> void:
 func rank(track_id: String, car_id: String, done: Callable) -> void:
 	_call("my_rank", {"p_track": track_id, "p_car": car_id, "p_me": player_id()}, func(ok: bool, v: Variant):
 		if not ok or not (v is Array):
-			done.call(null)
+			_reply(done, null)
 		elif (v as Array).is_empty():
-			done.call({})
+			_reply(done, {})
 		else:
-			done.call(v[0]))
+			_reply(done, v[0]))
 
 
 ## A leaderboard lap to race as a ghost: done(challenge) - the same as a
@@ -188,18 +188,28 @@ func rank(track_id: String, car_id: String, done: Callable) -> void:
 func ghost(lap_id: int, done: Callable) -> void:
 	_call("get_ghost", {"p_lap": lap_id}, func(ok: bool, v: Variant):
 		if not ok or not (v is Array) or (v as Array).is_empty():
-			done.call({})
+			_reply(done, {})
 			return
 		var row: Dictionary = v[0]
 		var ch := GhostShare.unpack(Marshalls.base64_to_raw(String(row.get("ghost", ""))), 20.0)
 		if ch.is_empty():
-			done.call({})
+			_reply(done, {})
 			return
 		ch["track"] = String(row["track"])
 		ch["car"] = String(row["car"])
 		ch["lap_ms"] = int(row["lap_ms"])
 		ch["name"] = String(row["nickname"])
-		done.call(ch))
+		_reply(done, ch))
+
+
+## Answers whoever asked - if they're still there. (A screen closed while
+## its answer was on the way is gone; calling into it would be calling into
+## freed memory.) Only ever hand these functions a method of a node
+## (Callable(node, "method"), bound or not), never a lambda: a lambda keeps a
+## bare pointer to the node that made it.
+static func _reply(done: Callable, v: Variant) -> void:
+	if done.is_valid():
+		done.call(v)
 
 
 ## Calls a database function: done(ok, result).
