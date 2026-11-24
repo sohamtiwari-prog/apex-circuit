@@ -594,11 +594,18 @@ static func _material(key: String) -> StandardMaterial3D:
 		"satin":
 			# Racing liveries: a satin finish, the colour deep, the sky's
 			# reflection soft and wide.
-			m.metallic = 0.12
-			m.roughness = 0.34
+			# Racing liveries: deep colour under a clear lacquer that carries
+			# the sky (a soft wide sheen and a crisp highlight on top), and a
+			# faint sheen where the body turns away from you, which shows
+			# its shape.
+			m.metallic = 0.1
+			m.roughness = 0.3
 			m.clearcoat_enabled = true
-			m.clearcoat = 0.55
-			m.clearcoat_roughness = 0.2
+			m.clearcoat = 1.0
+			m.clearcoat_roughness = 0.09
+			m.rim_enabled = true
+			m.rim = 0.18
+			m.rim_tint = 0.7
 		"paint":
 			# Glossy paint under a clear lacquer: the colour stays rich (low
 			# metallic) and the lacquer carries sharp sky reflections.
@@ -608,9 +615,12 @@ static func _material(key: String) -> StandardMaterial3D:
 			m.clearcoat = 1.0
 			m.clearcoat_roughness = 0.06
 		"matte":
-			# Carbon fibre: a fine twill weave, mapped without UVs.
-			m.metallic = 0.3
-			m.roughness = 0.42
+			# Carbon fibre: a fine twill weave, mapped without UVs. Fairly
+			# rough and not metallic: the thin wing planes seen edge-on
+			# otherwise mirror the sky and read as chrome.
+			m.metallic = 0.0
+			m.roughness = 0.55
+			m.metallic_specular = 0.35
 			m.albedo_texture = _weave()
 			m.uv1_triplanar = true
 			m.uv1_scale = Vector3(14, 14, 14)
@@ -620,6 +630,25 @@ static func _material(key: String) -> StandardMaterial3D:
 			m.roughness = 0.05
 		"rubber":
 			m.roughness = 0.85
+		"cover":
+			# GP wheel covers: satin carbon (not polished metal, which mirrored
+			# the sky and read as grey plastic discs).
+			m.metallic = 0.15
+			m.roughness = 0.42
+			m.clearcoat_enabled = true
+			m.clearcoat = 0.5
+			m.clearcoat_roughness = 0.25
+			m.albedo_texture = _weave()
+			m.uv1_triplanar = true
+			m.uv1_scale = Vector3(20, 20, 20)
+			m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		"visor":
+			# A tinted, mirrored visor.
+			m.metallic = 0.85
+			m.roughness = 0.06
+			m.rim_enabled = true
+			m.rim = 0.3
+			m.rim_tint = 1.0
 		"metal":
 			m.metallic = 0.9
 			m.roughness = 0.25
@@ -692,6 +721,17 @@ func _h(v: float) -> float:
 ## The livery on a painted surface: carbon below `low` (above the ground),
 ## then the paint pattern.
 func _skin(p: Vector3, th: float, low: float) -> Color:
+	var c := _skin_flat(p, th, low)
+	if c == CARBON:
+		return c
+	# Baked shade: the paint darkens down towards the floor (in the floor's
+	# shadow and away from the sky), which gives the body its form.
+	var hh := p.y - _g
+	var k := lerpf(0.66, 1.0, smoothstep(0.12, 0.5, hh) * 0.6 + smoothstep(-0.7, 0.8, sin(th)) * 0.4)
+	return Color(c.r * k, c.g * k, c.b * k, c.a)
+
+
+func _skin_flat(p: Vector3, th: float, low: float) -> Color:
 	var hh := p.y - _g
 	if hh < low or th < -1.2:
 		return CARBON
@@ -840,9 +880,12 @@ func _build_gp() -> void:
 	for k in 9:
 		var a := lerpf(-1.05, 1.05, k / 8.0)
 		visor.append(hc + Vector3(sin(a) * 0.116, 0.03, cos(a) * 0.132))
-	MeshKit.tube(hst, visor, 0.026, 6, Color(0.02, 0.02, 0.03))
+	var vst := MeshKit.new_tool()
+	MeshKit.tube(vst, visor, 0.026, 6, Color(0.1, 0.09, 0.14))
 	var hmesh := MeshKit.finish(hst)
 	hmesh.surface_set_material(0, _material("paint"))
+	MeshKit.finish(vst, hmesh)
+	hmesh.surface_set_material(1, _material("visor"))
 	helmet = MeshInstance3D.new()
 	helmet.mesh = hmesh
 	add_child(helmet)
@@ -1216,9 +1259,12 @@ func _build_boat() -> void:
 	for k in 9:
 		var a := lerpf(-1.05, 1.05, k / 8.0)
 		visor.append(hc + Vector3(sin(a) * 0.116, 0.03, cos(a) * 0.132))
-	MeshKit.tube(hst, visor, 0.026, 6, Color(0.02, 0.02, 0.03))
+	var vst := MeshKit.new_tool()
+	MeshKit.tube(vst, visor, 0.026, 6, Color(0.1, 0.09, 0.14))
 	var hmesh := MeshKit.finish(hst)
 	hmesh.surface_set_material(0, _material("paint"))
+	MeshKit.finish(vst, hmesh)
+	hmesh.surface_set_material(1, _material("visor"))
 	helmet = MeshInstance3D.new()
 	helmet.mesh = hmesh
 	add_child(helmet)
@@ -1715,10 +1761,10 @@ static func _wheel_mesh(r: float, width: float, gp: bool) -> ArrayMesh:
 	MeshKit.lathe(metal, [Vector2(hw - 0.1, rim_r * 0.82), Vector2(hw - 0.1, rim_r * 0.35)], 24, disc)
 	MeshKit.lathe(metal, [Vector2(hw - 0.08, rim_r * 0.35), Vector2(hw - 0.08, rim_r * 0.82)], 24, disc)
 	if gp:
-		# Wheel cover: a flat carbon disc with a ring and a centre nut.
-		MeshKit.lathe(metal, [Vector2(lip - 0.01, rim_r - 0.01), Vector2(lip - 0.025, rim_r * 0.3), Vector2(lip - 0.02, 0.0)], 32, Color(0.07, 0.07, 0.08))
-		MeshKit.lathe(metal, [Vector2(lip - 0.005, rim_r * 0.8), Vector2(lip - 0.005, rim_r * 0.72)], 32, Color(0.75, 0.75, 0.78))
-		MeshKit.lathe(metal, [Vector2(lip, 0.05), Vector2(lip + 0.02, 0.0)], 12, Color(0.85, 0.65, 0.1))
+		# Wheel cover (its own carbon surface, below), a thin bright ring
+		# near its edge and the centre nut.
+		MeshKit.lathe(metal, [Vector2(lip - 0.004, rim_r * 0.86), Vector2(lip - 0.004, rim_r * 0.83)], 32, Color(0.8, 0.8, 0.82))
+		MeshKit.lathe(metal, [Vector2(lip - 0.012, 0.045), Vector2(lip + 0.006, 0.03), Vector2(lip + 0.01, 0.0)], 12, Color(0.72, 0.55, 0.12))
 	else:
 		# Five double spokes from a dished centre to the lip.
 		var face := lip - 0.02
@@ -1743,4 +1789,10 @@ static func _wheel_mesh(r: float, width: float, gp: bool) -> ArrayMesh:
 		MeshKit.lathe(band, [Vector2(-hw - 0.0065, b1), Vector2(-hw - 0.0065, b0)], 32, Color.WHITE)
 		MeshKit.finish(band, mesh)
 		mesh.surface_set_material(2, _band_mat(Tyres.COLOR["medium"]))
+		# The cover: dished slightly in towards the hub.
+		var cover := MeshKit.new_tool()
+		MeshKit.lathe(cover, [Vector2(lip - 0.008, rim_r - 0.008), Vector2(lip - 0.014, rim_r * 0.7),
+			Vector2(lip - 0.024, rim_r * 0.3), Vector2(lip - 0.02, 0.0)], 32, Color(0.11, 0.11, 0.12))
+		MeshKit.finish(cover, mesh)
+		mesh.surface_set_material(3, _material("cover"))
 	return mesh

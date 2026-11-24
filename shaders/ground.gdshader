@@ -14,6 +14,7 @@ uniform vec3 wild_color2 : source_color = vec3(0.3, 0.38, 0.16);
 uniform vec3 dry_color : source_color = vec3(0.42, 0.4, 0.22);
 uniform float dryness = 0.35;
 uniform float blades = 1.0;          // fine grass texture close up (0: sand / paving)
+uniform float saturation = 0.8;    // (grass straight from the palette reads as plastic)
 
 varying vec3 wpos;
 varying float wild;
@@ -42,6 +43,13 @@ void fragment() {
 	c *= 0.8 + 0.4 * n1;
 	c *= 0.88 + 0.24 * n2;
 	c *= 0.9 + 0.2 * n3;
+	// Clumps: some a little yellower and thinner, some a deeper blue-green,
+	// so a field is never one flat colour.
+	float clump = texture(noise_tex, p * 0.09 + 0.61).r;
+	c = mix(c, c * vec3(1.1, 1.03, 0.78), smoothstep(0.5, 0.75, clump) * 0.55 * blades);
+	c = mix(c, c * vec3(0.86, 0.95, 1.0), smoothstep(0.5, 0.25, clump) * 0.45 * blades);
+	float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+	c = mix(vec3(lum), c, saturation) * 0.92;
 	// Blades: a fine, high-contrast speckle close up that fades with distance
 	// (before it could shimmer).
 	float fine = texture(noise_tex, p * 3.1).r * 0.6 + texture(noise_tex, p * 7.3).r * 0.4;

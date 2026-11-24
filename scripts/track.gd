@@ -1192,6 +1192,11 @@ func _build_road() -> void:
 	var kerb := _kerb_mask()
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# The grass verges alongside: drawn with the ground's own material, so
+	# they're the same grass (mown stripes and all) as the land beyond, not
+	# a band of green paint.
+	var gst := SurfaceTool.new()
+	gst.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var faces := PackedVector3Array()
 
 	# Alpha = material code for the road shader.
@@ -1236,8 +1241,8 @@ func _build_road() -> void:
 					_pt(i, j, 0.0, h), _pt(i, j, 1.0, h), _pt(i, j, 0.0, outer), _pt(i, j, 0.0, outer), _pt(i, j, 1.0, h), _pt(i, j, 1.0, outer)]:
 				faces.append(v)
 		else:
-			_band(st, faces, i, j, -outer, -h, kc)
-			_band(st, faces, i, j, h, outer, kc)
+			_band(gst, faces, i, j, -outer, -h, kc)
+			_band(gst, faces, i, j, h, outer, kc)
 		_band(st, faces, i, j, -h, -h + LINE_W, white)
 		_band(st, faces, i, j, h - LINE_W, h, white)
 		for side in [-1.0, 1.0]:
@@ -1250,10 +1255,11 @@ func _build_road() -> void:
 			elif kind == RUNOFF_GRAVEL:
 				ramp_col = runoff
 			# Short ramp down to the surroundings, so rejoining never catches a step.
+			var rst := gst if ramp_col == verge else st
 			if side < 0.0:
-				_band(st, faces, i, j, -outer - 1.0, -outer, ramp_col, 0.0, 1.0, low, 0.0)
+				_band(rst, faces, i, j, -outer - 1.0, -outer, ramp_col, 0.0, 1.0, low, 0.0)
 			else:
-				_band(st, faces, i, j, outer, outer + 1.0, ramp_col, 0.0, 1.0, 0.0, low)
+				_band(rst, faces, i, j, outer, outer + 1.0, ramp_col, 0.0, 1.0, 0.0, low)
 			if kind != RUNOFF_NONE:
 				var a := outer + 1.0
 				var b := outer + 1.0 + runoff_width
@@ -1324,6 +1330,11 @@ func _build_road() -> void:
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
+	var gmi := MeshInstance3D.new()
+	gmi.mesh = gst.commit()
+	gmi.material_override = _ground_mat
+	gmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(gmi)
 	if have_terrain:
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)

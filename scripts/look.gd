@@ -129,7 +129,7 @@ static func build(parent: Node, style: String, time_of_day := "day", track_id :=
 		for k in SUNSET:
 			cfg[k] = SUNSET[k]
 		var rot: Vector3 = SKIES.get(style, SKIES["park"])["sun_rot"]
-		cfg["sun_rot"] = Vector3(-9.0, rot.y + 25.0, 0)
+		cfg["sun_rot"] = Vector3(-13.0, rot.y + 25.0, 0)
 	var night := time_of_day == "night" and not style in ["studio", "garage"]
 	if night:
 		for k in NIGHT:
@@ -166,12 +166,15 @@ static func build(parent: Node, style: String, time_of_day := "day", track_id :=
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	# Less fill than before, more sun: shadows and form, not flat light.
-	env.ambient_light_energy = 0.42 if sunset else 0.5
+	env.ambient_light_energy = 0.9 if sunset else 0.5
 	# Shade lit partly by the sky (blue) and partly by light bounced off
 	# the ground and buildings (warm), not by pure sky: walls in shadow
 	# stay their colour instead of going blue.
 	env.ambient_light_sky_contribution = 0.55
 	env.ambient_light_color = Color(0.62, 0.58, 0.52)
+	if sunset:
+		# The shade under a low sun is lit by the open sky: cooler.
+		env.ambient_light_color = Color(0.5, 0.52, 0.6)
 	if night:
 		# The bowl of floodlights fills in from every side.
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -179,7 +182,9 @@ static func build(parent: Node, style: String, time_of_day := "day", track_id :=
 		env.ambient_light_energy = 0.9
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.0
+	# (A low sun lights little of the ground: a touch more exposure at
+	# sunset, as a camera would, so the track isn't lost in the dark.)
+	env.tonemap_exposure = 1.22 if sunset else 1.0
 	env.tonemap_white = 6.0
 	env.glow_enabled = true
 	env.glow_intensity = 0.35
