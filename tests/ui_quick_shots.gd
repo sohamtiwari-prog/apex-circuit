@@ -53,4 +53,46 @@ func _run() -> void:
 	if only == "" or only.contains("career"):
 		await _open("res://scenes/career.tscn")
 		await _shot(out + "/career.png")
+	if only.contains("builder"):
+		# The track builder: a shape on the board, a track with a problem,
+		# My tracks, and the track in the Quick race picker.
+		var b = await _open("res://scenes/builder.tscn")
+		b._template("gp")
+		b._name.text = "Soham Ring"
+		b.track["name"] = "Soham Ring"
+		b.track["hills"] = 2
+		b._refresh_chips()
+		b._changed()
+		await _shot(out + "/builder.png", 12)
+		b._save_track()
+		b._push_undo()
+		var bad: Array = b.map.ctrl.duplicate()
+		bad[8] = Vector2(-150, 280)
+		b.map.set_layout(bad)
+		b._changed()
+		await _shot(out + "/builder_problem.png")
+		b._undo_last()
+		b._set_mode("draw")
+		# Mid-trace: a loop being drawn with a finger.
+		var tr := PackedVector2Array()
+		for k in 150:
+			var a := TAU * k / 180.0
+			tr.append(Vector2(cos(a) * 700.0 + sin(a * 3.0) * 90.0, sin(a) * 380.0))
+		var keep: Array = b.map.ctrl.duplicate()
+		b.map.set_layout([])
+		b.map._trace = tr
+		b._changed()
+		b.map.queue_redraw()
+		await _shot(out + "/builder_draw.png")
+		b.map._trace = PackedVector2Array()
+		b.map.set_layout(keep)
+		b._changed()
+		b._show_mine()
+		await _shot(out + "/builder_mine.png")
+		b._overlay.queue_free()
+		b._overlay = null
+		b._race()
+		for i in 6:
+			await process_frame
+		await _shot(out + "/builder_quick.png")
 	quit(0)

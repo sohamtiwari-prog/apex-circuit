@@ -35,7 +35,7 @@ func _ready() -> void:
 	DisplayServer.screen_set_keep_on(true)
 	# The cars, or the boats when a boat's picked (Powerboats on the home screen).
 	car_ids = Array(CarSpecs.BOATS) if CarSpecs.is_boat(String(save.get_setting("car"))) else Array(CarSpecs.CATALOG)
-	track_ids = Track.ids_for(String(save.get_setting("car")))
+	track_ids = _tracks_for(String(save.get_setting("car")))
 	_build_stage()
 	_build_ui()
 	UIStyle.reveal_boards.call_deferred(self)
@@ -422,6 +422,14 @@ func _refresh_mode() -> void:
 
 # ------------------------------------------------------------ selection
 
+## The circuits for a car, then the tracks you drew (any car but a boat).
+static func _tracks_for(car_id: String) -> Array:
+	var ids := Track.ids_for(car_id)
+	if not CarSpecs.is_boat(car_id):
+		ids += MyTracks.ids()
+	return ids
+
+
 func _step_car(d: int) -> void:
 	var i := car_ids.find(String(save.get_setting("car")))
 	_select_car(car_ids[posmod(i + d, car_ids.size())], true)
@@ -439,7 +447,7 @@ func _select_car(id: String, persist: bool) -> void:
 		save.set_setting("car", id)
 		# Karts race on the kart circuits, everything else on the full-size
 		# ones: the track list follows the car.
-		track_ids = Track.ids_for(id)
+		track_ids = _tracks_for(id)
 		_select_track(String(save.get_setting("track")), true)
 	_show_car(id)
 	var spec: Dictionary = save.car_spec(id)
@@ -503,6 +511,11 @@ func _select_track(id: String, persist: bool) -> void:
 	var tag: String = parts[parts.size() - 1] if parts.size() > 1 else ""
 	_track_tag.text = (tag.substr(0, 1).to_upper() + tag.substr(1)) if tag != "" else ""
 	_track_count.text = "%d of %d" % [track_ids.find(id) + 1, track_ids.size()]
+	if MyTracks.is_mine(id):
+		_track_meta.text = "Your track, %.2f km" % (Track.outline_length(pts) / 1000.0)
+		_track_count.text = "Yours, %d of %d" % [track_ids.find(id) + 1, track_ids.size()]
+	if _world_btn != null:
+		_world_btn.visible = not MyTracks.is_mine(id)
 	_refresh_info()
 
 
@@ -568,6 +581,9 @@ func _fetch_ghost() -> void:
 			_ghost_status.text = String(res)
 			return
 		var ch: Dictionary = res
+		if MyTracks.is_mine(String(ch.get("track", ""))) and not MyTracks.has_track(String(ch.get("track", ""))):
+			_ghost_status.text = "That lap is on your friend's own track: ask them to Share it from the Track builder, then Paste the code there first."
+			return
 		if String(Track.catalog_entry(String(ch.get("track", "")))["id"]) != String(ch.get("track", "")) or not CarSpecs.is_known(String(ch.get("car", ""))):
 			_ghost_status.text = "That lap is on a track or car this version doesn't have: update the game."
 			return

@@ -12,6 +12,7 @@ const SITE := "https://sohamtiwari-prog.github.io/apex-circuit/"
 ## ghost code to race. Read once when the game opens; used once.
 static var pending_join := ""
 static var pending_ghost := ""
+static var pending_track := ""     # a track someone drew (scripts/my_tracks.gd code, without APX1-)
 static var _read_link := false
 
 
@@ -23,6 +24,9 @@ static func read_link() -> void:
 	for part in q.trim_prefix("?").split("&"):
 		var kv := part.split("=")
 		if kv.size() != 2:
+			continue
+		if kv[0] == "track":
+			pending_track = kv[1].uri_decode().strip_edges()
 			continue
 		var v := kv[1].uri_decode().strip_edges().to_upper()
 		if kv[0] == "join" and v.length() == 4:

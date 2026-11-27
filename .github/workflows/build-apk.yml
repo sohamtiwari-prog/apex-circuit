@@ -92,6 +92,9 @@ jobs:
       - name: Every track is drivable
         run: bash .github/run_test.sh res://tests/tracks_test.gd
 
+      - name: Track builder (codes, checks, drawn tracks lap and race)
+        run: bash .github/run_test.sh res://tests/my_track_test.gd
+
       - name: Every car performs and laps cleanly
         run: bash .github/run_test.sh res://tests/cars_test.gd
 

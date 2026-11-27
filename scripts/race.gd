@@ -1509,6 +1509,8 @@ func _post_lap(ms: int, is_best: bool) -> void:
 	var board := get_node_or_null("/root/Board")
 	if board == null or not board.sharing() or autopilot != null or DisplayServer.get_name() == "headless":
 		return
+	if MyTracks.is_mine(track_id):
+		return          # (tracks you drew aren't on the world leaderboard)
 	var ranked: bool = mode == "time_trial" and lap_valid and net == null and ev_type in ["", "time_trial"]
 	var lap := {"track": track_id, "car": car_id, "lap_ms": ms, "ranked": ranked,
 		"mode": (ev_type if ev_type != "" else mode) + ("_online" if net != null else ""),

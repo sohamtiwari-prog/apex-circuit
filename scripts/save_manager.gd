@@ -135,6 +135,7 @@ const _DEFAULTS := {
 	"paint": {},                     # car id -> your own paint (CarSpecs.apply_paint)
 	"setup": {},                     # car id -> your setup (CarSpecs.apply_setup)
 	"rivals": {},                    # series id -> {"won": n, "lost": n} against its rival
+	"my_tracks": [],                 # tracks you drew (scripts/my_tracks.gd)
 	# Who's driving: made on the first visit (scripts/driver_screen.gd).
 	"driver": {"id": "", "created": false, "name": "", "number": 26, "helmet": "ffd200", "helmet2": "000000"},
 }

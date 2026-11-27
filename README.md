@@ -77,6 +77,46 @@ touching between levels, no resets.
 light on the horizon); any track can be raced by day, at sunset or at night
 ("Track's own time" picks the venue's usual one).
 
+## Track builder
+
+**Track builder** on the home screen: draw your own circuit and race it.
+
+- **Draw:** trace a loop on the map with your finger (the map is 2.4 by
+  1.35 km, with a 100 m grid; two fingers zoom and move it). The trace is
+  closed up, smoothed and turned into control points, closer together in
+  the bends. Or start from a shape (GP, Kidney, Oval, Club).
+- **Shape:** drag a point to move the road, tap the road to add a point,
+  tap a point and Remove point. Undo goes back 40 steps.
+- **Choose:** scenery (parkland, forest, desert, street circuit), time of
+  day, hills (flat to mountain) and road width (narrow for karts, standard,
+  wide), and a name.
+- **Checked as you go:** a track that runs into itself, two parts too close
+  side by side, a corner too tight to drive, or a lap under 0.7 km or over
+  8 km is circled in red and says what to change; Race it waits till it's fixed.
+- **Race it:** saved in My tracks and opened in Quick race (any car but the
+  boats; every race type, time trial, qualifying, rain). Your tracks come
+  after the circuits in the track picker.
+
+The game builds it like the real circuits (`Track._load_custom`): the lap
+starts 60% of the way down the longest straight, so the grid, pit lane and
+run to turn 1 fit; the racing line is worked out on the spot; kerbs,
+barriers, run-off, DRS zones, grandstands and scenery are placed the usual
+way. The road climbs and falls over the hills (smoothed along the lap, at
+most 8% gradient, 11% in the mountains) and the landscape is made for it
+(`Track._custom_terrain`, a quicker cousin of tools/terrain.py: held at the
+road's height out past the barriers, then easing into the hills).
+
+**Share:** a track is a short code (`APX1-…`, about 100 letters: the
+control points on a 2 m grid, each one a step from the last). Share copies
+a message with the code and a link; on an iPhone or a computer the link
+opens the game in the browser with the track loaded, in the Android app
+**Paste a code** reads it. The code also gives the track its id (from its
+shape, width and hills; not its name or scenery), so a friend racing your
+track keeps their laps on the same key, and a ghost code of your lap there
+works for them. Tracks you drew aren't on the world leaderboard or in
+Friends games (the other phones don't have them). They're kept in your
+profile, so a backup code carries them.
+
 ## Powerboats
 
 Its own section of the game (**Powerboats** on the home screen): circuit

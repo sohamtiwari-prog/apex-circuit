@@ -2,7 +2,8 @@ class_name UIIcon
 extends Control
 ## Small drawn icons for the menus, all on one 48-unit grid with the same
 ## heavy, square-ended strokes, so they read as one set: trophy, calendar,
-## podium, flag, friends, spanner, sun, moon, copy, plus, ghost, people, boat.
+## podium, flag, friends, spanner, sun, moon, copy, plus, ghost, people, boat,
+## track (a circuit from above).
 
 @export var kind := "trophy"
 @export var colour := Color.BLACK
@@ -131,6 +132,11 @@ func _draw() -> void:
 			draw_colored_polygon(pts, colour)
 			_circle(19, 20, 3, acc if accent.a > 0.0 else Color.WHITE)
 			_circle(29, 20, 3, acc if accent.a > 0.0 else Color.WHITE)
+		"track":
+			# A little circuit from above: a loop with a hairpin, the line.
+			_line([[10, 36], [34, 36], [41, 31], [41, 24], [35, 20], [27, 22], [22, 16], [24, 9], [17, 6], [9, 10],
+				[6, 20], [6, 31], [10, 36]], colour, 4.2)
+			_rect(19, 32, 3, 8, acc)
 		"restore":
 			_line([[24, 8], [24, 30]], colour, 4.4)
 			_poly([[14, 22], [34, 22], [24, 33]])

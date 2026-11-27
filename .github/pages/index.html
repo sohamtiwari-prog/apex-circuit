@@ -45,7 +45,7 @@
     </div>
   </div>
 
-  <!-- A friend's invite link (?join=CODE or ?ghost=CODE): straight in. -->
+  <!-- A friend's invite link (?join=CODE, ?ghost=CODE or ?track=CODE): straight in. -->
   <section id="invite" hidden>
   <h2 id="invite-title">You're invited to a race</h2>
   <p id="invite-what"></p>
@@ -110,11 +110,17 @@
     var q = new URLSearchParams(location.search);
     var join = (q.get('join') || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 4);
     var ghost = (q.get('ghost') || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8);
-    if (join.length !== 4 && ghost.length < 6) return;
+    var track = (q.get('track') || '').replace(/[^A-Za-z0-9_-]/g, '');
+    if (join.length !== 4 && ghost.length < 6 && track.length < 12) return;
     var box = document.getElementById('invite');
     box.hidden = false;
     var play = document.getElementById('invite-play');
-    if (join.length === 4) {
+    if (track.length >= 12 && join.length !== 4 && ghost.length < 6) {
+      document.getElementById('invite-title').textContent = 'Race your friend\'s track';
+      document.getElementById('invite-what').textContent = 'A circuit they drew in the Track builder. In the browser it opens as soon as the game starts: nothing to install.';
+      play.href = 'play/?track=' + track;
+      document.getElementById('invite-app').textContent = 'Have the app? Copy the message your friend sent, open Track builder and tap Paste a code.';
+    } else if (join.length === 4) {
       document.getElementById('invite-what').textContent = 'Your friend is waiting in game ' + join + '. In the browser it joins as soon as it opens: nothing to install.';
       play.href = 'play/?join=' + join;
       document.getElementById('invite-app').textContent = 'Have the app? Open Friends, type ' + join + ' under Online and tap Join.';

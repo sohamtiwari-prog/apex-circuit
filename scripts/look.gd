@@ -117,7 +117,10 @@ static func _horizon_profile(kind: int, seed: int) -> ImageTexture:
 ## "auto" picks the track's own time: night for the night races.
 static func resolve_time(time_of_day: String, track_id: String) -> String:
 	if time_of_day == "auto" or time_of_day == "":
-		return "night" if bool(Track.catalog_entry(track_id).get("night", false)) else "day"
+		var e := Track.catalog_entry(track_id)
+		if e.has("tod"):
+			return String(e["tod"])           # (a track you drew: the time you chose)
+		return "night" if bool(e.get("night", false)) else "day"
 	return time_of_day
 
 

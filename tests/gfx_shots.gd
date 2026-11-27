@@ -31,6 +31,17 @@ func _run() -> void:
 	for spec in String(args[1]).split(","):
 		var tid := spec.get_slice(":", 0)
 		var tod := spec.get_slice(":", 1) if spec.contains(":") else "auto"
+		# A track-builder template: tpl-<shape>-<scenery>-<hills 0..3>[-<width 0..2>].
+		if tid.begins_with("tpl-"):
+			var bits := tid.split("-")
+			var t := MyTracks.new_track(MyTracks.template(bits[1]), "Test " + bits[1])
+			t["style"] = bits[2] if bits.size() > 2 else "park"
+			t["hills"] = int(bits[3]) if bits.size() > 3 else 1
+			t["width"] = int(bits[4]) if bits.size() > 4 else 1
+			t["seed"] = 4242
+			t["id"] = MyTracks.make_id(t)
+			MyTracks.extra[t["id"]] = t
+			tid = String(t["id"])
 		var save: Node = root.get_node("Save")
 		save.data = save.default_profile()
 		var st: Dictionary = save.data["settings"]

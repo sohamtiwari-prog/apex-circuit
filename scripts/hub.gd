@@ -2,7 +2,7 @@ extends Node3D
 ## Home screen: who's driving (helmet, name, rank), the car on the
 ## turntable, what's next in your career with Race straight into it, and
 ## the ways to play: daily challenge, championship, career, quick race,
-## friends and the garage.
+## friends, the garage and the track builder.
 
 var save: Node
 var room: Showroom
@@ -45,6 +45,13 @@ func _ready() -> void:
 	if WebBridge.pending_join != "":
 		get_tree().change_scene_to_file.call_deferred("res://scenes/lobby.tscn")
 		return
+	if WebBridge.pending_track != "":
+		var t := MyTracks.decode(MyTracks.PREFIX + WebBridge.pending_track)
+		WebBridge.pending_track = ""
+		if not t.is_empty():
+			load("res://scripts/track_builder.gd").incoming = t
+			get_tree().change_scene_to_file.call_deferred("res://scenes/builder.tscn")
+			return
 	if WebBridge.pending_ghost != "":
 		save.set_setting("mode", "time_trial")
 		get_tree().change_scene_to_file.call_deferred("res://scenes/menu.tscn")
@@ -132,6 +139,10 @@ func _build_ui() -> void:
 	var records := _icon_button("trophy", func(): get_tree().change_scene_to_file("res://scenes/profile.tscn"), "Records")
 	top.add_child(records)
 	_tiles["profile"] = records
+	var build_b := _icon_button("track", func(): get_tree().change_scene_to_file("res://scenes/builder.tscn"), "Track builder")
+	build_b.custom_minimum_size.x = 230
+	top.add_child(build_b)
+	_tiles["builder"] = build_b
 	var garage_b := _icon_button("spanner", func(): get_tree().change_scene_to_file("res://scenes/garage.tscn"), "Garage")
 	top.add_child(garage_b)
 	_tiles["garage"] = garage_b

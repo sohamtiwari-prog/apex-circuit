@@ -88,7 +88,11 @@ func _settings() -> Dictionary:
 
 
 func _default_settings() -> Dictionary:
-	return {"track": String(save.get_setting("track")), "laps": int(save.get_setting("laps")),
+	var tid := String(save.get_setting("track"))
+	var ids := Track.ids_for(String(save.get_setting("car")))
+	if not ids.has(tid):
+		tid = ids[0]          # (a track you drew isn't on your friends' phones)
+	return {"track": tid, "laps": int(save.get_setting("laps")),
 		"grid": 20, "difficulty": String(save.get_setting("difficulty")), "tod": String(save.get_setting("time_of_day")),
 		"pits": "on", "weather": "dry", "rules": "on", "party": "race"}
 

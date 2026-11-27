@@ -185,6 +185,10 @@ func tunnel_at(p: Vector3) -> int:
 
 
 static func catalog_entry(id: String) -> Dictionary:
+	if MyTracks.is_mine(id):
+		var e := MyTracks.entry(id)
+		if not e.is_empty():
+			return e
 	for t in CATALOG:
 		if t["id"] == id:
 			return t
@@ -216,6 +220,8 @@ static func ids_for(car_id: String) -> Array:
 
 
 static func catalog_name(id: String) -> String:
+	if MyTracks.is_mine(id):
+		return String(catalog_entry(id)["name"])
 	for t in CATALOG:
 		if t["id"] == id:
 			return t["name"]
@@ -245,7 +251,10 @@ func build(id: String = "kestrel_park") -> void:
 		add_child(course)
 		course.build(self, String(catalog_entry(id)["water"]))
 		return
-	if id == "kestrel_park" and not FileAccess.file_exists("res://tracks/kestrel_park.json"):
+	var mine := MyTracks.get_track(id) if MyTracks.is_mine(id) else {}
+	if not mine.is_empty():
+		_load_custom(mine, true)
+	elif id == "kestrel_park" and not FileAccess.file_exists("res://tracks/kestrel_park.json"):
 		road_half = 6.5
 		wall_offset = 19.0
 		_sample_control(KESTREL_LAYOUT)
@@ -253,6 +262,8 @@ func build(id: String = "kestrel_park") -> void:
 		_load_file("res://tracks/%s.json" % id, true)
 	_derive()
 	_derive_line()
+	if not mine.is_empty():
+		MyTracks.lines[id] = line_offset
 	_derive_runoff()
 	_derive_drs()
 	_build_grid()
@@ -469,7 +480,10 @@ func _load_file(path: String, with_terrain := false) -> void:
 ## Centreline of a catalog track without building anything (menu maps).
 static func outline(id: String) -> PackedVector3Array:
 	var t := Track.new()
-	if id == "kestrel_park" and not FileAccess.file_exists("res://tracks/kestrel_park.json"):
+	var mine := MyTracks.get_track(id) if MyTracks.is_mine(id) else {}
+	if not mine.is_empty():
+		t._load_custom(mine, false)
+	elif id == "kestrel_park" and not FileAccess.file_exists("res://tracks/kestrel_park.json"):
 		t._sample_control(KESTREL_LAYOUT)
 	else:
 		t._load_file("res://tracks/%s.json" % id, false)
@@ -504,6 +518,245 @@ func _sample_control(layout: Array) -> void:
 	for k in range(count_target):
 		var b: Vector3 = curve.sample_baked(k * step, true)
 		points.append(Vector3(b.x, ROAD_Y, b.z))
+
+
+# ------------------------------------------------------------ your own tracks
+
+## A track drawn in the track builder (scripts/my_tracks.gd): the loop
+## through its control points, started on its longest straight, over hills
+## of its own, with a landscape made to fit (with_terrain).
+func _load_custom(t: Dictionary, with_terrain: bool) -> void:
+	track_name = String(t.get("name", "My track"))
+	road_half = MyTracks.half_width(t)
+	wall_offset = MyTracks.wall_offset(t)
+	_sample_control(MyTracks.control(t))
+	_start_on_straight()
+	_custom_elevation(t)
+	terrain_h = PackedFloat32Array()
+	line_offset = PackedFloat32Array()
+	var cached: Variant = MyTracks.lines.get(String(t.get("id", "")))
+	if cached is PackedFloat32Array and (cached as PackedFloat32Array).size() == points.size():
+		line_offset = cached
+	if with_terrain:
+		_custom_terrain(t)
+
+
+## The lap starts 60% of the way down the longest straight: the grid behind
+## the line, the pit lane alongside, the run to turn 1 ahead.
+func _start_on_straight() -> void:
+	var flat := PackedVector2Array()
+	for p in points:
+		flat.append(Vector2(p.x, p.z))
+	var start := straight_start(flat, SPACING)
+	if start <= 0:
+		return
+	var n := points.size()
+	var rotated := PackedVector3Array()
+	rotated.resize(n)
+	for i in n:
+		rotated[i] = points[(start + i) % n]
+	points = rotated
+
+
+## Where a drawn loop's lap starts (a sample index): 60% of the way down
+## its longest straight. (The track builder marks the same place.)
+static func straight_start(pts: PackedVector2Array, step: float) -> int:
+	var n := pts.size()
+	if n < 20:
+		return 0
+	var k := maxi(2, int(round(12.0 / step)))
+	var straight := []
+	straight.resize(n)
+	for i in n:
+		var t1 := (pts[i] - pts[(i - k + n) % n]).normalized()
+		var t2 := (pts[(i + k) % n] - pts[i]).normalized()
+		straight[i] = absf(t1.angle_to(t2)) / (k * step) < 1.0 / 500.0
+	var best_s := 0
+	var best_len := 0
+	for i in n:
+		if not straight[i] or straight[(i - 1 + n) % n]:
+			continue
+		var j := 0
+		while j < n and straight[(i + j) % n]:
+			j += 1
+		if j > best_len:
+			best_len = j
+			best_s = i
+	if best_len == 0:
+		return 0
+	return (best_s + int(best_len * 0.6)) % n
+
+
+## Smooth noise for a track's hills (m), the same function everywhere so
+## the land and the road agree.
+static func _hill_noise(seed: int) -> FastNoiseLite:
+	var nz := FastNoiseLite.new()
+	nz.seed = seed
+	nz.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	nz.frequency = 1.0 / 650.0
+	nz.fractal_type = FastNoiseLite.FRACTAL_FBM
+	nz.fractal_octaves = 2
+	nz.fractal_gain = 0.35
+	return nz
+
+
+## The road follows the hills, smoothed out along the lap and held to the
+## gradients a real circuit has (up to about 8%; 11% in the mountains).
+func _custom_elevation(t: Dictionary) -> void:
+	var hills := clampi(int(t.get("hills", 0)), 0, MyTracks.HILL_AMP.size() - 1)
+	var amp: float = MyTracks.HILL_AMP[hills]
+	var n := points.size()
+	if amp <= 0.0 or n < 10:
+		return
+	var nz := _hill_noise(int(t.get("seed", 0)))
+	var y := PackedFloat32Array()
+	y.resize(n)
+	for i in n:
+		y[i] = amp * nz.get_noise_2d(points[i].x, points[i].z) * 1.6
+	var w := 20
+	for _pass in 3:
+		var acc := 0.0
+		for d in range(-w, w + 1):
+			acc += y[(d + n) % n]
+		var sm := PackedFloat32Array()
+		sm.resize(n)
+		for i in n:
+			sm[i] = acc / (2 * w + 1)
+			acc += y[(i + w + 1) % n] - y[(i - w + n) % n]
+		y = sm
+	var grade := 0.11 if hills >= 3 else 0.08
+	var dmax := grade * SPACING
+	for _pass in 6:
+		for i in range(1, n * 2):
+			var a := (i - 1) % n
+			var b := i % n
+			y[b] = clampf(y[b], y[a] - dmax, y[a] + dmax)
+		for i in range(n * 2 - 2, -1, -1):
+			var a := (i + 1) % n
+			var b := i % n
+			y[b] = clampf(y[b], y[a] - dmax, y[a] + dmax)
+	for i in n:
+		points[i].y = ROAD_Y + y[i]
+
+
+## A landscape for a track you drew (what tools/terrain.py does for the real
+## ones, quicker): the ground held at the road's height out past the
+## barriers, then easing into the hills and rolling land of the scenery
+## style, and flat again at the edge where the horizon takes over.
+func _custom_terrain(t: Dictionary) -> void:
+	var n := points.size()
+	if n < 10:
+		return
+	var step := 8.0
+	var margin := 340.0
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for p in points:
+		lo = Vector2(minf(lo.x, p.x), minf(lo.y, p.z))
+		hi = Vector2(maxf(hi.x, p.x), maxf(hi.y, p.z))
+	lo -= Vector2(margin, margin)
+	hi += Vector2(margin, margin)
+	var w := int(ceil((hi.x - lo.x) / step)) + 1
+	var h := int(ceil((hi.y - lo.y) / step)) + 1
+	var cells := w * h
+	# Nearest centreline sample to every vertex: seeded under the road, then
+	# passed across the grid both ways (a distance transform).
+	var near := PackedInt32Array()
+	near.resize(cells)
+	near.fill(-1)
+	var dist := PackedFloat32Array()
+	dist.resize(cells)
+	dist.fill(INF)
+	for i in n:
+		var p := points[i]
+		var cx := int(round((p.x - lo.x) / step))
+		var cz := int(round((p.z - lo.y) / step))
+		for dz in range(-1, 2):
+			for dx in range(-1, 2):
+				var ix := cx + dx
+				var iz := cz + dz
+				if ix < 0 or iz < 0 or ix >= w or iz >= h:
+					continue
+				var k := iz * w + ix
+				var d := Vector2(lo.x + ix * step - p.x, lo.y + iz * step - p.z).length()
+				if d < dist[k]:
+					dist[k] = d
+					near[k] = i
+	var fwd := [Vector2i(-1, 0), Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1)]
+	var back := [Vector2i(1, 0), Vector2i(1, 1), Vector2i(0, 1), Vector2i(-1, 1)]
+	for sweep in 2:
+		var offs: Array = fwd if sweep == 0 else back
+		var z0 := 0 if sweep == 0 else h - 1
+		var z1 := h if sweep == 0 else -1
+		var dzs := 1 if sweep == 0 else -1
+		var iz := z0
+		while iz != z1:
+			var ix := 0 if sweep == 0 else w - 1
+			while ix >= 0 and ix < w:
+				var k := iz * w + ix
+				var vx := lo.x + ix * step
+				var vz := lo.y + iz * step
+				for o in offs:
+					var jx: int = ix + o.x
+					var jz: int = iz + o.y
+					if jx < 0 or jz < 0 or jx >= w or jz >= h:
+						continue
+					var c := near[jz * w + jx]
+					if c < 0 or c == near[k]:
+						continue
+					var q := points[c]
+					var d := Vector2(vx - q.x, vz - q.z).length()
+					if d < dist[k]:
+						dist[k] = d
+						near[k] = c
+				ix += 1 if sweep == 0 else -1
+			iz += dzs
+	var hills := clampi(int(t.get("hills", 0)), 0, MyTracks.HILL_AMP.size() - 1)
+	var amp: float = MyTracks.HILL_AMP[hills]
+	var nz := _hill_noise(int(t.get("seed", 0)))
+	var roll := FastNoiseLite.new()
+	roll.seed = int(t.get("seed", 0)) + 7
+	roll.noise_type = FastNoiseLite.TYPE_VALUE_CUBIC
+	roll.frequency = 1.0 / 200.0
+	roll.fractal_octaves = 2
+	var roll_amp: float = {"park": 7.0, "forest": 14.0, "desert": 3.0, "city": 3.0}.get(style, 6.0)
+	var ys := PackedFloat32Array()
+	ys.resize(n)
+	for i in n:
+		ys[i] = points[i].y
+	var sorted := ys.duplicate()
+	sorted.sort()
+	var base := sorted[n / 2]
+	var shelf := wall_offset + 26.0
+	var hs := PackedFloat32Array()
+	hs.resize(cells)
+	var wild := PackedByteArray()
+	wild.resize(cells)
+	for iz in h:
+		for ix in w:
+			var k := iz * w + ix
+			var x := lo.x + ix * step
+			var z := lo.y + iz * step
+			var d := dist[k]
+			var road_y := ys[near[k]] - 0.15 if near[k] >= 0 else base
+			var land := base + amp * nz.get_noise_2d(x, z) * 1.6
+			var out := clampf((d - shelf) / 150.0, 0.0, 1.0)
+			out = out * out * (3.0 - 2.0 * out)
+			var y := lerpf(road_y, land, out) + roll.get_noise_2d(x, z) * roll_amp * out
+			# Ease to the base height at the border.
+			var e := minf(minf(ix, w - 1 - ix), minf(iz, h - 1 - iz)) * step
+			var taper := clampf(e / 140.0, 0.0, 1.0)
+			taper = taper * taper * (3.0 - 2.0 * taper)
+			hs[k] = base + (y - base) * taper
+			wild[k] = int(round(clampf((d - wall_offset - 10.0) / 35.0, 0.0, 1.0) * 255.0))
+	terrain_h = hs
+	terrain_wild = wild
+	_tx0 = lo.x
+	_tz0 = lo.y
+	_tstep = step
+	_tw = w
+	_th = h
+	terrain_base = base
 
 
 func _derive() -> void:
