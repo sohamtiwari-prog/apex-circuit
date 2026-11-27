@@ -23,12 +23,12 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.99",
-          "buildVersion": "99",
-          "date": "2026-11-24T16:06:37Z",
-          "localizedDescription": "Looks: lacquered liveries with baked shade, carbon wheel covers, mirrored visors, grass verges that match the grass, a readable sunset",
-          "downloadURL": "https://github.com/sohamtiwari-prog/apex-circuit/releases/download/v0.1.99/ApexCircuit-iPhone.ipa",
-          "size": 25374556,
+          "version": "0.1.100",
+          "buildVersion": "100",
+          "date": "2026-11-27T13:39:16Z",
+          "localizedDescription": "Track builder: draw your own circuit, race it, share it as a code",
+          "downloadURL": "https://github.com/sohamtiwari-prog/apex-circuit/releases/download/v0.1.100/ApexCircuit-iPhone.ipa",
+          "size": 25425298,
           "minOSVersion": "14.0"
         }
       ],
@@ -41,11 +41,11 @@
           "NSPhotoLibraryUsageDescription": ""
         }
       },
-      "version": "0.1.99",
-      "versionDate": "2026-11-24T16:06:37Z",
-      "versionDescription": "Looks: lacquered liveries with baked shade, carbon wheel covers, mirrored visors, grass verges that match the grass, a readable sunset",
-      "downloadURL": "https://github.com/sohamtiwari-prog/apex-circuit/releases/download/v0.1.99/ApexCircuit-iPhone.ipa",
-      "size": 25374556
+      "version": "0.1.100",
+      "versionDate": "2026-11-27T13:39:16Z",
+      "versionDescription": "Track builder: draw your own circuit, race it, share it as a code",
+      "downloadURL": "https://github.com/sohamtiwari-prog/apex-circuit/releases/download/v0.1.100/ApexCircuit-iPhone.ipa",
+      "size": 25425298
     }
   ],
   "news": []
